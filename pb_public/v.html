@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>Отгрузка — ВЕЛЕССТРОЙ</title>
+<style>
+:root{--bg:#eef1f4;--card:#fff;--ink:#14181f;--mut:#5b6472;--line:#d9dee5;--acc:#f2b705;--g:#15803d;--gbg:#dcfce7;--b:#1d4ed8;--bbg:#dbeafe;--y:#a16207;--ybg:#fef3c7;--r:#b91c1c;--rbg:#fee2e2}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1318;--card:#181e26;--ink:#e8edf3;--mut:#9aa5b4;--line:#2a3340;--gbg:#123321;--bbg:#132544;--ybg:#3a2c0b;--rbg:#3b1414}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{background:#14181f;color:#fff;padding:14px 16px;border-bottom:4px solid var(--acc)}header b{letter-spacing:.06em}header div{color:#c9d1db;font-size:13px}
+main{max-width:720px;margin:0 auto;padding:14px 16px 40px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin:0 0 12px}
+h1{font-size:22px;margin:4px 0 6px}h2{font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);margin:18px 0 8px}
+.st{display:inline-block;padding:8px 14px;border-radius:999px;font-weight:800;font-size:17px}
+.st.preparing{background:var(--ybg);color:var(--y)}.st.sent{background:var(--bbg);color:var(--b)}.st.delivered{background:var(--gbg);color:var(--g)}.st.cancelled{background:var(--rbg);color:var(--r)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px}.kv b{color:var(--mut);font-weight:600}
+.step{display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px dashed var(--line)}.step:first-child{border-top:0}
+.dot{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;font-size:13px;flex:none}.done .dot{background:var(--g);border-color:var(--g);color:#fff}
+.done .n{font-weight:700}.mut{color:var(--mut);font-size:14px}
+table{width:100%;border-collapse:collapse}td{padding:8px 4px;border-top:1px solid var(--line);vertical-align:top}td.q{text-align:right;white-space:nowrap;font-weight:700}
+.ph{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px}.ph img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;cursor:zoom-in;background:var(--line)}
+#big{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;z-index:9}#big img{max-width:100%;max-height:100%}
+.err{text-align:center;padding:40px 10px}.err b{font-size:20px;display:block;margin-bottom:8px}
+footer{font-size:12px;color:var(--mut);text-align:center;margin-top:16px}
+</style></head><body>
+<header><b>ВЕЛЕССТРОЙ</b><div>Отгрузка материала — обновляется автоматически</div></header>
+<main id="m"><div class="card mut">Загрузка…</div></main>
+<div id="big" onclick="this.style.display='none'"><img alt="Фото погрузки"></div>
+<script>
+const T=new URLSearchParams(location.search).get("t")||location.hash.slice(1);
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const D=s=>{if(!s)return null;const d=new Date(String(s).replace(" ","T"));return isNaN(d)?null:d};
+const dt=s=>{const d=D(s);return d?d.toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):""};
+const tm=s=>{const d=D(s);return d?d.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"}):""};
+const q=v=>String(Math.round((+v||0)*1000)/1000).replace(".",",");
+const ST={preparing:"ГОТОВИТСЯ",sent:"В ПУТИ",delivered:"ДОСТАВЛЕНО",cancelled:"ОТМЕНЕНО"};
+let timer=null,lastPh="";
+async function load(){
+  if(!T){show('<div class="card err"><b>Нет ссылки</b>Откройте ссылку полностью, как её прислали.</div>');return}
+  try{const r=await fetch("/api/vs/pub/ship/"+encodeURIComponent(T),{cache:"no-store"});
+    if(r.status===410||r.status===404){clearInterval(timer);show(`<div class="card err"><b>Ссылка больше не действует</b>Срок ссылки истёк или её отключили. Обратитесь к складу.</div>`);return}
+    if(!r.ok)throw new Error("Сервер ответил "+r.status);
+    render(await r.json())}catch(e){const f=document.getElementById("upd");if(f)f.textContent="Нет связи — повтор через 15 с ("+e.message+")";else show(`<div class="card err"><b>Нет связи с сервером</b>Повтор через 15 секунд…</div>`)}
+}
+function show(h){document.getElementById("m").innerHTML=h}
+function render(d){
+  const nums=d.requests.map(r=>r.number).join(", "),obj=[...new Set(d.requests.map(r=>r.object).filter(Boolean))].join(", ");
+  const eta=d.status==="sent"&&d.sent_at?new Date(D(d.sent_at).getTime()+(+d.hours||0)*3600000):null;
+  const ph=d.photos.map(p=>p.id).join(",");
+  show(`<div class="card"><div class="mut">Заявка № ${esc(nums)}${obj?" · "+esc(obj):""}</div>
+    <h1>🚚 ${esc(d.vehicle)}</h1><span class="st ${d.status}">${ST[d.status]||esc(d.status)}</span>
+    <div class="kv" style="margin-top:12px">${d.driver?`<b>Водитель</b><span>${esc(d.driver)}</span>`:""}
+     ${d.prepared_by?`<b>Готовит склад</b><span>${esc(d.prepared_by)}, ${dt(d.created)}</span>`:""}
+     ${d.sent_at?`<b>Отправлено</b><span>${dt(d.sent_at)}${d.sent_by?" ("+esc(d.sent_by)+")":""}</span>`:""}
+     ${eta?`<b>Ожидается</b><span>около ${tm(eta.toISOString())}</span>`:""}
+     ${d.delivered_at?`<b>Доставлено</b><span>${dt(d.delivered_at)}</span>`:""}
+     ${d.resources.length?`<b>С собой</b><span>${d.resources.map(x=>esc(x.name)).join(", ")}</span>`:""}</div>
+    ${d.note?`<div class="mut" style="margin-top:8px">${esc(d.note)}</div>`:""}</div>
+   ${d.steps.length?`<h2>Этапы</h2><div class="card">${d.steps.map(s=>`<div class="step ${s.at?"done":""}"><span class="dot">${s.at?"✓":""}</span><span class="n" style="flex:1">${esc(s.name)}</span><span class="mut">${s.at?tm(s.at):""}</span></div>`).join("")}</div>`:""}
+   ${d.lines.length?`<h2>На машине</h2><div class="card"><table>${d.lines.map(l=>`<tr><td>${esc(l.material)}<div class="mut">заявка № ${esc(l.number)}</div></td><td class="q">${q(l.qty)} ${esc(l.unit)}</td></tr>`).join("")}</table></div>`:""}
+   ${d.photos.length?`<h2>Фото погрузки (${d.photos.length})</h2><div class="card"><div class="ph">${d.photos.map(p=>`<img loading="lazy" alt="Фото ${dt(p.at)}" src="/api/vs/pub/ship/${encodeURIComponent(T)}/photo/${p.id}">`).join("")}</div></div>`:""}
+   <footer id="upd">Обновлено ${tm(d.now)} · ссылка действует до ${dt(d.link.expires_at)}</footer>`);
+  document.querySelectorAll(".ph img").forEach(i=>i.onclick=()=>{const b=document.getElementById("big");b.querySelector("img").src=i.src;b.style.display="flex"});
+  lastPh=ph;
+  if(d.status==="delivered"||d.status==="cancelled"){clearInterval(timer);timer=setInterval(load,60000)}
+}
+load();timer=setInterval(load,15000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)load()});
+</script></body></html>
