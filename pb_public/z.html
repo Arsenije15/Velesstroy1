@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>Задачи и согласования — ВЕЛЕССТРОЙ</title>
+<style>
+:root{--bg:#eef1f4;--card:#fff;--ink:#14181f;--mut:#5b6472;--line:#d9dee5;--acc:#f2b705;--g:#15803d;--gbg:#dcfce7;--b:#1d4ed8;--bbg:#dbeafe;--y:#a16207;--ybg:#fef3c7;--r:#b91c1c;--rbg:#fee2e2}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1318;--card:#181e26;--ink:#e8edf3;--mut:#9aa5b4;--line:#2a3340;--gbg:#123321;--bbg:#132544;--ybg:#3a2c0b;--rbg:#3b1414}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{background:#14181f;color:#fff;padding:14px 16px;border-bottom:4px solid var(--acc)}header b{letter-spacing:.06em}header div{color:#c9d1db;font-size:13px}
+main{max-width:760px;margin:0 auto;padding:14px 16px 40px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin:0 0 12px}
+h1{font-size:22px;margin:4px 0 6px}h2{font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);margin:18px 0 8px}
+.mut{color:var(--mut);font-size:14px}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:13px;font-weight:700;background:var(--line)}
+.pill.g{background:var(--gbg);color:var(--g)}.pill.b{background:var(--bbg);color:var(--b)}.pill.r{background:var(--rbg);color:var(--r)}.pill.y{background:var(--ybg);color:var(--y)}
+.st{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px dashed var(--line)}.st input{width:26px;height:26px;flex:none;margin:0}
+.st.done .t{text-decoration:line-through;opacity:.7}
+.msg{padding:5px 0}.msg.sys{opacity:.7;font-size:14px}
+input[type=text],input:not([type]){font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);flex:1;min-width:0}
+button{font:inherit;font-weight:700;padding:10px 14px;border:0;border-radius:10px;background:var(--acc);color:#14181f;cursor:pointer}button.sec{background:var(--line);color:var(--ink)}
+button:disabled{opacity:.6}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.tabs button{background:var(--line);color:var(--ink);font-weight:600;padding:7px 12px}.tabs button.on{background:#14181f;color:#fff}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:6px 4px;border-top:1px solid var(--line);vertical-align:top;text-align:left}td.q{text-align:right;white-space:nowrap}
+.err{text-align:center;padding:40px 10px}.err b{font-size:20px;display:block;margin-bottom:8px}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#14181f;color:#fff;padding:10px 16px;border-radius:10px;display:none;z-index:9;max-width:92vw}
+footer{font-size:12px;color:var(--mut);text-align:center;margin-top:16px}
+</style></head><body>
+<header><b>ВЕЛЕССТРОЙ</b><div>Задачи и согласования — личная ссылка участника</div></header>
+<main id="m"><div class="card mut">Загрузка…</div></main>
+<div id="toast"></div>
+<script>
+const T=new URLSearchParams(location.search).get("t")||location.hash.slice(1);
+const API="/api/vs/pub/topic/"+encodeURIComponent(T);
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const D=s=>{if(!s)return null;const d=new Date(String(s).replace(" ","T"));return isNaN(d)?null:d};
+const dt=s=>{const d=D(s);return d?d.toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):""};
+const dmy=s=>{const m=String(s||"").match(/^(\d{4})-(\d{2})-(\d{2})/);return m?m[3]+"."+m[2]+"."+m[1]:""};
+const q=v=>String(Math.round((+v||0)*1000)/1000).replace(".",",");
+const lcq=s=>String(s||"").toLowerCase().replace(/ё/g,"е");
+let timer=null,DATA=null,lastSig="",busy=false;
+const FIND={q:"",tab:"upd",res:null};
+function toast(t){const e=document.getElementById("toast");e.textContent=t;e.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display="none",3500)}
+function show(h){document.getElementById("m").innerHTML=h}
+async function call(method,path,body){
+  const r=await fetch(API+path,{method,headers:body?{"Content-Type":"application/json"}:{},body:body?JSON.stringify(body):undefined,cache:"no-store"});
+  let j=null;try{j=await r.json()}catch(_){}
+  if(r.status===410||r.status===404){const e=new Error((j&&j.message)||"Ссылка больше не действует");e.dead=true;throw e}
+  if(!r.ok)throw new Error((j&&j.message)||("Сервер ответил "+r.status));return j}
+async function load(){
+  if(!T){show('<div class="card err"><b>Нет ссылки</b>Откройте ссылку полностью, как её прислали.</div>');return}
+  if(busy)return;
+  try{const d=await call("GET","");const sig=JSON.stringify([d.topic,d.subs,d.msgs.length,d.msgs.length&&d.msgs[d.msgs.length-1].at]);DATA=d;
+    if(sig!==lastSig){lastSig=sig;render()}else{const f=document.getElementById("upd");if(f)f.textContent="Обновлено "+dt(d.now)}}
+  catch(e){if(e.dead){clearInterval(timer);show(`<div class="card err"><b>${esc(e.message)}</b>Обратитесь к тому, кто прислал ссылку.</div>`);return}
+    const f=document.getElementById("upd");if(f)f.textContent="Нет связи — повтор через 20 с";else show(`<div class="card err"><b>Нет связи с сервером</b>Повтор через 20 секунд…</div>`)}
+}
+function render(){const d=DATA,open=d.topic.status==="open",today=new Date(Date.now()+180*60000).toISOString().slice(0,10);
+  // сохраняем то, что человек начал печатать
+  const drafts={};document.querySelectorAll("[data-in]").forEach(i=>{if(i.value)drafts[i.dataset.in]=i.value});const foc=document.activeElement&&document.activeElement.dataset?document.activeElement.dataset.in:null;
+  const fq=document.getElementById("fq");if(fq)FIND.q=fq.value;
+  show(`<div class="card"><div class="mut">Вы вошли как <b>${esc(d.me.name)}</b></div><h1>${esc(d.topic.title)} ${open?"":'<span class="pill">АРХИВ</span>'}</h1>
+     ${d.topic.description?`<div style="white-space:pre-wrap">${esc(d.topic.description)}</div>`:""}<div class="mut" style="margin-top:6px">Участники: ${d.people.map(esc).join(", ")}</div></div>
+   <h2>Подтемы (${d.subs.length})</h2>
+   ${d.subs.map(s=>{const st=s.stages,dn=st.filter(x=>x.done).length,can=open&&s.status==="open",ms=d.msgs.filter(m=>m.sub===s.id);
+     return `<div class="card" style="border-left:5px solid ${s.status==="closed"?"var(--line)":st.length&&dn===st.length?"var(--g)":"var(--b)"}">
+      <div class="row" style="justify-content:space-between"><b style="font-size:17px">${esc(s.title)}</b><span class="pill ${s.status==="closed"?"":st.length&&dn===st.length?"g":"b"}">${s.status==="closed"?"ЗАКРЫТА":dn+" / "+st.length}</span></div>
+      ${s.description?`<div style="white-space:pre-wrap;margin-top:4px">${esc(s.description)}</div>`:""}<div class="mut" style="margin-top:4px">Участвуют: ${s.members.map(esc).join(", ")}</div>
+      <div style="margin-top:6px">${st.map(x=>{const late=!x.done&&x.deadline&&x.deadline<today;return `<label class="st ${x.done?"done":""}"><input type="checkbox" data-stage="${s.id}:${esc(x.uid)}" ${x.done?"checked":""} ${can?"":"disabled"}>
+        <span style="flex:1"><span class="t">${esc(x.name)}</span>${x.deadline?` <span class="pill ${late?"r":x.done?"g":""}">до ${dmy(x.deadline)}</span>`:""}${x.done?`<div class="mut">✔ ${esc(x.done_by)}, ${dt(x.done_at)}</div>`:""}</span></label>`}).join("")||'<div class="mut">Этапов нет</div>'}</div>
+      <div style="margin-top:8px"><div class="mut">Сообщения (${ms.filter(m=>m.kind==="msg").length})</div><div style="max-height:300px;overflow:auto" data-scroll>${ms.slice(-60).map(m=>`<div class="msg ${m.kind==="msg"?"":"sys"}"><b>${esc(m.user)}</b> <span class="mut">${dt(m.at)}</span><div style="white-space:pre-wrap">${esc(m.text)}</div></div>`).join("")||'<div class="mut">Пока нет</div>'}</div></div>
+      ${can?`<div class="row" style="margin-top:8px"><input data-in="${s.id}" placeholder="Сообщение…" maxlength="3000"><button data-send="${s.id}" aria-label="Отправить">➤</button></div>`:""}</div>`}).join("")||'<div class="card mut">Вас пока не добавили ни в одну подтему этой темы.</div>'}
+   ${findHtml()}
+   <footer id="upd">Обновлено ${dt(d.now)} · страница обновляется сама</footer>`);
+  document.querySelectorAll("[data-in]").forEach(i=>{if(drafts[i.dataset.in])i.value=drafts[i.dataset.in];if(foc===i.dataset.in)i.focus();
+    i.onkeydown=e=>{if(e.key==="Enter")send(i.dataset.in)}});
+  document.querySelectorAll("[data-scroll]").forEach(x=>x.scrollTop=x.scrollHeight);
+  document.querySelectorAll("[data-send]").forEach(b=>b.onclick=()=>send(b.dataset.send));
+  document.querySelectorAll("[data-stage]").forEach(c=>c.onchange=async()=>{const [sub,uid]=c.dataset.stage.split(":");c.disabled=true;busy=true;
+    try{await call("POST","/stage",{sub,uid,done:c.checked});toast(c.checked?"Этап отмечен":"Отметка снята")}catch(e){c.checked=!c.checked;toast(e.message)}finally{busy=false;lastSig="";load()}});
+  bindFind();
+}
+async function send(sub){const i=document.querySelector(`[data-in="${sub}"]`);const t=i.value.trim();if(!t)return;const b=document.querySelector(`[data-send="${sub}"]`);b.disabled=true;busy=true;
+  try{await call("POST","/msg",{sub,text:t});i.value="";toast("Отправлено")}catch(e){toast(e.message)}finally{b.disabled=false;busy=false;lastSig="";load()}}
+// ----- поиск материалов: новый приход, оперативка, остатки МПЗ -----
+function findHtml(){const R=FIND.res,T2=[["upd","📦 Приход"],["oper","📋 Оперативка"],["mpz","▦ Остатки МПЗ"]];
+  return `<div class="card"><b>🔎 Материалы — всё в одном месте</b><div class="mut">новый приход по УПД · оперативка (PID, шифр, стадия) · остатки МПЗ</div>
+   <div class="row" style="margin-top:8px"><input id="fq" value="${esc(FIND.q)}" placeholder="материал, PID, шифр, № УПД, поставщик"><button id="fb">Найти</button></div>
+   ${R?`<div class="tabs">${T2.map(([k,t])=>`<button class="${FIND.tab===k?"on":""}" data-ft="${k}">${t} (${R[k].length})</button>`).join("")}</div><div style="max-height:60vh;overflow:auto;margin-top:6px">${findBody()}</div>`:""}</div>`}
+function findBody(){const L=FIND.res[FIND.tab];if(!L.length)return '<div class="mut">Ничего не найдено</div>';
+  if(FIND.tab==="oper")return L.map(x=>`<div class="msg" style="border-bottom:1px dashed var(--line)"><b>${esc(x.pid)}</b> · ${esc(x.name)} <span class="mut">— ${q(x.qty)} ${esc(x.unit)}${x.delivered?", поставлено "+q(x.delivered):""}</span>
+    <div class="mut">${esc(x.object)}${x.code?" · <b>"+esc(x.code)+"</b>":""}</div><div>${esc(x.supplier)} ${x.stage?`<span class="pill">${esc(x.stage)}</span>`:""}${x.torg?` <span class="mut">УПД/ТОРГ ${esc(x.torg)}</span>`:""}</div></div>`).join("");
+  if(FIND.tab==="mpz")return `<table><tr><th>Номенклатура</th><th>Код</th><th>Склад</th><th>Остаток</th></tr>${L.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.code)}</td><td>${esc(x.warehouse)}</td><td class="q"><b>${q(x.qty)}</b> ${esc(x.unit)}</td></tr>`).join("")}</table>`;
+  return L.map(u=>`<div style="padding:8px 0;border-bottom:1px dashed var(--line)"><b>УПД № ${esc(u.number)}</b> <span class="mut">${dmy(u.date)}</span><div><b>${esc(u.supplier)}</b> <span class="mut">· позиций ${u.total}</span></div>
+    <table>${u.items.map(x=>`<tr><td>${esc(x.name)}${x.pid||x.objcode?`<div class="mut">PID <b>${esc(x.pid||"—")}</b>${x.objcode?" · "+esc(x.objcode):""}</div>`:""}</td><td class="q">${q(x.qty)} ${esc(x.unit)}</td></tr>`).join("")}</table></div>`).join("")}
+function bindFind(){const go=async()=>{FIND.q=document.getElementById("fq").value.trim();if(FIND.q.length<2){toast("Введите хотя бы 2 буквы");return}
+    const b=document.getElementById("fb");b.disabled=true;try{FIND.res=await call("GET","/find?q="+encodeURIComponent(FIND.q));
+      if(!FIND.res[FIND.tab].length){const k=["upd","oper","mpz"].find(k=>FIND.res[k].length);if(k)FIND.tab=k}render()}catch(e){toast(e.message)}finally{b.disabled=false}};
+  document.getElementById("fb").onclick=go;document.getElementById("fq").onkeydown=e=>{if(e.key==="Enter")go()};
+  document.querySelectorAll("[data-ft]").forEach(b=>b.onclick=()=>{FIND.tab=b.dataset.ft;render()})}
+load();timer=setInterval(load,20000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)load()});
+</script></body></html>

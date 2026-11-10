@@ -99,13 +99,20 @@ routerAdd("GET", "/api/vs/upd/match/{id}", (e) => {
   const pick = (r, score, why) => ({ id: r.id, score: Math.round(score * 100), why: why, pid: r.getString("pid"), code: r.getString("code"), object: r.getString("object"), subobject: r.getString("subobject"),
     name: r.getString("name_proj") || r.getString("name_supp") || r.getString("name_1c"), name_supp: r.getString("name_supp"), stage: r.getString("stage"), unit: r.getString("unit_c") || r.getString("unit"),
     qty: r.getFloat("qty_c") || r.getFloat("qty"), torg: r.getString("torg"), source: r.getString("source") });
+  // 1.9.4: слова строк оперативки разбираем один раз (УПД на 300 позиций × 3000 строк)
+  const RT = rows.map((r) => [Q.tokset(r.getString("name_supp")), Q.tokset(r.getString("name_proj")), Q.tokset(r.getString("name_1c"))]);
+  const memo = {};
   const res = items.map((it) => {
-    const c = rows.map((r) => {
-      const s = Math.max(Q.sim(it.name, r.getString("name_supp")), Q.sim(it.name, r.getString("name_proj")), Q.sim(it.name, r.getString("name_1c")));
+    if (memo[it.name + "|" + it.unit]) return { name: it.name, candidates: memo[it.name + "|" + it.unit] };
+    const A = Q.toks(it.name);
+    const c = rows.map((r, ri) => {
+      const s = Math.max(Q.simT(A, RT[ri][0]), Q.simT(A, RT[ri][1]), Q.simT(A, RT[ri][2]));
       const onUpd = byUpd.indexOf(r) >= 0;
       return { r: r, s: Math.min(1, s * 0.8 + (onUpd ? 0.35 : 0) + (r.getString("unit_c") && it.unit && r.getString("unit_c").toLowerCase().indexOf(String(it.unit).toLowerCase()) === 0 ? 0.05 : 0)), onUpd: onUpd, sim: s };
     }).filter((x) => x.sim >= 0.25 || (x.onUpd && byUpd.length === 1)).sort((x, y) => y.s - x.s).slice(0, 5);
-    return { name: it.name, candidates: c.map((x) => pick(x.r, x.s, (x.onUpd ? "УПД в оперативке; " : "") + "название " + Math.round(x.sim * 100) + "%")) };
+    const cand = c.map((x) => pick(x.r, x.s, (x.onUpd ? "УПД в оперативке; " : "") + "название " + Math.round(x.sim * 100) + "%"));
+    memo[it.name + "|" + it.unit] = cand;
+    return { name: it.name, candidates: cand };
   });
   return e.json(200, { supplier_rows: rows.length, upd_rows: byUpd.length, items: res });
 }, $apis.requireAuth("users"));
@@ -177,33 +184,14 @@ routerAdd("POST", "/api/vs/sub/stage", (e) => {
   const a = e.auth;
   const b = e.requestInfo().body || {};
   let out = null;
-  $app.runInTransaction((tx) => {
-    const s = tx.findRecordById("subtopics", L.str(b.sub)), t = tx.findRecordById("topics", s.getString("topic"));
-    Q.subAccess(L, a, s, t);
-    if (s.getString("status") === "closed" && !Q.isBoss(L, a)) throw new BadRequestError("Подтема закрыта.");
-    const st = Q.stagesOf(s), x = st.find((y) => y.uid === L.str(b.uid)); if (!x) throw new BadRequestError("Этап не найден.");
-    x.done = !!b.done; x.done_at = x.done ? L.fmt(new Date()) : ""; x.done_by = x.done ? L.userName(a) : "";
-    s.set("stages", st); tx.save(s);
-    const msg = new Record(tx.findCollectionByNameOrId("topic_msgs"));
-    msg.set("topic", t.id); msg.set("subtopic", s.id); msg.set("user", L.authId(a)); msg.set("user_name", L.userName(a)); msg.set("kind", "stage");
-    msg.set("text", (x.done ? "✔ отметил(а) этап «" : "↺ снял(а) отметку с этапа «") + x.name + "»"); tx.save(msg);
-    Q.topicLog(L, tx, a, t.id, "«" + t.getString("title") + "» / «" + s.getString("title") + "»: этап «" + x.name + "» " + (x.done ? "выполнен" : "снова не выполнен"));
-    out = { done: st.filter((y) => y.done).length, total: st.length };
-  });
+  $app.runInTransaction((tx) => { out = Q.subStage(L, tx, a, L.str(b.sub), L.str(b.uid), !!b.done); });
   return e.json(200, out);
 }, $apis.requireAuth("users"));
 routerAdd("POST", "/api/vs/sub/msg", (e) => {
   const L = require(`${__hooks}/lib.js`), Q = require(`${__hooks}/lib19.js`);
   const a = e.auth;
   const b = e.requestInfo().body || {};
-  const text = L.str(b.text).trim(); if (!text) throw new BadRequestError("Пустое сообщение.");
-  $app.runInTransaction((tx) => {
-    const s = tx.findRecordById("subtopics", L.str(b.sub)), t = tx.findRecordById("topics", s.getString("topic"));
-    Q.subAccess(L, a, s, t);
-    const msg = new Record(tx.findCollectionByNameOrId("topic_msgs"));
-    msg.set("topic", t.id); msg.set("subtopic", s.id); msg.set("user", L.authId(a)); msg.set("user_name", L.userName(a)); msg.set("kind", "msg"); msg.set("text", text.slice(0, 3000)); tx.save(msg);
-    t.set("status", t.getString("status")); tx.save(t);   // «обновлено» у темы — для списка
-  });
+  $app.runInTransaction((tx) => { Q.subMsg(L, tx, a, L.str(b.sub), L.str(b.text)); });
   return e.json(200, { ok: true });
 }, $apis.requireAuth("users"));
 routerAdd("POST", "/api/vs/sub/status", (e) => {

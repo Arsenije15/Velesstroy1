@@ -12,12 +12,13 @@ routerAdd("POST", "/api/vs/upd/ocr", (e) => {
   const b = e.requestInfo().body || {};
   if (!b.wait) {   // 1.9.2: чтение идёт в фоне — страница не ждёт минуту (иначе прокси/VPN обрывают ответ: ошибка 502)
     const job = K.ocrJob(rec.id);
-    try { $os.cmd("sh", "-c", 'mkdir -p "$(dirname "$3")"; rm -f "$3" "$3.tmp"; date +%s > "$3.start"; ( timeout 280 nice -n 10 python3 "$1" "$2" > "$3.tmp" 2>&1; echo; echo "__EXIT__$?" >> "$3.tmp"; mv "$3.tmp" "$3" ) </dev/null >/dev/null 2>&1 &', "sh", `${__hooks}/ocr_upd.py`, path, job).run(); }
+    // 1.9.4: читаются все листы (УПД на 300 позиций — 24 листа), поэтому до 9 минут; ход чтения — в файле .prog («лист 5/24»)
+    try { $os.cmd("sh", "-c", 'mkdir -p "$(dirname "$3")"; rm -f "$3" "$3.tmp" "$3.prog"; date +%s > "$3.start"; ( VS_OCR_PROGRESS="$3.prog" timeout 540 nice -n 10 python3 "$1" "$2" > "$3.tmp" 2>&1; echo; echo "__EXIT__$?" >> "$3.tmp"; mv "$3.tmp" "$3" ) </dev/null >/dev/null 2>&1 &', "sh", `${__hooks}/ocr_upd.py`, path, job).run(); }
     catch (err) { throw new BadRequestError("Распознавание не запустилось на сервере: " + String(err).slice(0, 200)); }
     return e.json(200, { started: true });
   }
   let txt = "";
-  try { txt = toString($os.cmd("sh", "-c", 'timeout 280 python3 "$1" "$2" 2>&1; echo; echo "__EXIT__$?"', "sh", `${__hooks}/ocr_upd.py`, path).output()); }
+  try { txt = toString($os.cmd("sh", "-c", 'timeout 540 python3 "$1" "$2" 2>&1; echo; echo "__EXIT__$?"', "sh", `${__hooks}/ocr_upd.py`, path).output()); }
   catch (err) { throw new BadRequestError("Распознавание не запустилось на сервере: " + String(err).slice(0, 200)); }
   const res = K.ocrFinish(L, rec, txt);
   return e.json(200, res);
@@ -34,10 +35,12 @@ routerAdd("GET", "/api/vs/upd/ocr_status/{id}", (e) => {
     let st = 0; try { st = parseInt(toString($os.readFile(job + ".start")), 10) || 0; } catch (_) {}
     if (!st) return e.json(200, { status: "none" });
     const sec = Math.round(Date.now() / 1000 - st);
-    if (sec > 330) { try { $os.remove(job + ".start"); } catch (_) {} return e.json(200, { status: "error", message: "Чтение не закончилось за 5 минут — впишите № УПД и поставщика вручную." }); }
-    return e.json(200, { status: "running", sec: sec });
+    if (sec > 600) { try { $os.remove(job + ".start"); } catch (_) {} return e.json(200, { status: "error", message: "Чтение не закончилось за 10 минут — впишите № УПД и поставщика вручную." }); }
+    let prog = ""; try { prog = toString($os.readFile(job + ".prog")).trim(); } catch (_) {}
+    const pm = prog.match(/^(\d+)\/(\d+)$/);
+    return e.json(200, { status: "running", sec: sec, page: pm ? parseInt(pm[1], 10) : 0, pages: pm ? parseInt(pm[2], 10) : 0 });
   }
-  [job, job + ".start"].forEach((f) => { try { $os.remove(f); } catch (_) {} });
+  [job, job + ".start", job + ".prog"].forEach((f) => { try { $os.remove(f); } catch (_) {} });
   try { const res = K.ocrFinish(L, rec, txt); res.status = "done"; return e.json(200, res); }
   catch (err) { return e.json(200, { status: "error", message: String(err && err.message || err).replace(/^.*?Error: /, "").slice(0, 500) }); }
 }, $apis.requireAuth("users"));
@@ -62,7 +65,7 @@ routerAdd("POST", "/api/vs/upd/save", (e) => {
       .filter((r) => X.supplierMatch(sk, r.getString("supplier_key")));
     if (dup.length) X.deny(g, "УПД № " + no + " от «" + dup[0].getString("supplier") + "» уже загружен (" + dup[0].getString("date") + ").");
     X.check(g);
-    const items = (Array.isArray(b.items) ? b.items : []).slice(0, 300).map((x) => ({
+    const items = (Array.isArray(b.items) ? b.items : []).slice(0, 1500).map((x) => ({
       code: L.str(x.code).slice(0, 60), name: L.str(x.name).slice(0, 1000), unit: L.str(x.unit).slice(0, 20),
       qty: K.num(x.qty), price: K.num(x.price), sum: K.num(x.sum), total: K.num(x.total),
       pid: L.str(x.pid).slice(0, 60), objcode: L.str(x.objcode).slice(0, 300), section: L.str(x.section).slice(0, 120),
@@ -72,7 +75,7 @@ routerAdd("POST", "/api/vs/upd/save", (e) => {
     rec.set("basis", L.str(b.basis).slice(0, 500)); rec.set("spec", L.str(b.spec).slice(0, 40));
     rec.set("total_nt", K.num(b.total_nt)); rec.set("total", K.num(b.total)); rec.set("items", items); rec.set("note", L.str(b.note).slice(0, 2000));
     if (isNew) rec.set("status", "new");
-    rec.set("search_lc", X.lc([no, sup, L.str(b.inn), L.str(b.basis)].concat(items.map((x) => x.name + " " + x.code)).join(" ")).slice(0, 3000));
+    rec.set("search_lc", X.lc([no, sup, L.str(b.inn), L.str(b.basis)].concat(items.map((x) => x.name + " " + x.code).filter((v, i, A) => A.indexOf(v) === i)).join(" ")).slice(0, 20000));   // 1.9.4: поиск по всем позициям (повторы — один раз)
     tx.save(rec);
     X.remember(tx, "supplier", sup);
     if (g.msgs.length) X.ovrSave(L, tx, g, rec, "upd_docs", rec.id, "УПД № " + no);
@@ -125,11 +128,11 @@ routerAdd("POST", "/api/vs/skk/act/save", (e) => {
     const rowsIn = Array.isArray(b.rows) ? b.rows : [];
     if (!rowsIn.length) throw new BadRequestError("Добавьте хотя бы одну строку несоответствия.");
     const now = L.fmt(new Date());
-    const rows = rowsIn.slice(0, 200).map((x, i) => {
+    const rows = rowsIn.slice(0, 1000).map((x, i) => {   // 1.9.4: акт может охватить все позиции большого УПД
       const o = old.find((y) => y.uid && y.uid === x.uid) || {};
       const fixed = !!x.fixed;
       return { uid: L.str(x.uid) || ($security.randomString(8)), material: L.str(x.material).slice(0, 1000), volume: L.str(x.volume).slice(0, 60), code: L.str(x.code).slice(0, 300),
-        issue: L.str(x.issue).slice(0, 1000), decision: L.str(x.decision).slice(0, 1000), upd: L.str(x.upd).slice(0, 30),
+        issue: L.str(x.issue).slice(0, 1000), decision: L.str(x.decision).slice(0, 1000), upd: L.str(x.upd).slice(0, 30), whole: !!x.whole,
         fixed: fixed, fix_note: L.str(x.fix_note).slice(0, 1000),
         fixed_at: fixed ? (o.fixed ? o.fixed_at : (L.str(x.fixed_at) || now)) : "", fixed_by: fixed ? (o.fixed ? o.fixed_by : L.userName(a)) : "" };
     }).filter((x) => x.material || x.issue);

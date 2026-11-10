@@ -36,7 +36,7 @@ function ocrFinish(L, rec, txt) {
   let res = null;
   const js = body.slice(body.indexOf("{"), body.lastIndexOf("}") + 1);
   try { res = JSON.parse(js); } catch (_) {
-    if (code === "124") throw new BadRequestError("Чтение заняло больше 4 минут — загрузите файл меньше (до 6 страниц) или фото без лишнего фона.");
+    if (code === "124") throw new BadRequestError("Чтение заняло больше 9 минут — разделите PDF на части или загрузите фото без лишнего фона.");
     throw new BadRequestError("Ошибка распознавания на сервере (код " + code + "): " + body.split("\n").filter(Boolean).slice(-3).join(" | ").slice(0, 400));
   }
   if (res.error) throw new BadRequestError(res.error);

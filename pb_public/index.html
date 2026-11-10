@@ -1711,18 +1711,39 @@ async function topicSearch(){const my=++TOP.seq;const q=lcq(TOP.q);const box=$("
   TOP.res=`<div style="max-height:60vh;overflow:auto"><h3 style="margin-top:10px">Оперативка — ${op.totalItems}${op.totalItems>op.items.length?` <span class="muted">(первые ${op.items.length})</span>`:""}</h3>${op.items.length?op.items.map(opRow).join(""):`<div class="muted">ничего</div>`}
    <h3 style="margin-top:10px">Остатки МПЗ — ${mp.totalItems}</h3>${mp.items.length?`<div class="tw"><table><tr><th>Номенклатура</th><th>Код</th><th>Склад</th><th>Остаток</th><th>Качество</th></tr>${mp.items.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.code)}</td><td>${esc(whShort(x.warehouse))}</td><td class="r" style="white-space:nowrap">${fmtQ(x.qty_end)} ${esc(x.unit)}</td><td>${esc(x.quality)}</td></tr>`).join("")}</table></div>`:`<div class="muted">ничего</div>`}</div>`;
   $("#tps").innerHTML=TOP.res}
+// 1.9.4: личные ссылки — отдельная страница z.html (как ссылка на отгрузку): только эта тема, этапы и сообщения под именем участника
+const topicUrl=tok=>location.origin+"/z.html?t="+tok;
+async function topicLinks(t,people){
+  const draw=async()=>{const L=await all("topic_links",`topic="${t.id}"`,"-created");const act1=uid=>L.find(l=>l.user===uid&&!l.revoked);
+    const P=people.filter(p=>p.id!==S.user.id);
+    return `<h3>🔗 Личные ссылки — «${esc(t.title)}»</h3><div class="muted">Каждому участнику — своя ссылка. По ней он видит <b>только эту тему</b> (свои подтемы, этапы, сообщения и поиск материалов), отдельной страницей, без входа в программу. Отметки и сообщения пишутся под его именем. Ссылку можно отключить.</div>
+     <div style="max-height:56vh;overflow:auto;margin-top:8px">${P.map(p=>{const l=act1(p.id);const msg=l?encodeURIComponent("Тема «"+t.title+"» — ваша ссылка: "+topicUrl(l.token)):"";
+      return `<div style="padding:8px 0;border-bottom:1px dashed var(--line)"><b>${esc(p.name)}</b> <span class="muted">${esc(T.roles[p.role]||p.role||"")}${p.company?" · "+esc(p.company):""}</span>
+       ${l?`<div class="muted">ссылка создана ${dt(l.created)} · открывали ${l.views||0} раз${l.last_view?", последний "+dt(l.last_view):""}</div>
+        <div class="row" style="margin-top:4px;gap:6px"><button class="btn sm" data-tlc="${esc(l.token)}">📋 Копировать</button><a class="btn sm" target="_blank" rel="noopener" href="https://t.me/share/url?url=${encodeURIComponent(topicUrl(l.token))}&text=${encodeURIComponent("Тема «"+t.title+"»")}">Telegram</a><a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/?text=${msg}">WhatsApp</a><button class="btn sm" data-tlr="${l.id}" data-tln="${esc(p.name)}">Отключить</button></div>`
+        :`<div class="row" style="margin-top:4px"><button class="btn sm p" data-tln1="${p.id}">＋ Создать ссылку</button></div>`}</div>`}).join("")||`<div class="muted">В теме нет других участников — добавьте их через «✏ Изменить».</div>`}</div>
+     <div class="row" style="margin-top:12px">${P.some(p=>!act1(p.id))?`<button class="btn p grow" id="tlall">Создать ссылки всем без ссылки</button>`:""}<button class="btn" data-close>Закрыть</button></div>`};
+  const bindM=box=>{
+    box.querySelectorAll("[data-tlc]").forEach(b=>b.onclick=async()=>{const u=topicUrl(b.dataset.tlc);try{await navigator.clipboard.writeText(u);toast("Ссылка скопирована")}catch(_){prompt("Ссылка:",u)}});
+    const mk=async ids=>{await api("POST","/api/vs/topic/links/create",{topic:t.id,users:ids});box.querySelector(".box").innerHTML=await draw();bindM(box)};
+    box.querySelectorAll("[data-tln1]").forEach(b=>b.onclick=()=>act(b,()=>mk([b.dataset.tln1]),"Ссылка создана"));
+    const al=$("#tlall",box);if(al)al.onclick=()=>act(al,()=>mk(people.filter(p=>p.id!==S.user.id).map(p=>p.id)),"Ссылки созданы");
+    box.querySelectorAll("[data-tlr]").forEach(b=>b.onclick=()=>{if(!confirm("Отключить ссылку для «"+b.dataset.tln+"»? Она перестанет открываться."))return;
+      act(b,async()=>{await api("POST","/api/vs/topic/links/revoke",{link:b.dataset.tlr});box.querySelector(".box").innerHTML=await draw();bindM(box)},"Ссылка отключена")});
+  };
+  modal(await draw(),bindM);
+}
 async function vTopic(id,changed){
   if(changed&&!changed.some(c=>/^(topics|subtopics|topic_msgs)$/.test(c))&&$("#tpv"))return;
   let t;try{t=await api("GET","/api/collections/topics/records/"+id)}catch(e){if(S.route==="topic/"+id)$("#main").innerHTML=`<div class="card empty">Тема не найдена или у вас нет доступа.<br><a href="#/topics">← К темам</a></div>`;return}
   const [subs,msgs,pp]=await Promise.all([all("subtopics",`topic="${id}"`,"sort"),all("topic_msgs",`topic="${id}"`,"created"),api("GET","/api/vs/topic/people/"+id).catch(()=>({people:[]}))]);
   if(S.route!=="topic/"+id)return;
   const people=pp.people,P=i=>{const p=people.find(x=>x.id===i);return p?p.name:"—"};const B=can.boss(),open=t.status==="open",me=S.user.id;
-  const today=new Date(Date.now()+180*60000).toISOString().slice(0,10);const link=location.origin+location.pathname+"#/topic/"+id;
-  const share=encodeURIComponent("Тема «"+t.title+"»: "+link);
+  const today=new Date(Date.now()+180*60000).toISOString().slice(0,10);
   $("#main").innerHTML=`<div class="row noprint"><a class="btn sm" href="#/topics">← Темы</a>${B?`<button class="btn sm" id="tped">✏ Изменить</button><button class="btn sm" id="tpst">${open?"🔒 Закрыть (в архив)":"↺ Открыть снова"}</button>`:""}</div>
    <h1 id="tpv">${esc(t.title)} ${open?"":`<span class="pill gr">АРХИВ</span>`}</h1>${t.description?`<div class="card" style="white-space:pre-wrap">${esc(t.description)}</div>`:""}
    <div class="card"><div class="muted">Участники: ${people.map(p=>esc(p.name)).join(", ")||"—"}</div>
-    <div class="row" style="margin-top:8px"><button class="btn sm" id="tplink">🔗 Скопировать ссылку</button><a class="btn sm" target="_blank" rel="noopener" href="https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent("Тема «"+t.title+"»")}">Telegram</a><a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/?text=${share}">WhatsApp</a></div></div>
+    ${B&&open?`<div class="row noprint" style="margin-top:8px"><button class="btn sm acc" id="tplink">🔗 Личные ссылки участникам</button><span class="muted">по ссылке участник видит только эту тему — отдельной страницей, без входа</span></div>`:""}</div>
    ${hubHtml()}
    <div class="row" style="justify-content:space-between;margin-top:6px"><h2>Подтемы (${subs.length})</h2>${B&&open?`<button class="btn p sm" id="sbnew">＋ Подтема</button>`:""}</div>
    ${subs.map(s=>{const st=Array.isArray(s.stages)?s.stages:[],d=st.filter(x=>x.done).length,mem=(s.members||[]).includes(me),can2=(B||mem)&&open&&(s.status==="open"||B),ms=msgs.filter(m=>m.subtopic===s.id);
@@ -1734,7 +1755,7 @@ async function vTopic(id,changed){
       <details style="margin-top:8px" ${ms.length&&ms.length<=6?"open":""}><summary class="muted">Сообщения (${ms.filter(m=>m.kind==="msg").length})</summary><div style="max-height:260px;overflow:auto">${ms.slice(-40).map(m=>`<div style="padding:4px 0;${m.kind==="msg"?"":"opacity:.7;font-size:13px"}"><b>${esc(m.user_name)}</b> <span class="muted">${dt(m.created)}</span><div style="white-space:pre-wrap">${esc(m.text)}</div></div>`).join("")}</div></details>
       ${can2?`<div class="row" style="margin-top:6px"><input id="tm_${s.id}" placeholder="Короткое сообщение…" style="flex:1"><button class="btn sm" data-msg="${s.id}">➤</button></div>`:""}
       ${B?`<div class="row" style="margin-top:8px"><button class="btn sm" data-sbed="${s.id}">✏ Подтема</button><button class="btn sm" data-sbst="${s.id}">${s.status==="open"?"Закрыть подтему":"Открыть подтему"}</button></div>`:""}</div>`}).join("")||`<div class="card empty">Подтем пока нет</div>`}`;
-  $("#tplink").onclick=async()=>{try{await navigator.clipboard.writeText(link);toast("Ссылка скопирована")}catch(_){prompt("Ссылка на тему:",link)}};
+  const tl=$("#tplink");if(tl)tl.onclick=()=>act(tl,()=>topicLinks(t,people));
   hubBind();if(!HUB.data)hubLoad();
   const ed=$("#tped");if(ed)ed.onclick=()=>topicEdit(t);
   const ts=$("#tpst");if(ts)ts.onclick=()=>{if(confirm(open?"Закрыть тему и перенести в архив?":"Открыть тему снова?"))act(ts,async()=>{await api("POST","/api/vs/topic/status",{id,status:open?"closed":"open"});render(null,true)},open?"Тема в архиве":"Тема открыта")};
@@ -1770,7 +1791,7 @@ async function vSkk(_id,changed){
 async function skkUpdList(){
   const f=["status!='draft'"];lcq(SKK.q).split(/\s+/).filter(Boolean).slice(0,6).forEach(w=>f.push(`search_lc~"${w}"`));if(SKK.st)f.push(`status="${SKK.st}"`);
   const list=await all("upd_docs",f.join("&&"),"-date,-created");if(S.route!=="skk"||!$("#skkb"))return;
-  $("#skkb").innerHTML=`<div class="card noprint">${can.upd()?`<div class="row"><label class="btn p">📷 Загрузить УПД (фото или PDF)<input type="file" id="updf" accept="image/*,application/pdf" hidden></label><button class="btn sm" id="updman">✍ УПД вручную (без файла)</button><span class="muted grow" id="updp">Номер, дату, поставщика и позиции программа прочитает сама — проверьте и сохраните.</span></div>`:""}
+  $("#skkb").innerHTML=`<div class="card noprint">${can.upd()?`<div class="row"><label class="btn p">📷 Загрузить УПД (фото или PDF)<input type="file" id="updf" accept="image/*,application/pdf" hidden></label><button class="btn sm" id="updman">✍ УПД вручную (без файла)</button><span class="muted grow" id="updp">№ УПД, дату, поставщика и позиции (наименование, количество) программа прочитает сама — со всех листов. Проверьте и сохраните.</span></div>`:""}
     <div class="row" style="margin-top:8px"><input id="updq" placeholder="🔎 № УПД, поставщик, материал" value="${esc(SKK.q)}" style="flex:1;min-width:180px"><select id="updst" style="width:auto"><option value="">Все</option>${["new","act","ok"].map(s=>`<option value="${s}" ${SKK.st===s?"selected":""}>${UST[s][0].toLowerCase()}</option>`).join("")}</select><button class="btn sm" id="updgo">Найти</button></div></div>
    ${list.length?`<div class="card"><div class="tw"><table id="updt"><tr><th>Дата</th><th>№ УПД</th><th>Поставщик</th><th>Поз.</th><th>Сумма, ₽</th><th>Статус</th></tr>${list.map(u=>`<tr data-go="#/upd/${u.id}" style="cursor:pointer"><td>${dmy(u.date)}</td><td><b>${esc(u.number)}</b></td><td>${esc(u.supplier)}</td><td class="r">${updItems(u).length}</td><td class="r">${money(u.total)}</td><td><span class="pill ${UST[u.status][1]}">${UST[u.status][0]}</span></td></tr>`).join("")}</table></div></div>`:`<div class="card empty">${SKK.q||SKK.st?"Ничего не найдено":"УПД пока нет — загрузите фото или PDF"}</div>`}`;
   document.querySelectorAll("#updt [data-go]").forEach(r=>r.onclick=()=>location.hash=r.dataset.go);
@@ -1785,10 +1806,10 @@ async function updUpload(file){
   say("Загружаю файл…");
   try{const fd=new FormData();fd.append("status","draft");fd.append("uploaded_by",S.user.id);fd.append("file",file);
     let rec;try{rec=await api("POST","/api/collections/upd_docs/records",fd,true)}catch(e){throw new Error("Файл «"+(file.name||"фото")+"» не загрузился ("+(file.type||"тип не определён")+", "+Math.round(file.size/1024)+" КБ): "+e.message)}
-    say("Читаю УПД — обычно до минуты, не закрывайте страницу…");const t0=Date.now();const tick=setInterval(()=>say(`Читаю УПД… ${Math.round((Date.now()-t0)/1000)} с`),1000);
+    say("Читаю УПД — 1 лист ≈ 5 с, не закрывайте страницу…");const t0=Date.now();let pg="";const tick=setInterval(()=>say(`Читаю УПД${pg}… ${Math.round((Date.now()-t0)/1000)} с`),1000);
     try{await api("POST","/api/vs/upd/ocr",{id:rec.id});
-      for(;;){await new Promise(r=>setTimeout(r,2500));const st=await api("GET","/api/vs/upd/ocr_status/"+rec.id);
-        if(st.status==="done")break;if(st.status==="error"||st.status==="none")throw new Error(st.message||"чтение не запустилось");if(Date.now()-t0>340000)throw new Error("чтение не закончилось за 5 минут")}
+      for(;;){await new Promise(r=>setTimeout(r,2500));const st=await api("GET","/api/vs/upd/ocr_status/"+rec.id);if(st.pages)pg=` — лист ${st.page} из ${st.pages}`;
+        if(st.status==="done")break;if(st.status==="error"||st.status==="none")throw new Error(st.message||"чтение не запустилось");if(Date.now()-t0>620000)throw new Error("чтение не закончилось за 10 минут")}
     }catch(e){toast("Прочитать не получилось ("+e.message+"). Достаточно вписать № УПД и поставщика — фото УПД и груза добавите после сохранения.","err")}finally{clearInterval(tick)}
     location.hash="#/updedit/"+rec.id;
   }catch(e){say("⚠ "+e.message);toast(e.message,"err")}
@@ -1802,28 +1823,31 @@ async function vUpdEdit(id,changed){
   await sugFresh(["supplier"]);
   let sup=draft?(h.seller||""):u.supplier;
   if(draft&&o&&sup){const fx=fixSuppliers([sup],(o.known_suppliers||[]));if(fx[0]&&fx[0].v)sup=fx[0].v}
-  const v={number:draft?(h.number||""):u.number,date:draft?(h.date||""):u.date,supplier:sup,inn:draft?(h.seller_inn||""):u.inn,kpp:draft?(h.seller_kpp||""):u.kpp,
-    basis:draft?(h.basis||""):u.basis,spec:draft?(h.spec||""):u.spec,total_nt:draft?(h.total_nt||""):u.total_nt,total:draft?(h.total||""):u.total,note:u.note||""};
-  let items=draft?(o?o.items:[]).map(x=>({code:x.code,name:x.name,unit:x.unit,qty:x.qty,price:x.price,sum:x.sum,total:x.total,warn:x.warn||[]})):updItems(u).map(x=>Object.assign({warn:[]},x));
+  // 1.9.4: с документа читаются только № УПД, дата, поставщик, наименование и количество (+ ед. изм.); прочие поля УПД сохраняются как были
+  const v={number:draft?(h.number||""):u.number,date:draft?(h.date||""):u.date,supplier:sup,inn:u.inn||"",kpp:u.kpp||"",
+    basis:u.basis||"",spec:u.spec||"",total_nt:u.total_nt||"",total:u.total||"",note:u.note||""};
+  let items=draft?(o?o.items:[]).map(x=>({name:x.name,unit:x.unit,qty:x.qty,no:x.no,warn:x.warn||[]})):updItems(u).map(x=>Object.assign({warn:[]},x));
+  const ck=draft&&o?o.check||null:null;
   const ft=await fileToken();const furl=`/api/files/upd_docs/${u.id}/${encodeURIComponent(u.file)}?token=${ft}`;const isImg=/\.(jpe?g|png|webp)$/i.test(u.file);
   const W=(c,t)=>c?` style="background:var(--ybg)" title="${esc(t)}"`:"";
-  const rowH=(x,i)=>`<tr data-ui="${i}"><td><input data-k="code" value="${esc(x.code||"")}" style="width:110px"></td><td><textarea data-k="name" rows="2" style="min-width:220px">${esc(x.name||"")}</textarea></td>
-    <td><input data-k="unit" value="${esc(x.unit||"")}" style="width:60px"${W(x.warn.includes("unit"),"Проверьте единицу")}></td><td><input data-k="qty" value="${x.qty??""}" style="width:80px"${W(x.warn.includes("qty"),"Проверьте количество")}></td>
-    <td><input data-k="price" value="${x.price??""}" style="width:90px"></td><td><input data-k="sum" value="${x.sum??""}" style="width:100px"${W(x.warn.includes("sum"),"Цена × кол-во не равно сумме")}></td><td><input data-k="total" value="${x.total??""}" style="width:100px"></td>
-    <td><button class="btn sm" data-uix="${i}" aria-label="Удалить строку">✕</button></td></tr>`;
+  const HID=["code","price","sum","total","pid","objcode","section","object","stage","oper_id"];   // не показываем, но не теряем
+  const rowH=(x,i)=>`<tr data-ui="${i}"><td class="muted r">${x.no||""}</td><td><textarea data-k="name" rows="2" style="min-width:240px;width:100%">${esc(x.name||"")}</textarea></td>
+    <td><input data-k="qty" value="${x.qty??""}" inputmode="decimal" style="width:84px"${W(x.warn.includes("qty"),"Количество прочитано неуверенно — сверьте с документом")}></td><td><input data-k="unit" value="${esc(x.unit||"")}" style="width:64px"${W(x.warn.includes("unit"),"Проверьте единицу")}></td>
+    <td>${HID.map(k=>`<input type="hidden" data-k="${k}" value="${esc(x[k]??"")}">`).join("")}<button class="btn sm" data-uix="${i}" aria-label="Удалить строку">✕</button></td></tr>`;
   const warns=[];if(draft&&!o&&u.file)warns.push("Файл не прочитан. Достаточно вписать № УПД и поставщика и сохранить — фото УПД (все листы) и фото груза добавите на следующем шаге.");if(draft&&o){if(!h.number)warns.push("Номер УПД не прочитан — впишите № и поставщика; остальное необязательно.");if(h.number_unsure||h.date_unsure)warns.push("Номер или дата прочитаны неуверенно — сверьте с документом.");
-    if(h.seller_inn&&h.inn_ok===false)warns.push("ИНН продавца не прошёл проверку контрольной суммы — сверьте цифры.");if(h.buyer_ok===false)warns.push("В документе не найден покупатель «Велесстрой» — проверьте, наш ли это УПД.");
-    if(h.sum_ok===false)warns.push(`Сумма позиций (${money(h.items_sum)}) не равна «Всего к оплате» (${money(h.total_nt)}) — какая-то строка прочитана с ошибкой.`);if(!items.length)warns.push("Таблица позиций не прочитана — добавьте строки вручную или сфотографируйте УПД ровнее и крупнее.")}
+    if(h.buyer_ok===false)warns.push("В документе не найден покупатель «Велесстрой» — проверьте, наш ли это УПД.");
+    if(ck&&ck.missing&&ck.missing.length)warns.push("Не прочитаны строки № "+ck.missing.join(", ")+" (по сквозной нумерации) — допишите их по документу.");
+    if(ck&&ck.dup&&ck.dup.length)warns.push("Строки № "+ck.dup.join(", ")+" прочитаны дважды — удалите лишние.");
+    const nq=items.filter(x=>x.warn.includes("qty")).length;if(nq)warns.push(`Количество в ${nq} строк(ах) прочитано неуверенно — они подсвечены жёлтым, сверьте с документом.`);
+    if(o.pages_read&&o.pages&&o.pages_read<o.pages)warns.push(`Прочитано листов ${o.pages_read} из ${o.pages} — остальные позиции добавьте вручную.`);
+    if(!items.length)warns.push("Таблица позиций не прочитана — добавьте строки вручную или сфотографируйте УПД ровнее и крупнее.")}
   $("#main").innerHTML=`<div class="row noprint"><a class="btn sm" href="#/${draft?"skk":"upd/"+u.id}">← Назад</a></div><h1>${draft?"Новый УПД — проверьте":"Изменить УПД № "+esc(u.number)}</h1>
-   ${warns.length?`<div class="banner" style="background:var(--ybg);color:var(--y)">${warns.map(esc).join("<br>")}</div>`:o?`<div class="banner" style="background:var(--gbg);color:var(--g)">Прочитано за ${Math.round((o.ms||0)/1000)} с. Сверьте с документом и сохраните.</div>`:""}
+   ${draft&&o&&items.length?`<div class="banner" style="background:var(--gbg);color:var(--g)">Прочитано позиций: <b>${items.length}</b>${o.pages?` с ${o.pages_read||o.pages} лист.`:""} за ${Math.round((o.ms||0)/1000)} с.${ck&&ck.no_ok?` Нумерация 1–${ck.no_max} без пропусков.`:""}${ck&&ck.checked?` Количество сверено с ценой и суммой: ${ck.checked} из ${items.length}.`:""}</div>`:""}
+   ${warns.length?`<div class="banner" style="background:var(--ybg);color:var(--y)">${warns.map(esc).join("<br>")}</div>`:""}
    <div class="card" id="ueform"><div class="row" style="margin-bottom:8px">${u.file?`<a class="btn sm" href="${furl}" target="_blank" rel="noopener">📄 Открыть документ</a>`:`<span class="muted">Без файла — заполните по бумажному УПД</span>`}${isImg?`<img src="${furl}" alt="УПД" style="max-height:90px;border-radius:6px">`:""}</div>
     <div class="g2x"><div><label class="f" for="uen">№ УПД / счёт-фактуры</label><input id="uen" value="${esc(v.number)}"${W(draft&&(!h.number||h.number_unsure),"Сверьте")}></div><div><label class="f" for="ued">Дата</label><input id="ued" type="date" value="${esc(v.date)}"${W(draft&&(!h.date||h.date_unsure),"Сверьте")}></div></div>
     <label class="f" for="ues">Поставщик (продавец)</label><input id="ues" data-sug="supplier" value="${esc(v.supplier)}">
-    <div class="g2x"><div><label class="f" for="uei">ИНН</label><input id="uei" value="${esc(v.inn)}"${W(draft&&h.inn_ok===false,"Контрольная сумма ИНН не сходится")}></div><div><label class="f" for="uek">КПП</label><input id="uek" value="${esc(v.kpp)}"></div></div>
-    <label class="f" for="ueb">Основание (договор / спецификация)</label><input id="ueb" value="${esc(v.basis)}">
-    <div class="g2x"><div><label class="f" for="uesp">Спецификация №</label><input id="uesp" value="${esc(v.spec)}"></div><div><label class="f" for="uet">Всего к оплате, ₽ (с НДС)</label><input id="uet" value="${v.total||""}"></div></div>
-    <input type="hidden" id="uetn" value="${v.total_nt||""}">
-    <label class="f">Позиции (${items.length})</label><div class="tw"><table><tr><th>Код</th><th>Наименование</th><th>Ед.</th><th>Кол-во</th><th>Цена</th><th>Сумма без НДС</th><th>С НДС</th><th></th></tr><tbody id="uerows">${items.map(rowH).join("")}</tbody></table></div>
+    <label class="f">Позиции (${items.length})</label><div class="tw"><table><tr><th>№</th><th>Наименование</th><th>Кол-во</th><th>Ед.</th><th></th></tr><tbody id="uerows">${items.map(rowH).join("")}</tbody></table></div>
     <button class="btn sm" id="ueadd" style="margin-top:6px">＋ Строка</button>
     <label class="f" for="uenote">Примечание</label><textarea id="uenote" rows="2">${esc(v.note)}</textarea>
     <div class="row" style="margin-top:14px"><button class="btn p grow" id="uesave">СОХРАНИТЬ УПД</button></div></div>`;
@@ -1831,9 +1855,9 @@ async function vUpdEdit(id,changed){
   const bindX=()=>document.querySelectorAll("[data-uix]").forEach(b=>b.onclick=()=>b.closest("tr").remove());bindX();
   $("#ueadd").onclick=()=>{$("#uerows").insertAdjacentHTML("beforeend",rowH({warn:[]},Date.now()));bindX()};
   $("#uesave").onclick=e=>act(e.target,async()=>{
-    const its=[...document.querySelectorAll("#uerows tr")].map(tr=>{const g=k=>tr.querySelector(`[data-k="${k}"]`).value.trim();return {code:g("code"),name:g("name"),unit:g("unit"),qty:g("qty"),price:g("price"),sum:g("sum"),total:g("total")}}).filter(x=>x.name);
-    const r=await api("POST","/api/vs/upd/save",{id:u.id,number:$("#uen").value,date:$("#ued").value,supplier:$("#ues").value.trim(),inn:$("#uei").value,kpp:$("#uek").value,basis:$("#ueb").value,spec:$("#uesp").value,
-      total:$("#uet").value,total_nt:$("#uetn").value,note:$("#uenote").value,items:its});
+    const its=[...document.querySelectorAll("#uerows tr")].map(tr=>{const g=k=>{const el=tr.querySelector(`[data-k="${k}"]`);return el?el.value.trim():""};const x={name:g("name"),unit:g("unit"),qty:g("qty")};HID.forEach(k=>x[k]=g(k));return x}).filter(x=>x.name);
+    const r=await api("POST","/api/vs/upd/save",{id:u.id,number:$("#uen").value,date:$("#ued").value,supplier:$("#ues").value.trim(),inn:v.inn,kpp:v.kpp,basis:v.basis,spec:v.spec,
+      total:v.total,total_nt:v.total_nt,note:$("#uenote").value,items:its});
     location.hash="#/upd/"+r.id},"УПД сохранён");
 }
 async function vUpd(id,changed){
@@ -1841,13 +1865,14 @@ async function vUpd(id,changed){
   const [u,acts,uph]=await Promise.all([api("GET","/api/collections/upd_docs/records/"+id),all("skk_acts",`upds~"${id}"`,"-date"),all("upd_photos",`upd="${id}"`,"created")]);if(S.route!=="upd/"+id)return;
   if(u.status==="draft"){location.hash="#/updedit/"+id;return}
   const ft=await fileToken();const furl=`/api/files/upd_docs/${u.id}/${encodeURIComponent(u.file)}?token=${ft}`;const its=updItems(u);
+  const PX={code:its.some(x=>x.code),money:its.some(x=>+x.price||+x.total)};   // 1.9.4: цены/коды показываем, только если они есть (новые УПД читаются без них)
   $("#main").innerHTML=`<div class="row noprint"><a class="btn sm" href="#/skk">← К списку УПД</a>${can.upd()?`<a class="btn sm" href="#/updedit/${u.id}">✏ Изменить</a>`:""}${can.skk()?`<button class="btn p sm" id="updact">⚠ АКТ</button>`:""}${(can.manage()||can.skk())&&!acts.length?`<button class="btn sm" id="upddel">🗑 Удалить</button>`:""}</div>
    <h1 id="updv">УПД № ${esc(u.number)} <span class="pill ${UST[u.status][1]}">${UST[u.status][0]}</span></h1>
    <div class="card"><div class="kv"><b>Дата</b><span>${dmy(u.date)}</span><b>Поставщик</b><span>${esc(u.supplier)}${u.inn?` · ИНН ${esc(u.inn)}`:""}</span>${u.basis?`<b>Основание</b><span>${esc(u.basis)}</span>`:""}
-    ${u.spec?`<b>Спецификация</b><span>№ ${esc(u.spec)}</span>`:""}<b>Всего</b><span>${money(u.total)} ₽${u.total_nt?` (без НДС ${money(u.total_nt)})`:""}</span><b>Загрузил</b><span>${esc(uname(u.uploaded_by))}, ${dt(u.created)}</span>${u.note?`<b>Примечание</b><span>${esc(u.note)}</span>`:""}</div>
+    ${u.spec?`<b>Спецификация</b><span>№ ${esc(u.spec)}</span>`:""}${+u.total?`<b>Всего</b><span>${money(u.total)} ₽${u.total_nt?` (без НДС ${money(u.total_nt)})`:""}</span>`:""}<b>Позиций</b><span>${its.length}</span><b>Загрузил</b><span>${esc(uname(u.uploaded_by))}, ${dt(u.created)}</span>${u.note?`<b>Примечание</b><span>${esc(u.note)}</span>`:""}</div>
     ${u.file?`<div style="margin-top:8px"><a class="btn sm" href="${furl}" target="_blank" rel="noopener">📄 Документ</a></div>`:""}<div id="updph">${updPhotoBlock(u.id,uph,ft,can.upd())}</div></div>
    ${acts.length?`<h2>Акты по этому УПД</h2><div class="card list">${acts.map(a=>`<a class="it" href="#/skkact/${a.id}"><div style="flex:1"><b>Акт № ${esc(a.number)}</b> от ${dmy(a.date)}<div class="muted">устранено ${actRows(a).filter(x=>x.fixed).length} из ${actRows(a).length}</div></div><span class="pill ${a.status==="open"?"r":"b"}">${a.status==="open"?"ОТКРЫТ":"ЗАКРЫТ"}</span></a>`).join("")}</div>`:""}
-   <h2>Позиции (${its.length})</h2>${can.upd()?`<div class="row noprint" style="margin-bottom:6px"><button class="btn sm" id="updmatch">⇄ Сопоставить с оперативкой</button></div>`:""}<div class="card"><div class="tw"><table><tr><th>№</th><th>Код</th><th>Наименование</th><th>Кол-во</th><th>Цена</th><th>Сумма с НДС</th></tr>${its.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.code)}</td><td>${esc(x.name)}${x.pid||x.object?`<div class="muted">PID <b>${esc(x.pid||"—")}</b> · ${esc(x.object||"")}${x.objcode?" · <b>"+esc(x.objcode)+"</b>":""}</div>`:""}${x.stage?stagePill(x.stage):""}</td><td class="r" style="white-space:nowrap">${fmtQ(x.qty)} ${esc(x.unit)}</td><td class="r">${money(x.price)}</td><td class="r">${money(x.total)}</td></tr>`).join("")}</table></div></div>`;
+   <h2>Позиции (${its.length})</h2>${can.upd()?`<div class="row noprint" style="margin-bottom:6px"><button class="btn sm" id="updmatch">⇄ Сопоставить с оперативкой</button></div>`:""}<div class="card"><div class="tw"><table><tr><th>№</th>${PX.code?"<th>Код</th>":""}<th>Наименование</th><th>Кол-во</th>${PX.money?"<th>Цена</th><th>Сумма с НДС</th>":""}</tr>${its.map((x,i)=>`<tr><td>${i+1}</td>${PX.code?`<td>${esc(x.code)}</td>`:""}<td>${esc(x.name)}${x.pid||x.object?`<div class="muted">PID <b>${esc(x.pid||"—")}</b> · ${esc(x.object||"")}${x.objcode?" · <b>"+esc(x.objcode)+"</b>":""}</div>`:""}${x.stage?stagePill(x.stage):""}</td><td class="r" style="white-space:nowrap">${fmtQ(x.qty)} ${esc(x.unit)}</td>${PX.money?`<td class="r">${money(x.price)}</td><td class="r">${money(x.total)}</td>`:""}</tr>`).join("")}</table></div></div>`;
   bindUpdPhotos($("#updph"),()=>vUpd(id));
   const mt=$("#updmatch");if(mt)mt.onclick=()=>act(mt,()=>updMatch(u.id));
   const ab=$("#updact");if(ab)ab.onclick=()=>{SKK.newAct={upds:[u.id]};location.hash="#/skkactedit/new"};
@@ -1881,15 +1906,22 @@ async function vSkkActEdit(id,changed){
   const last=k=>(sugList(k)[0]||"");
   let st=isNew?{number:await nextActNo(),date:new Date(Date.now()+180*60000).toISOString().slice(0,10),object:ACT_DEF.object,rep_osk:last("skk_osk"),rep_sklad:last("skk_sklad"),rep_omts:last("skk_omts"),
     supplier:sel[0]&&U(sel[0])?U(sel[0]).supplier:"",conclusion:ACT_DEF.conclusion,verdict:ACT_DEF.verdict,rows:[]}:Object.assign({},a,{rows:actRows(a)});
-  if(isNew&&sel.length){sel.forEach(uid=>{const u=U(uid);if(u)st.rows.push({uid:"",upd:u.number,material:"УПД "+u.number,volume:"",code:u.spec?"Согласно спецификации №"+u.spec:"",issue:ACT_DEF.issue,decision:ACT_DEF.decision})})}
+  // 1.9.4: строки акта — из позиций УПД (наименование → «Наименование материала», кол-во → «Объём», шифр РД — из оперативки).
+  // № УПД в наименование не пишем (он в строке «полученных по накладной»), № спецификации — не шифр РД.
+  const wholeRow=u=>{const its=updItems(u);const nm=[...new Set(its.map(x=>x.name).filter(Boolean))];const oc=[...new Set(its.map(x=>x.objcode).filter(Boolean))];
+    return {uid:"",upd:u.number,whole:true,material:nm.length?(nm.length<=4?nm.join("; "):nm.slice(0,3).join("; ")+` и ещё ${nm.length-3} наим.`):"",volume:its.length?its.length+" поз.":"",code:oc.length===1?oc[0]:"",issue:ACT_DEF.issue,decision:ACT_DEF.decision}};
+  const itemRow=(u,x)=>({uid:"",upd:u.number,material:x.name,volume:(fmtQ(x.qty)+" "+(x.unit||"")).trim(),code:x.objcode||"",issue:ACT_DEF.issue,decision:ACT_DEF.decision});
+  let pickOnOpen=false;
+  if(isNew&&sel.length){sel.forEach(uid=>{const u=U(uid);if(!u)return;const its=updItems(u);
+    if(!its.length)st.rows.push(wholeRow(u));else if(its.length<=3)its.forEach(x=>st.rows.push(itemRow(u,x)));else pickOnOpen=true})}
   const rowH=(x,i)=>`<div class="card" data-ar="${i}" data-uid="${esc(x.uid||"")}" style="border-left:5px solid ${x.fixed?"var(--g)":"var(--r)"};padding:10px;margin-bottom:8px">
     <div class="row" style="justify-content:space-between"><b>${i+1}.</b><button class="btn sm" data-arx aria-label="Удалить строку">✕</button></div>
-    <label class="f">Наименование материала / фактические параметры</label><textarea data-k="material" rows="2">${esc(x.material||"")}</textarea>
+    <label class="f">Наименование материала / фактические параметры</label><textarea data-k="material" rows="2" placeholder="Наименование материала по УПД">${esc(x.material||"")}</textarea>
     <div class="g2x"><div><label class="f">Объём</label><input data-k="volume" value="${esc(x.volume||"")}"></div><div><label class="f">Шифр рабочей / проектной документации</label><input data-k="code" value="${esc(x.code||"")}"></div></div>
     <label class="f">Несоответствие (почему акт)</label><textarea data-k="issue" rows="2" data-sug="skk_issue">${esc(x.issue||"")}</textarea>
     <label class="f">Решение</label><textarea data-k="decision" rows="2" data-sug="skk_decision">${esc(x.decision||"")}</textarea>
     <label class="row" style="margin-top:8px;gap:8px"><input type="checkbox" data-k="fixed" ${x.fixed?"checked":""} style="width:24px;height:24px"> <b>Устранено</b></label>
-    <input data-k="fix_note" placeholder="Как устранено / причина закрытия" value="${esc(x.fix_note||"")}" style="margin-top:4px"><input type="hidden" data-k="upd" value="${esc(x.upd||"")}"></div>`;
+    <input data-k="fix_note" placeholder="Как устранено / причина закрытия" value="${esc(x.fix_note||"")}" style="margin-top:4px"><input type="hidden" data-k="upd" value="${esc(x.upd||"")}"><input type="hidden" data-k="whole" value="${x.whole?"1":""}"></div>`;
   const draw=()=>{
     const su=sel.map(U).filter(Boolean).concat(manual);const sameSup=st.supplier?updsAll.filter(u=>!sel.includes(u.id)&&(!st.supplier||u.supplier===st.supplier)):updsAll.filter(u=>!sel.includes(u.id));
     $("#main").innerHTML=`<div class="row noprint"><a class="btn sm" href="#/${isNew?"skk":"skkact/"+id}">← Назад</a></div><h1>${isNew?"Новый акт СКК":"Изменить акт № "+esc(st.number)}</h1>
@@ -1911,29 +1943,38 @@ async function vSkkActEdit(id,changed){
   const collect=()=>{st.number=$("#aen").value.trim();st.date=$("#aed").value;st.object=$("#aeo").value;st.rep_osk=$("#ae1").value;st.rep_sklad=$("#ae2").value;st.rep_omts=$("#ae3").value;st.supplier=$("#aes").value.trim();
     st.upd_line=$("#ael").value;st.conclusion=$("#aecn").value;st.verdict=$("#aevd").value;
     st.rows=[...document.querySelectorAll("[data-ar]")].map(c=>{const g=k=>{const el=c.querySelector(`[data-k="${k}"]`);return el.type==="checkbox"?el.checked:el.value.trim()};const old=st.rows[+c.dataset.ar]||{};
-      return {uid:c.dataset.uid,material:g("material"),volume:g("volume"),code:g("code"),issue:g("issue"),decision:g("decision"),fixed:g("fixed"),fix_note:g("fix_note"),upd:g("upd"),fixed_at:old.fixed_at}})};
+      return {uid:c.dataset.uid,material:g("material"),volume:g("volume"),code:g("code"),issue:g("issue"),decision:g("decision"),fixed:g("fixed"),fix_note:g("fix_note"),upd:g("upd"),whole:g("whole")==="1",fixed_at:old.fixed_at}})};
   const bind=()=>{
     document.querySelectorAll("[data-arx]").forEach(b=>b.onclick=()=>{collect();st.rows.splice(+b.closest("[data-ar]").dataset.ar,1);draw()});
     document.querySelectorAll("[data-unsel]").forEach(b=>b.onclick=e=>{e.preventDefault();collect();sel=sel.filter(x=>x!==b.dataset.unsel);st.upd_line="";draw()});
-    document.querySelectorAll("[data-unman]").forEach(b=>b.onclick=e=>{e.preventDefault();collect();const m=manual.splice(+b.dataset.unman,1)[0];if(m)st.rows=st.rows.filter(r=>!(r.upd===m.number&&r.material==="УПД "+m.number));st.upd_line="";draw()});
+    document.querySelectorAll("[data-unman]").forEach(b=>b.onclick=e=>{e.preventDefault();collect();const m=manual.splice(+b.dataset.unman,1)[0];if(m)st.rows=st.rows.filter(r=>!(r.upd===m.number&&r.whole&&!r.material));st.upd_line="";draw()});
     $("#aeman").onclick=async()=>{collect();if(!st.supplier){toast("Сначала выберите поставщика","err");return}await loadTorgs(st.supplier);
       modal(`<h3>УПД вручную</h3><div class="muted">Для УПД, который не загружали файлом. Номера из оперативки (колонка ТОРГ/УПД) этого поставщика — в подсказке.</div>
        <label class="f" for="mun">№ УПД</label><input id="mun" list="mundl" autocomplete="off"><datalist id="mundl">${torgs.map(t=>`<option value="${esc(t)}">`).join("")}</datalist>
        <label class="f" for="mud">Дата УПД</label><input id="mud" type="date">
        <div class="row" style="margin-top:12px"><button class="btn p grow" id="mok">ДОБАВИТЬ</button><button class="btn" data-close>Отмена</button></div>`,box=>{$("#mok",box).onclick=()=>{
         const no=$("#mun",box).value.trim(),d=$("#mud",box).value;if(!no||!d){toast("Укажите номер и дату","err");return}
-        manual.push({manual:true,number:no,date:d,supplier:st.supplier});st.rows.push({material:"УПД "+no,upd:no,volume:"",code:"",issue:ACT_DEF.issue,decision:ACT_DEF.decision});st.upd_line="";closeModal();draw()}})};
+        manual.push({manual:true,number:no,date:d,supplier:st.supplier});st.rows.push({material:"",upd:no,whole:true,volume:"",code:"",issue:ACT_DEF.issue,decision:ACT_DEF.decision});st.upd_line="";closeModal();draw()}})};
     $("#aeaddu").onchange=e=>{if(!e.target.value)return;collect();sel.push(e.target.value);const u=U(e.target.value);if(!st.supplier&&u)st.supplier=u.supplier;st.upd_line="";draw()};
     $("#aeaddw").onclick=()=>{collect();const su=sel.map(U).filter(Boolean);if(!su.length){toast("Сначала добавьте УПД","err");return}
-      su.filter(u=>!st.rows.some(r=>r.material==="УПД "+u.number)).forEach(u=>st.rows.push({material:"УПД "+u.number,upd:u.number,volume:"",code:u.spec?"Согласно спецификации №"+u.spec:"",issue:ACT_DEF.issue,decision:ACT_DEF.decision}));draw()};
+      su.filter(u=>!st.rows.some(r=>r.whole&&r.upd===u.number)).forEach(u=>st.rows.push(wholeRow(u)));draw()};
     $("#aeadde").onclick=()=>{collect();st.rows.push({material:"",volume:"",code:"",issue:ACT_DEF.issue,decision:ACT_DEF.decision});draw()};
-    $("#aeaddi").onclick=()=>{collect();const su=sel.map(U).filter(Boolean);if(!su.length){toast("Сначала добавьте УПД","err");return}
-      modal(`<h3>Позиции из УПД</h3><div class="muted">Отметьте позиции с несоответствием.</div><div style="max-height:55vh;overflow:auto;margin-top:8px">${su.map(u=>`<div class="muted" style="margin-top:8px"><b>УПД ${esc(u.number)}</b></div>`+updItems(u).map((x,i)=>`<label class="row" style="gap:8px;padding:6px 0;border-bottom:1px dashed var(--line)"><input type="checkbox" data-pi="${u.id}:${i}" style="width:22px;height:22px"><span style="flex:1">${esc(x.name)}</span><b style="white-space:nowrap">${fmtQ(x.qty)} ${esc(x.unit)}</b></label>`).join("")).join("")}</div>
-       <div class="row" style="margin-top:12px"><button class="btn p grow" id="mok">ДОБАВИТЬ</button><button class="btn" data-close>Отмена</button></div>`,box=>{$("#mok",box).onclick=()=>{
-        box.querySelectorAll("[data-pi]:checked").forEach(c=>{const [uid,i]=c.dataset.pi.split(":");const u=U(uid),x=updItems(u)[+i];st.rows.push({material:x.name,upd:u.number,volume:(fmtQ(x.qty)+" "+(x.unit||"")).trim(),code:x.objcode||"",issue:ACT_DEF.issue,decision:ACT_DEF.decision})});closeModal();draw()}})};
-    $("#aesave").onclick=e=>act(e.target,async()=>{collect();const r=await api("POST","/api/vs/skk/act/save",Object.assign({},st,{id:isNew?"":id,upds:sel}));SKK.newAct=null;location.hash="#/skkact/"+r.id},"Акт сохранён");
+    $("#aeaddi").onclick=()=>{collect();const su=sel.map(U).filter(Boolean);if(!su.length){toast("Сначала добавьте УПД","err");return}pickItems(su)};
+    bindSave();
   };
+  const pickItems=su=>{if(!su.some(u=>updItems(u).length)){toast("В УПД нет позиций — добавьте строку и впишите материал","err");return}
+      modal(`<h3>Позиции из УПД</h3><div class="muted">Отметьте позиции с несоответствием — каждая станет строкой акта (наименование, объём, шифр РД из оперативки).</div>
+       <label class="row" style="gap:8px;margin-top:8px"><input type="checkbox" id="piall" style="width:22px;height:22px"><b>Отметить все</b> <input id="piq" placeholder="🔎 фильтр" style="flex:1;min-width:120px"></label>
+       <div style="max-height:52vh;overflow:auto;margin-top:8px">${su.map(u=>`<div class="muted" style="margin-top:8px"><b>УПД ${esc(u.number)}</b></div>`+updItems(u).map((x,i)=>`<label class="row" data-pil style="gap:8px;padding:6px 0;border-bottom:1px dashed var(--line)"><input type="checkbox" data-pi="${u.id}:${i}" style="width:22px;height:22px"><span class="muted">${i+1}.</span><span style="flex:1">${esc(x.name)}</span><b style="white-space:nowrap">${fmtQ(x.qty)} ${esc(x.unit)}</b></label>`).join("")).join("")}</div>
+       <div class="row" style="margin-top:12px"><button class="btn p grow" id="mok">ДОБАВИТЬ</button><button class="btn" data-close>Отмена</button></div>`,box=>{
+        const vis=()=>[...box.querySelectorAll("[data-pil]")].filter(l=>l.style.display!=="none");
+        $("#piall",box).onchange=e=>vis().forEach(l=>l.querySelector("[data-pi]").checked=e.target.checked);
+        $("#piq",box).oninput=e=>{const q=lcq(e.target.value);box.querySelectorAll("[data-pil]").forEach(l=>l.style.display=!q||lcq(l.textContent).includes(q)?"":"none")};
+        $("#mok",box).onclick=()=>{collect();
+        box.querySelectorAll("[data-pi]:checked").forEach(c=>{const [uid,i]=c.dataset.pi.split(":");const u=U(uid),x=updItems(u)[+i];st.rows.push(itemRow(u,x))});closeModal();draw()}})};
+  const bindSave=()=>{$("#aesave").onclick=e=>act(e.target,async()=>{collect();const r=await api("POST","/api/vs/skk/act/save",Object.assign({},st,{id:isNew?"":id,upds:sel}));SKK.newAct=null;location.hash="#/skkact/"+r.id},"Акт сохранён")};
   draw();
+  if(pickOnOpen)pickItems(sel.map(U).filter(Boolean));
 }
 async function vSkkAct(id,changed){
   if(changed&&$("#actv"))return;

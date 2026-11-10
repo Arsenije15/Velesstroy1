@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
-# VELESSTROY 1.8 — чтение УПД (счёт-фактура / универсальный передаточный документ) со скана или фото.
-# Шапка: номер, дата, продавец, ИНН/КПП, основание (договор/спецификация), итог. Таблица: код, наименование, ед., кол-во, цена, суммы.
+# VELESSTROY 1.9.4 — чтение УПД (счёт-фактура / универсальный передаточный документ) со скана или фото.
+# Читаем только нужное: № УПД, дату, продавца (поставщика), наименование и количество (+ ед. изм.).
+# Все страницы документа (до 80): листы-продолжения без шапки таблицы читаются по колонкам первого листа.
+# Проверки точности: сквозная нумерация «№ п/п» (нет пропусков и повторов), цена × кол-во = стоимость
+# (цена и стоимость читаются только для проверки и в программу не передаются).
 import sys, os, re, json, subprocess, tempfile, time, shutil
 def out(o):
     sys.stdout.write(json.dumps(o, ensure_ascii=False)); sys.stdout.flush()
@@ -11,30 +14,54 @@ except Exception as e:   # нет OpenCV на сервере — понятна�
 if not shutil.which("tesseract"):
     out({"error": "На сервере не установлен tesseract. Запустите install.sh ещё раз."}); sys.exit(0)
 LANG = "rus+eng"
+MAX_PAGES = 80
+os.environ.setdefault("OMP_THREAD_LIMIT", "1")   # tesseract: один поток — на сервере с 1 ядром быстрее
+PROG = os.environ.get("VS_OCR_PROGRESS", "")
+def progress(i, n):
+    if not PROG: return
+    try:
+        with open(PROG, "w") as f: f.write("%d/%d" % (i, n))
+    except Exception: pass
+DIG = ["-c", "tessedit_char_whitelist=0123456789,.- "]
 
-# ---- общие функции чтения (свои, не зависят от других файлов) ----
+# ---------- tesseract ----------
+def _png(img):
+    ok, buf = cv2.imencode(".png", img); return buf.tobytes()
+
 def tess(img, psm=6, extra=None):
-    ok, buf = cv2.imencode(".png", img)
     cmd = ["tesseract", "stdin", "stdout", "-l", LANG, "--psm", str(psm)] + (extra or [])
     try:
-        r = subprocess.run(cmd, input=buf.tobytes(), capture_output=True, timeout=40)
+        r = subprocess.run(cmd, input=_png(img), capture_output=True, timeout=60)
         return " ".join(r.stdout.decode("utf-8", "ignore").split())
     except Exception:
         return ""
 
-def osd_rotation(img):
-    # сколько градусов повернуть по часовой стрелке, чтобы текст встал прямо
-    small = cv2.resize(img, None, fx=0.5, fy=0.5)
-    ok, buf = cv2.imencode(".png", small)
+def tess_words(img, psm=6, extra=None, lang=LANG):
+    # слова с координатами (TSV): [(x, y, w, h, text, conf)]
+    cmd = ["tesseract", "stdin", "stdout", "-l", lang, "--psm", str(psm)] + (extra or []) + ["tsv"]
     try:
-        r = subprocess.run(["tesseract", "stdin", "stdout", "--psm", "0"], input=buf.tobytes(), capture_output=True, timeout=40)
+        r = subprocess.run(cmd, input=_png(img), capture_output=True, timeout=90)
+    except Exception:
+        return []
+    res = []
+    for ln in r.stdout.decode("utf-8", "ignore").splitlines()[1:]:
+        p = ln.split("\t")
+        if len(p) < 12 or not p[11].strip(): continue
+        try: res.append((int(p[6]), int(p[7]), int(p[8]), int(p[9]), p[11].strip(), float(p[10])))
+        except Exception: pass
+    return res
+
+def osd_rotation(img):
+    small = cv2.resize(img, None, fx=0.5, fy=0.5)
+    try:
+        r = subprocess.run(["tesseract", "stdin", "stdout", "--psm", "0"], input=_png(small), capture_output=True, timeout=40)
         m = re.search(r"Rotate:\s*(\d+)", r.stdout.decode("utf-8", "ignore"))
         return int(m.group(1)) if m else 0
     except Exception:
         return 0
 
 def deskew(img):
-    # фото с телефона: выровнять небольшой наклон (до ±7°) по длинным линиям таблицы
+    # выровнять небольшой наклон (до ±7°) по длинным линиям таблицы
     g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
     small = cv2.resize(g, None, fx=0.5, fy=0.5)
     ed = cv2.Canny(small, 50, 150)
@@ -46,69 +73,57 @@ def deskew(img):
         if abs(a) < 7: ang.append(a)
     if len(ang) < 3: return img, 0.0
     a = float(np.median(ang))
-    if abs(a) < 0.5: return img, 0.0
+    if abs(a) < 0.3: return img, 0.0
     h, w = img.shape[:2]
     M = cv2.getRotationMatrix2D((w / 2, h / 2), a, 1.0)
     return cv2.warpAffine(img, M, (w, h), flags=cv2.INTER_CUBIC, borderValue=(255, 255, 255)), round(a, 2)
-
-def fix_codes(s):
-    # «БП-ГЗ5» → «БП-Г35»: буква З рядом с цифрами — это тройка
-    s = re.sub(r"(?<=[A-Za-zА-Яа-я\-])З(?=\d)", "3", s or "")
-    return re.sub(r"(?<=\d)З", "3", s)
 
 def rotate(img, deg):
     return {0: img, 90: cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE), 180: cv2.rotate(img, cv2.ROTATE_180),
             270: cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)}.get(deg, img)
 
-def masks(g):
-    bw = cv2.adaptiveThreshold(~g, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 15, -10)
-    H, W = bw.shape
-    hk = cv2.getStructuringElement(cv2.MORPH_RECT, (max(20, W // 30), 1))
-    vk = cv2.getStructuringElement(cv2.MORPH_RECT, (1, max(20, H // 40)))
-    return cv2.dilate(cv2.erode(bw, hk), hk), cv2.dilate(cv2.erode(bw, vk), vk)
-
-def peaks(proj, minlen, gap=8):
-    idx = np.where(proj > minlen)[0]; grp = []
-    for i in idx:
-        if grp and i - grp[-1][-1] <= gap: grp[-1].append(i)
-        else: grp.append([i])
-    return [int(np.mean(p)) for p in grp]
-
+# ---------- текст ----------
 def lc(s): return (s or "").lower().replace("ё", "е")
-
 def words(s): return re.findall(r"[A-Za-zА-Яа-яЁё]{3,}", s or "")
-
-def quality(s):  # сколько «настоящих» слов — шум со скана даёт обрывки
+def quality(s):
     w = words(s); return sum(len(x) for x in w) - 3 * len(re.findall(r"[=_|~“”‘’`^<>]", s or ""))
-
-def find_table(g):
-    hor, ver = masks(g)
-    H, W = g.shape
-    xs = [x for x in peaks(ver.sum(0) / 255, H * 0.10) if 12 < x < W - 12]   # края кадра — не линии
-    if len(xs) < 6: return None
-    x0, x1 = xs[0], xs[-1]
-    # горизонтальные линии внутри ширины таблицы
-    band = hor[:, x0:x1]
-    ys = peaks(band.sum(1) / 255, (x1 - x0) * 0.25)
-    # вертикальные линии: где по высоте они есть (граница таблицы)
-    vv = ver[:, x0:x1].sum(1) / 255
-    rows_with_v = np.where(vv > 255 * 0 + 3)[0]
-    if not len(rows_with_v) or len(ys) < 4: return None
-    top, bot = int(rows_with_v.min()), int(rows_with_v.max())
-    ys = [y for y in ys if top - 15 <= y <= bot + 15]
-    return {"xs": xs, "ys": ys, "top": top, "bot": bot, "hor": hor, "ver": ver}
 
 def num(s):
     t = (s or "").replace(" ", "").replace(" ", "")
     t = re.sub(r"[^0-9.,]", "", t)
     if not t: return None
-    if "," in t and "." in t: t = t.replace(",", "") if t.rfind(".") > t.rfind(",") else t.replace(".", "").replace(",", ".")
-    elif "," in t: t = t.replace(",", ".")
-    try:
-        v = float(t)
-        return round(v, 3)
-    except Exception:
-        return None
+    if "," in t and "." in t: t = t.replace(".", "").replace(",", ".") if t.rfind(",") > t.rfind(".") else t.replace(",", "")
+    elif "," in t:
+        if t.count(",") > 1: t = t.replace(",", "", t.count(",") - 1)
+        t = t.replace(",", ".")
+    elif t.count(".") > 1: t = t.replace(".", "", t.count(".") - 1)
+    try: return round(float(t), 3)
+    except Exception: return None
+
+def money(s):
+    # денежные суммы в УПД всегда с копейками: «1 07370» (запятая потерялась) → 1073.70
+    t = re.sub(r"[^0-9.,]", "", (s or "").replace(" ", "").replace(" ", ""))
+    if not t: return None
+    if "," not in t and "." not in t and len(t) >= 3: t = t[:-2] + "." + t[-2:]
+    return num(t)
+
+def fix_codes(s):
+    s = re.sub(r"(?<=[A-Za-zА-Яа-я\-])З(?=\d)", "3", s or "")
+    return re.sub(r"(?<=\d)З", "3", s)
+
+def fix_name(s):
+    s = fix_codes(s)
+    s = re.sub(r"(?<=\d)\s*[xх×X]\s*(?=\d)", "х", s)              # 57x3,5 / 57 х 3,5 → 57х3,5 (русская «х», как в ГОСТ)
+    # размеры по ГОСТ: после запятой одна цифра. «26, 9х3» / «х3, 2-21» / «-33, 7х3» — пробел лишний (скан), «90, 57х3» — нет
+    s = re.sub(r"(?<=\d),\s(\d)(?=[х\-])", r",\1", s)
+    s = re.sub(r"(?<=[х\-])(\d+),\s(\d)(?=\D)", r"\1,\2", s)
+    s = re.sub(r"(?<![\d,])(\d{1,3},\d)(\d{1,2},\d)(?=[\-\s,]|$)", r"\1х\2", s)   # «26,93,2» — потерялась «х»: 26,9х3,2
+    s = re.sub(r"(?<=\d),(?=\d{2,}х)", ", ", s)          # «Отвод 45,57х3,5» (фото) — после запятой 2+ цифры: это не дробь, а следующий размер
+    s = re.sub(r"(?<![A-Za-zА-Яа-я])cr\.(?=\s*\d)", "ст.", s)   # «cr. 20» (латиница на фото) → «ст. 20»
+    s = re.sub(r"\s+([,.;:)])", r"\1", s)
+    s = re.sub(r"([(])\s+", r"\1", s)
+    s = re.sub(r"\s{2,}", " ", s)
+    return s.strip(" |_:;—-")
 
 MONTHS = {"январ": 1, "феврал": 2, "март": 3, "апрел": 4, "ма": 5, "июн": 6, "июл": 7, "август": 8, "сентябр": 9, "октябр": 10, "ноябр": 11, "декабр": 12}
 def month_of(w):
@@ -120,48 +135,31 @@ def month_of(w):
 def fix_digits(s):
     return (s or "").translate(str.maketrans({"O": "0", "О": "0", "o": "0", "о": "0", "З": "3", "з": "3", "l": "1", "I": "1", "|": "1", "S": "5", "Б": "6", "B": "8"}))
 
-def inn_ok(inn):
-    d = [int(c) for c in inn]
-    if len(d) == 10:
-        return (sum(a * b for a, b in zip([2, 4, 10, 3, 5, 9, 4, 6, 8], d)) % 11) % 10 == d[9]
-    if len(d) == 12:
-        c1 = (sum(a * b for a, b in zip([7, 2, 4, 10, 3, 5, 9, 4, 6, 8], d)) % 11) % 10
-        c2 = (sum(a * b for a, b in zip([3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8], d)) % 11) % 10
-        return c1 == d[10] and c2 == d[11]
-    return False
-
 def clean_org(v):
-    v = re.sub(r"(^|\s)(000|0OO|O0O|OOO|ООО|ОО0|0О0)(?=\s|[\"«“„])", r"\1ООО", v or "")
+    v = re.sub(r"(^|\s)[0OО]{3}(?=\s|[\"«“„])", r"\1ООО", v or "")
     v = v.replace("“", "\"").replace("”", "\"").replace("„", "\"").replace("«", "\"").replace("»", "\"").replace("''", "\"")
     v = re.sub(r"\s+", " ", v).strip(" .,:;|_-")
     m = re.match(r"(.*?\"[^\"]{2,80}\")", v)
     return m.group(1) if m else v[:120]
 
-def money(s):
-    # денежные суммы в УПД всегда с копейками: «70 09171» (запятая потерялась) → 70091.71
-    t = re.sub(r"[^0-9.,]", "", (s or "").replace(" ", ""))
-    if not t: return None
-    if "," not in t and "." not in t and len(t) >= 3: t = t[:-2] + "." + t[-2:]
-    return num(t)
-
 def header_fields(t):
     t = re.sub(r"[ \t]+", " ", t)
     h, votes = {}, {}
-    # № и дата: «Счет-фактура № ЦБ-2572 от 6 ноября 2026 г.», «Универсальный передаточный документ № 16460 от 03.11.2026»
+    # «Счет-фактура № 6232 от 2 ноября 2026 г.», «Универсальный передаточный документ, № 6232 от 02.11.2026»
     pat = r"№\s*([A-Za-zА-Яа-я]{0,4}[\-–—]?\s?\d[\w\-/]{0,15})\s*(?:о[тг]|oт|ot|ст|c[тt]|or)\s*[\"«“]?(\d{1,2})[\"»”]?\s*[.\s]?\s*([А-Яа-яё]{3,9}|\d{1,2})[.\s]+(\d{4})"
     for ctx in re.finditer(r"(Сч[её]т[\s\-]*фактур\S*|передаточн\S*\s+документ\S*|Документ\s+об\s+отгруз\S*)[^№]{0,60}" + pat, t, re.I):
         no = re.sub(r"\s", "", ctx.group(2)).replace("–", "-").replace("—", "-")
         no = re.sub(r"^([A-Za-zА-Яа-я]+)(\d)", r"\1-\2", no) if re.match(r"^[А-ЯA-Z]{1,4}\d", no) else no
         mo = month_of(ctx.group(4)) if not ctx.group(4).isdigit() else int(ctx.group(4))
-        d, y = int(ctx.group(3)), int(fix_digits(ctx.group(5)))
-        if not mo or not (1 <= d <= 31) or not (2015 <= y <= 2040): continue
+        try: d, y = int(ctx.group(3)), int(fix_digits(ctx.group(5)))
+        except Exception: continue
+        if not mo or not (1 <= mo <= 12) or not (1 <= d <= 31) or not (2015 <= y <= 2040): continue
         key = (no.upper(), "%04d-%02d-%02d" % (y, mo, d))
         votes[key] = votes.get(key, 0) + (2 if ctx.group(1).lower().startswith("сч") else 1)
     if votes:
         (no, dt), _ = max(votes.items(), key=lambda kv: kv[1])
         h["number"], h["date"] = no, dt
     else:
-        # плохое фото: номер и дату ищем отдельно
         nv = {}
         for m in re.finditer(r"(?:фактур\S*|документ\S*)[\s.,]*№\s*['\"«]?\s*([A-Za-zА-Яа-я]{0,4}\s?[\-–—]?\s?\d{2,8})", t, re.I):
             no = re.sub(r"\s", "", m.group(1)).replace("–", "-").replace("—", "-")
@@ -175,156 +173,275 @@ def header_fields(t):
         if dv: h["date"] = max(dv.items(), key=lambda kv: kv[1])[0]; h["date_unsure"] = True
     m = re.search(r"(?:Пр|Р)?[оo]?дав?[еeао]ц:?\s*(.{3,160}?)\s*(?:\(2\)|\[2\]|0?2\}|Адрес|Покупател)", t, re.I)
     if m: h["seller"] = clean_org(m.group(1))
-    m = re.search(r"ИНН\s*/?\s*КПП\s*(?:продавца|прод\S*)\s*:?\s*([0-9OОЗзoо ]{10,14})\s*/\s*([0-9OОЗзoо ]{9,10})", t, re.I)
-    if m:
-        inn = re.sub(r"\D", "", fix_digits(m.group(1))); kpp = re.sub(r"\D", "", fix_digits(m.group(2)))[:9]
-        if len(inn) in (10, 12): h["seller_inn"] = inn; h["seller_kpp"] = kpp; h["inn_ok"] = inn_ok(inn)
-    m = re.search(r"Покупател\S*:?\s*(.{3,160}?)\s*(?:\(6\)|\[6\]|Адрес)", t, re.I)
-    if m: h["buyer"] = clean_org(m.group(1))
     h["buyer_ok"] = bool(re.search(r"велесстр", lc(t)))
-    m = re.search(r"Основание\s+передачи[^\n]{0,60}?(?:при[её]мки\)?|\))\s*:?\s*(.{5,240}?)\s*(?:\[8\]|\(8\)|\(договор|Данные о транспорт|$)", t, re.I)
-    if m:
-        b = re.sub(r"\s+", " ", m.group(1)).strip(" .,:;|_-")
-        if len(b) > 4: h["basis"] = b
-    sp = re.findall(r"Спецификац\S*\s*№\s*(\d{1,6})", t, re.I)
-    if sp: h["spec"] = sp[0]
-    m = re.search(r"Всего\s+к\s+оплат\S*(.{0,160})", t, re.I)
-    if m:
-        vals = [num(x) for x in re.findall(r"\d{1,3}(?:[ \u00a0]\d{3})*[.,]\d{2}", m.group(1))]
-        vals = [v for v in vals if v]
-        if vals: h["total_nt"] = vals[0]; h["total"] = vals[-1] if len(vals) >= 2 else None
     return h
 
-KEYS = [("name", ["наименование товара", "наименован", "описание выполн"]), ("code", ["код товара", "работ, услуг", "товара/"]),
-        ("unit", ["условное", "обозна", "нацио"]), ("qty", ["коли", "(объем)", "объем"]), ("price", ["цена", "тариф"]),
-        ("total", ["с налогом"]), ("sum", ["без налога", "без нало"]), ("rate", ["ставка", "налоговая"]), ("tax", ["предъяв", "сумма налога"])]
-NUMROW = {"А": "code", "A": "code", "1а": "name", "1a": "name", "2а": "unit", "2a": "unit", "3": "qty", "4": "price", "5": "sum", "7": "rate", "8": "tax", "9": "total"}
+# ---------- таблица ----------
+def masks(g):
+    bw = cv2.adaptiveThreshold(~g, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 15, -10)
+    H, W = bw.shape
+    hk = cv2.getStructuringElement(cv2.MORPH_RECT, (max(20, W // 30), 1))
+    vk = cv2.getStructuringElement(cv2.MORPH_RECT, (1, max(20, H // 60)))
+    return cv2.dilate(cv2.erode(bw, hk), hk), cv2.dilate(cv2.erode(bw, vk), vk)
 
-def map_cols(clean, xs, top, y_to):
+def peaks(proj, minlen, gap=8):
+    idx = np.where(proj > minlen)[0]; grp = []
+    for i in idx:
+        if grp and i - grp[-1][-1] <= gap: grp[-1].append(i)
+        else: grp.append([i])
+    return [int(np.mean(p)) for p in grp]
+
+def find_table(g):
+    hor, ver = masks(g)
+    H, W = g.shape
+    # вертикальные линии: на листе-продолжении таблица низкая (3 строки) — порог от высоты самой таблицы
+    hp = hor.sum(1) / 255
+    ys_all = peaks(hp, W * 0.35)
+    if len(ys_all) < 2: return None
+    top0, bot0 = ys_all[0], ys_all[-1]
+    vp = ver[top0:bot0 + 1].sum(0) / 255
+    xs = [x for x in peaks(vp, (bot0 - top0) * 0.5) if 12 < x < W - 12]
+    if len(xs) < 6: return None
+    x0, x1 = xs[0], xs[-1]
+    ys = peaks(hor[:, x0:x1].sum(1) / 255, (x1 - x0) * 0.35)
+    ys = [y for y in ys if top0 - 5 <= y <= bot0 + 5]
+    if len(ys) < 2: return None
+    return {"xs": xs, "ys": ys, "top": ys[0], "bot": ys[-1], "hor": hor, "ver": ver, "W": W}
+
+KEYS = [("name", ["наименование товара", "наименован", "описание выполн"]), ("code", ["код товара", "работ, услуг"]),
+        ("unit", ["условное", "обозна", "нацио"]), ("qty", ["коли", "(объем)"]), ("price", ["цена", "тариф"]),
+        ("sum", ["без налога", "без нало"]), ("no", ["п/п", "n/n", "п/n", "n/п"])]
+NUMROW = {"А": "code", "A": "code", "1а": "name", "1a": "name", "2а": "unit", "2a": "unit", "3": "qty", "4": "price", "5": "sum"}
+
+def cell_img(clean, a, b, x0, x1, zoom=1):
+    c = clean[a + 3:b - 2, x0 + 4:x1 - 3]
+    if not c.size: return c
+    if zoom > 1: c = cv2.resize(c, None, fx=zoom, fy=zoom, interpolation=cv2.INTER_CUBIC)
+    return cv2.copyMakeBorder(c, 20, 20, 20, 20, cv2.BORDER_CONSTANT, value=255)
+
+def map_header(clean, xs, bands):
+    # строка номеров колонок «А 1 1а 1б 2 2а 3 4 5 …» — узкая; над ней шапка с названиями
+    numrow = None
+    for i, (a, b) in enumerate(bands[:12]):
+        if b - a > 90 or b - a < 15: continue
+        txt = [tess(cell_img(clean, a, b, xs[j], xs[j + 1], 2), 7) if xs[j + 1] - xs[j] > 10 else "" for j in range(len(xs) - 1)]
+        hits = sum(1 for x in txt if x.strip() in NUMROW or x.strip() in ("1", "2", "6", "7", "8", "9", "10", "11", "1б", "1b", "10а"))
+        if hits >= 6: numrow = (i, [x.strip() for x in txt]); break
+    if numrow is None: return None, None
+    hb = [k for k in range(numrow[0]) if bands[k][1] - bands[k][0] > 40]
+    a = bands[hb[0]][0] if hb else max(0, bands[numrow[0]][0] - 500)
+    b = bands[numrow[0]][0]
     heads = []
     for j in range(len(xs) - 1):
-        c = clean[max(0, top):y_to, xs[j] + 3:xs[j + 1] - 3]
+        c = clean[a + 3:b - 3, xs[j] + 3:xs[j + 1] - 3]
         heads.append(lc(tess(c, 6)) if c.size and c.shape[1] > 12 else "")
     col = {}
+    for j, x in enumerate(numrow[1]):
+        k = NUMROW.get(x)
+        if k and k not in col: col[k] = j
     for key, ws in KEYS:
+        if key in col: continue
         for j, h in enumerate(heads):
             if j in col.values(): continue
             if any(w in h for w in ws): col[key] = j; break
-    return col, heads
+    if "name" in col and "no" not in col and col["name"] > 0:
+        j = col["name"] - 1   # «№ п/п» — узкая колонка сразу слева от наименования
+        if j not in col.values() and (xs[j + 1] - xs[j]) < 0.05 * (xs[-1] - xs[0]): col["no"] = j
+    return col, numrow[0]
 
-def table_rows(img):
-    g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
-    tb = find_table(g)
+def words_in(ws, x0, x1, y0, y1):
+    return [w for w in ws if x0 <= w[0] + w[2] / 2 <= x1 and y0 <= w[1] + w[3] / 2 <= y1]
+
+def join_words(ws):
+    # слова ячейки → строки → текст; «57х3,» + «5» с маленьким зазором — одно слово
+    if not ws: return ""
+    ws = sorted(ws, key=lambda w: (w[1] + w[3] / 2))
+    lines = []
+    for w in ws:
+        cy = w[1] + w[3] / 2
+        if lines and abs(cy - lines[-1][0]) < max(10, w[3] * 0.6): lines[-1][1].append(w)
+        else: lines.append([cy, [w]])
+    out = []
+    for _, L in lines:
+        L.sort(key=lambda w: w[0]); s = ""
+        for i, w in enumerate(L):
+            if i:
+                p = L[i - 1]; gap = w[0] - (p[0] + p[2]); hgt = max(p[3], w[3], 10)
+                glue = gap < hgt * 0.3 and re.search(r"\d[,.]$", p[4]) and re.match(r"^\d", w[4])
+                s += "" if glue else " "
+            s += w[4]
+        out.append(s)
+    return " ".join(out)
+
+def strip_words(clean, x0, x1, y0, y1, extra=None, psm=6, zoom=1):
+    c = clean[y0:y1, x0 + 4:x1 - 3]
+    if not c.size: return []
+    if zoom > 1: c = cv2.resize(c, None, fx=zoom, fy=zoom, interpolation=cv2.INTER_CUBIC)
+    c = cv2.copyMakeBorder(c, 20, 20, 20, 20, cv2.BORDER_CONSTANT, value=255)
+    ws = tess_words(c, psm, extra)
+    return [((w[0] - 20) / zoom + x0 + 4, (w[1] - 20) / zoom + y0, w[2] / zoom, w[3] / zoom, w[4], w[5]) for w in ws]
+
+UM = {"wt": "шт", "uit": "шт", "lut": "шт", "шг": "шт", "ш": "шт", "шт.": "шт", "kr": "кг", "m": "м", "m2": "м2", "м?": "м2", "mm": "м", "n": "м", "nm": "м", "t": "т", "kг": "кг"}
+OKEI = {"796": "шт", "006": "м", "055": "м2", "113": "м3", "168": "т", "166": "кг", "112": "л", "839": "компл", "778": "упак", "715": "пар", "736": "рул", "163": "г", "625": "лист", "018": "пог.м", "704": "набор"}
+
+def table_rows(g, tb, tpl):
+    # tpl — колонки первого листа: следующие листы (с шапкой и без) читаются по ним, шапку заново не распознаём
     if not tb: return None
-    hor, ver = tb["hor"], tb["ver"]
-    lines = cv2.dilate(cv2.bitwise_or(hor, ver), np.ones((5, 5), np.uint8))
+    xs, ys = tb["xs"], tb["ys"]
+    lines = cv2.dilate(cv2.bitwise_or(tb["hor"], tb["ver"]), np.ones((5, 5), np.uint8))
     clean = g.copy(); clean[lines > 0] = 255
-    ys, xs = tb["ys"], tb["xs"]
-    if len(xs) < 8: return None
-    bands = [(ys[i], ys[i + 1]) for i in range(len(ys) - 1) if ys[i + 1] - ys[i] >= 25]
-    # строка с номерами колонок «А 1 1а … 9» — тонкая; шапка — над ней
-    numrow = None
-    for i, (a, b) in enumerate(bands[:30]):
-        if b - a > 90: continue
-        txt = [tess(cv2.copyMakeBorder(cv2.resize(clean[a + 3:b - 3, xs[j] + 3:xs[j + 1] - 3], None, fx=2, fy=2), 20, 20, 20, 20, cv2.BORDER_CONSTANT, value=255), 7)
-               if (b - a) > 10 and xs[j + 1] - xs[j] > 10 else "" for j in range(len(xs) - 1)]
-        hits = sum(1 for x in txt if x.strip() in NUMROW or x.strip() in ("1", "2", "6", "10", "11", "1б", "1b", "10а"))
-        if hits >= 6: numrow = (i, txt); break
-    head_to = bands[numrow[0]][0] if numrow else (bands[0][1] if bands else tb["top"] + 100)
-    col, heads = map_cols(clean, xs, max(tb["top"], head_to - 560), head_to)   # шапка таблицы — не выше ~4,5 см над строкой номеров
-    if numrow:
-        for j, x in enumerate(numrow[1]):
-            k = NUMROW.get(x.strip())
-            if k and k not in col and j not in col.values(): col[k] = j
-    if not ("name" in col and "qty" in col): return {"cols": col, "heads": heads, "items": []}
-    start = numrow[0] + 1 if numrow else 1
-    items, totals = [], {}
-    for a, b in bands[start:]:
-        if b - a < 30: continue
-        def cell(key, psm=6, extra=None, zoom=1):
-            j = col.get(key)
-            if j is None or j >= len(xs) - 1: return ""
-            c = clean[a + 4:b - 4, xs[j] + 4:xs[j + 1] - 4]
-            if not c.size: return ""
-            if zoom > 1: c = cv2.copyMakeBorder(cv2.resize(c, None, fx=zoom, fy=zoom, interpolation=cv2.INTER_CUBIC), 25, 25, 25, 25, cv2.BORDER_CONSTANT, value=255)
-            return tess(c, psm, extra)
-        name = fix_codes(cell("name")).strip(" |_:;")
-        if re.search(r"всего|к\s*оплат|итого", lc(name)) or re.search(r"всего|к\s*оплат", lc(cell("code"))):
-            totals = {"total_nt": money(cell("sum", 7)), "total": money(cell("total", 7))}; break
-        qraw = cell("qty")
-        q = num(qraw)
-        if q is None: qraw = cell("qty", 7, ["-c", "tessedit_char_whitelist=0123456789,. "], 2); q = num(qraw)
-        name = re.sub(r"^\d{1,3}\s+(?=\D)", "", name)   # № п/п иногда попадает в колонку наименования
-        if len(words(name)) < 1 or (q is None and len(name) < 6): continue
-        UM = {"wt": "шт", "uit": "шт", "lut": "шт", "шг": "шт", "ш": "шт", "kr": "кг", "m": "м", "m2": "м2", "м?": "м2", "mm": "м", "n": "м", "nm": "м"}
-        unit = ""
-        for psm, z in ((7, 2), (10, 3), (8, 3)):
-            u = re.sub(r"[^A-Za-zА-Яа-я0-9²³.]", "", cell("unit", psm, None, z)).lower()[:8].replace("м²", "м2").replace("м³", "м3").strip(".")
-            u = UM.get(u, u)
-            if u and re.search(r"[a-zа-я]", u): unit = u; break
-        if col.get("unit", 0) > 0 and (not unit or unit not in OKEI.values()):
-            # код ОКЕИ в соседней колонке «код»: 796 — шт, 006 — м …
-            j0 = col["unit"] - 1
-            if j0 not in col.values():
-                c = clean[a + 4:b - 4, xs[j0] + 4:xs[j0 + 1] - 4]
-                if c.size:
-                    k = re.sub(r"\D", "", tess(cv2.copyMakeBorder(cv2.resize(c, None, fx=2, fy=2), 25, 25, 25, 25, cv2.BORDER_CONSTANT, value=255), 7, ["-c", "tessedit_char_whitelist=0123456789"]))
-                    if k in OKEI: unit = OKEI[k]
-        it = {"code": re.sub(r"\s", "", cell("code", 7)).strip("|_.,"), "name": re.sub(r"\s+", " ", name), "unit": unit, "qty": q, "qty_raw": qraw,
-              "price": money(cell("price", 7)), "sum": money(cell("sum", 7)), "rate": cell("rate", 7).replace(" ", "")[:12], "total": money(cell("total", 7))}
+    bands = [(ys[i], ys[i + 1]) for i in range(len(ys) - 1) if ys[i + 1] - ys[i] >= 15]
+    if not bands: return None
+    col, hdr = (None, None) if tpl and len(xs) == tpl["n"] else map_header(clean, xs, bands)
+    if col and "name" in col and "qty" in col:
+        width = float(xs[-1] - xs[0])
+        tpl_new = {"col": col, "rel": [(x - xs[0]) / width for x in xs], "n": len(xs)}
+        start = hdr + 1
+    elif tpl:
+        tpl_new = tpl; start = 0
+        if len(xs) == tpl["n"]: col = dict(tpl["col"])
+        else:   # линий другое число — колонки по положению относительно ширины таблицы
+            width = float(xs[-1] - xs[0]); rel = [(x - xs[0]) / width for x in xs]; col = {}
+            for k, j in tpl["col"].items():
+                c0 = (tpl["rel"][j] + tpl["rel"][j + 1]) / 2
+                jj = min(range(len(xs) - 1), key=lambda q: abs((rel[q] + rel[q + 1]) / 2 - c0))
+                col[k] = jj
+    else:
+        return {"items": [], "tpl": None, "cols": col}
+    data = bands[start:]
+    if not data: return {"items": [], "tpl": tpl_new, "cols": col}
+    y0, y1 = data[0][0], data[-1][1]
+    W = {}
+    W["name"] = strip_words(clean, xs[col["name"]], xs[col["name"] + 1], y0, y1)
+    W["qty"] = strip_words(clean, xs[col["qty"]], xs[col["qty"] + 1], y0, y1, DIG)
+    for k in ("no", "price", "sum"):
+        if k in col: W[k] = strip_words(clean, xs[col[k]], xs[col[k] + 1], y0, y1, DIG)
+    if "unit" in col: W["unit"] = strip_words(clean, xs[col["unit"]], xs[col["unit"] + 1], y0, y1)
+    jk = col["unit"] - 1 if "unit" in col and col["unit"] > 0 and (col["unit"] - 1) not in col.values() else None
+    if jk is not None: W["okei"] = strip_words(clean, xs[jk], xs[jk + 1], y0, y1, ["-c", "tessedit_char_whitelist=0123456789"])
+    items, totals = [], None
+    for (a, b) in data:
+        T = {k: join_words(words_in(v, -1e9, 1e9, a, b)) for k, v in W.items()}
+        name = fix_name(T.get("name", ""))
+        if re.search(r"всего|к\s*оплат|итого", lc(name)) or re.search(r"всего\s*к\s*оплат", lc(T.get("name", ""))):
+            totals = {"sum": money(T.get("sum"))}; break
+        if re.search(r"наименование\s+товара|описание\s+выполн|работ,\s*услуг", lc(name)): continue   # шапка таблицы на следующих листах
+        qraw = T.get("qty", ""); q = num(qraw)
+        no = re.sub(r"\D", "", T.get("no", ""))
+        if (q is None or not name) and b - a > 14:
+            # строка плохо прочиталась целиком — повторяем по ячейке крупнее
+            if q is None:
+                qraw = tess(cell_img(clean, a, b, xs[col["qty"]], xs[col["qty"] + 1], 2), 7, DIG); q = num(qraw)
+            if not name:
+                name = fix_name(tess(cell_img(clean, a, b, xs[col["name"]], xs[col["name"] + 1], 2), 6))
+        if not name and q is None: continue
+        if len(words(name)) < 1: continue   # строка номеров колонок «А 1 1а 1б 2 …»
+        price, ssum = money(T.get("price")), money(T.get("sum"))
+        unit = re.sub(r"[^A-Za-zА-Яа-я0-9²³.]", "", T.get("unit", "")).lower()[:8].replace("м²", "м2").replace("м³", "м3").strip(".")
+        unit = UM.get(unit, unit)
+        ok = re.sub(r"\D", "", T.get("okei", ""))
+        if ok in OKEI and (not unit or unit not in OKEI.values()): unit = OKEI[ok]
+        it = {"no": int(no) if no and len(no) <= 4 else None, "name": name, "unit": unit, "qty": q, "qty_raw": qraw}
         warn = []
         if q is None: warn.append("qty")
+        elif price and ssum:
+            if abs(price * q - ssum) > max(0.05, ssum * 0.002):
+                # кол-во не сходится с ценой и стоимостью: пересчитать из стоимости, если получается «круглое»
+                alt = round(ssum / price, 3) if price else None
+                if alt and abs(alt - round(alt)) < 0.002 and abs(price * round(alt) - ssum) <= max(0.05, ssum * 0.002):
+                    it["qty_ocr"] = q; it["qty"] = float(round(alt)); warn.append("qty_fixed")
+                else:
+                    q2 = num(tess(cell_img(clean, a, b, xs[col["qty"]], xs[col["qty"] + 1], 3), 7, DIG))
+                    if q2 is not None and abs(price * q2 - ssum) <= max(0.05, ssum * 0.002): it["qty_ocr"] = q; it["qty"] = q2
+                    else: warn.append("qty")
+            else: it["checked"] = True
         if not unit: warn.append("unit")
-        if it["price"] and q and it["sum"] and abs(it["price"] * q - it["sum"]) > max(1.0, it["sum"] * 0.02): warn.append("sum")
         it["warn"] = warn
         items.append(it)
-    return {"cols": col, "heads": heads, "items": items, "totals": totals}
+    return {"items": items, "tpl": tpl_new, "cols": col, "totals": totals}
 
-OKEI = {"796": "шт", "006": "м", "055": "м2", "113": "м3", "168": "т", "166": "кг", "112": "л", "839": "компл", "778": "упак", "715": "пар", "736": "рул", "163": "г", "625": "лист", "018": "пог.м", "704": "набор", "006": "м"}
-KEYW = re.compile(r"передаточн|сч[её]т.{0,3}фактур|продавец|покупател|наименование|основание", re.I)
+KEYW = re.compile(r"передаточн|сч[её]т.{0,3}фактур|продавец|покупател|наименование|основание|гост|шт", re.I)
+
 def main(path):
     t0 = time.time(); tmp = tempfile.mkdtemp(prefix="vsupd")
     try:
         with open(path, "rb") as f: magic = f.read(5)
-        if magic.startswith(b"%PDF"):
-            subprocess.run(["pdftoppm", "-r", "300", "-png", "-l", "6", path, os.path.join(tmp, "p")], check=True, timeout=120)
-            pages = sorted(os.path.join(tmp, x) for x in os.listdir(tmp) if x.endswith(".png"))
-        else: pages = [path]
-        text_all, items, dbg, rot_prev, tbl_tot = "", [], [], None, {}
-        for i, p in enumerate(pages):
+        is_pdf = magic.startswith(b"%PDF")
+        if is_pdf:
+            n = MAX_PAGES
+            try:
+                info = subprocess.run(["pdfinfo", path], capture_output=True, timeout=30).stdout.decode("utf-8", "ignore")
+                m = re.search(r"Pages:\s*(\d+)", info); n = min(MAX_PAGES, int(m.group(1))) if m else MAX_PAGES
+            except Exception: pass
+            pages = [(i, None) for i in range(1, n + 1)]
+        else:
+            pages = [(1, path)]
+        text_all, items, dbg, rot_prev, tpl, tot = "", [], [], None, None, None
+        for pi, p in pages:
+            progress(pi, len(pages))
+            if is_pdf:
+                pre = os.path.join(tmp, "p%03d" % pi)
+                subprocess.run(["pdftoppm", "-r", "300", "-gray", "-png", "-f", str(pi), "-l", str(pi), "-singlefile", path, pre], check=True, timeout=120)
+                p = pre + ".png"
             img = cv2.imread(p)
             if img is None: continue
             if max(img.shape[:2]) < 2400:
                 k = 3000 / max(img.shape[:2]); img = cv2.resize(img, None, fx=k, fy=k, interpolation=cv2.INTER_CUBIC)
             img, skew = deskew(img)
-            rot = osd_rotation(img)
-            tries = ([rot_prev] if rot_prev is not None else []) + [rot] + [r for r in (0, 90, 270, 180) if r not in (rot, rot_prev)]
-            best = None
-            for r in tries:
-                im = rotate(img, r)
-                g = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
-                small = cv2.resize(g, None, fx=0.6, fy=0.6) if max(g.shape) > 3600 else g
-                txt = tess(small, 6)
-                score = len(KEYW.findall(txt)) * 10 + quality(txt) / 200
-                if best is None or score > best[0]: best = (score, r, im, txt)
-                if len(KEYW.findall(txt)) >= 2: break
-            _, rot, im, _ = best; rot_prev = rot
+            # поворот: для листов PDF берём поворот предыдущего листа, если таблица находится
+            im = None
+            if rot_prev is not None:
+                cand = rotate(img, rot_prev)
+                if find_table(cv2.cvtColor(cand, cv2.COLOR_BGR2GRAY)): im, rot = cand, rot_prev
+            if im is None:
+                r0 = osd_rotation(img)
+                tries = [r0] + [r for r in (0, 90, 270, 180) if r != r0]
+                best = None
+                for r in tries:
+                    c = rotate(img, r); gg = cv2.cvtColor(c, cv2.COLOR_BGR2GRAY)
+                    small = cv2.resize(gg, None, fx=0.6, fy=0.6) if max(gg.shape) > 3600 else gg
+                    txt = tess(small, 6)
+                    score = len(KEYW.findall(txt)) * 10 + quality(txt) / 200
+                    if best is None or score > best[0]: best = (score, r, c)
+                    if len(KEYW.findall(txt)) >= 2: break
+                _, rot, im = best
+            rot_prev = rot
             g = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
-            if not magic.startswith(b"%PDF"): g = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(g)   # фото: выровнять освещение
-            full = tess(g, 6, ["-c", "preserve_interword_spaces=1"])
-            if os.environ.get("VS_OCR_DEBUG"): sys.stderr.write("PAGE %d rot %d\n%s\n" % (i + 1, rot, full[:3000]))
-            text_all += "\n" + full
-            tr = table_rows(im)
+            if not is_pdf: g = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(g)
+            tb = find_table(g)
+            if pi == 1 or not re.search(r"фактур|передаточн", text_all, re.I):
+                # шапка документа (номер, дата, продавец) — над таблицей; если таблицы нет — весь лист
+                top = tb["top"] if tb and tb["top"] > g.shape[0] * 0.12 else g.shape[0]
+                full = tess(g[:top], 6, ["-c", "preserve_interword_spaces=1"])
+                text_all += "\n" + full
+            tr = table_rows(g, tb, tpl)
             if tr:
-                for it in tr["items"]: it["page"] = i + 1; items.append(it)
-                if tr.get("totals"): tbl_tot = tr["totals"]
-            dbg.append({"rot": rot, "skew": skew, "cols": tr and tr["cols"], "heads": tr and [h[:40] for h in tr["heads"]]})
+                if tr.get("tpl"): tpl = tr["tpl"]
+                for it in tr["items"]: it["page"] = pi; items.append(it)
+                if tr.get("totals"): tot = tr["totals"]
+            dbg.append({"page": pi, "rot": rot, "skew": skew, "cols": tr and tr.get("cols"), "n": tr and len(tr["items"])})
+            try: os.remove(p) if is_pdf else None
+            except Exception: pass
+            if time.time() - t0 > 250: dbg.append({"stopped": "time"}); break
         h = header_fields(text_all)
-        for k, v in tbl_tot.items():
-            if v and not h.get(k): h[k] = v
-        if items and h.get("total_nt") and sum((x.get("sum") or 0) for x in items):
-            s = round(sum((x.get("sum") or 0) for x in items), 2); h["items_sum"] = s; h["sum_ok"] = abs(s - h["total_nt"]) < 1
-        out({"header": h, "items": items, "pages": len(pages), "ms": int((time.time() - t0) * 1000), "debug": dbg})
+        for k, it in enumerate(items):   # № не прочитан, а соседи идут подряд — восстанавливаем
+            if it.get("no") is None and 0 < k < len(items) - 1:
+                a_, b_ = items[k - 1].get("no"), items[k + 1].get("no")
+                if a_ and b_ and b_ - a_ == 2: it["no"] = a_ + 1
+            elif it.get("no") is None and k == len(items) - 1 and k and items[k - 1].get("no"): it["no"] = items[k - 1]["no"] + 1
+            elif it.get("no") is None and k == 0 and len(items) > 1 and items[1].get("no") == 2: it["no"] = 1
+        # сквозная нумерация: пропуски и повторы «№ п/п»
+        nos = [it["no"] for it in items if it.get("no")]
+        chk = {"rows": len(items), "checked": sum(1 for it in items if it.get("checked")), "warn": sum(1 for it in items if "qty" in it["warn"])}
+        if nos:
+            mx = max(nos); seen = {}
+            for v in nos: seen[v] = seen.get(v, 0) + 1
+            chk["no_max"] = mx
+            chk["missing"] = [v for v in range(1, mx + 1) if v not in seen][:50]
+            chk["dup"] = [v for v, c in seen.items() if c > 1][:50]
+            chk["no_ok"] = not chk["missing"] and not chk["dup"] and mx == len(items)
+        if tot and tot.get("sum"): chk["total_sum"] = tot["sum"]
+        out({"header": h, "items": items, "check": chk, "pages": len(pages), "pages_read": len(dbg), "ms": int((time.time() - t0) * 1000), "debug": dbg})
     except Exception as e:
         out({"error": "Не удалось прочитать УПД: " + str(e)[:200]})
     finally:
