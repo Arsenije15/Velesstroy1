@@ -30,12 +30,15 @@ routerAdd("POST", "/api/vs/oper/import", (e) => {
       r.set("search_lc", X.lc([S(x.pid), nm, S(x.name_supp, 1000), S(x.name_1c, 1000), S(x.code), S(x.object), S(x.subobject), S(x.supplier), S(x.torg, 500), S(x.stage), S(x.order_no), S(x.gost)].join(" ")).slice(0, 4000));
       tx.save(r);
     });
-    if (b.final) {
-      const old = tx.findRecordsByFilter("oper_rows", "source = {:s} && import_id != {:i}", "", 0, 0, { s: src, i: imp });
-      old.forEach((r) => tx.delete(r)); removed = old.length;
-      const now = tx.findRecordsByFilter("oper_rows", "source = {:s}", "", 0, 0, { s: src });
-      total = now.length;
-      const seen = {}; now.forEach((r) => { const s = r.getString("supplier"); if (s && !seen[r.getString("supplier_key")]) { seen[r.getString("supplier_key")] = 1; if (Q.upsertSupplier(X, tx, s, "оперативка")) sups++; } });
+    if (b.final) {   // 1.9.3: старые строки файла убираются одним SQL-запросом (секунды, а не минуты — база не блокируется)
+      const db = tx.db();
+      const cnt = (q, p) => { const m = new DynamicModel({ n: 0 }); db.newQuery(q).bind(p).one(m); return m.n; };
+      removed = cnt("SELECT COUNT(*) AS n FROM oper_rows WHERE source = {:s} AND import_id != {:i}", { s: src, i: imp });
+      db.newQuery("DELETE FROM oper_rows WHERE source = {:s} AND import_id != {:i}").bind({ s: src, i: imp }).execute();
+      total = cnt("SELECT COUNT(*) AS n FROM oper_rows WHERE source = {:s}", { s: src });
+      const sl = arrayOf(new DynamicModel({ supplier: "" }));
+      db.newQuery("SELECT MIN(supplier) AS supplier FROM oper_rows WHERE source = {:s} AND supplier != '' GROUP BY supplier_key").bind({ s: src }).all(sl);
+      sl.forEach((r) => { if (Q.upsertSupplier(X, tx, r.supplier, "оперативка")) sups++; });
       L.log(tx, a, "oper_import", "oper_rows", "", "Загружена оперативка «" + src + "»: " + total + " строк, поставщиков " + sups, {});
     }
   });
@@ -53,7 +56,8 @@ routerAdd("POST", "/api/vs/oper/delete_source", (e) => {
   const L = require(`${__hooks}/lib.js`);
   const a = L.requireRole(e, ["admin", "manager"]);
   const src = L.str((e.requestInfo().body || {}).source); let n = 0;
-  $app.runInTransaction((tx) => { const rows = tx.findRecordsByFilter("oper_rows", "source = {:s}", "", 0, 0, { s: src }); rows.forEach((r) => tx.delete(r)); n = rows.length;
+  $app.runInTransaction((tx) => { const m = new DynamicModel({ n: 0 }); tx.db().newQuery("SELECT COUNT(*) AS n FROM oper_rows WHERE source = {:s}").bind({ s: src }).one(m); n = m.n;
+    tx.db().newQuery("DELETE FROM oper_rows WHERE source = {:s}").bind({ s: src }).execute();   // 1.9.3: одним запросом
     L.log(tx, a, "oper_delete", "oper_rows", "", "Оперативка: удалён файл «" + src + "» (" + n + " строк)", {}); });
   return e.json(200, { removed: n });
 }, $apis.requireAuth("users"));
