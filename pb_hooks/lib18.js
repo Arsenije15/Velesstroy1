@@ -28,4 +28,29 @@ function syncActs(L, X, tx, act, author) {
     tx.save(r);
   });
 }
-module.exports = { num, SKK_ROLES, UPD_ROLES, ddmmyyyy, syncActs };
+function ocrJob(id) { return $app.dataDir() + "/ocr_jobs/" + String(id).replace(/[^a-z0-9]/g, "") + ".txt"; }
+// разбор ответа ocr_upd.py → сохранить в черновик; ошибки — понятным текстом
+function ocrFinish(L, rec, txt) {
+  const code = (txt.match(/__EXIT__(\d+)/) || [])[1];
+  const body = txt.replace(/\n?__EXIT__\d+\s*$/, "").trim();
+  let res = null;
+  const js = body.slice(body.indexOf("{"), body.lastIndexOf("}") + 1);
+  try { res = JSON.parse(js); } catch (_) {
+    if (code === "124") throw new BadRequestError("Чтение заняло больше 4 минут — загрузите файл меньше (до 6 страниц) или фото без лишнего фона.");
+    throw new BadRequestError("Ошибка распознавания на сервере (код " + code + "): " + body.split("\n").filter(Boolean).slice(-3).join(" | ").slice(0, 400));
+  }
+  if (res.error) throw new BadRequestError(res.error);
+  delete res.debug;
+  const known = [];
+  try {
+    const rows = arrayOf(new DynamicModel({ supplier: "" }));
+    $app.db().newQuery("SELECT DISTINCT supplier FROM acts WHERE supplier != '' LIMIT 800").all(rows); rows.forEach((r) => known.push(r.supplier));
+    $app.findRecordsByFilter("upd_docs", "status != 'draft' && supplier != ''", "-created", 300, 0).forEach((r) => known.push(r.getString("supplier")));
+    $app.findRecordsByFilter("suggestions", "field = 'supplier'", "-last", 300, 0).forEach((r) => known.push(r.getString("value")));
+    $app.findRecordsByFilter("suppliers", "active = true", "name", 3000, 0).forEach((r) => known.push(r.getString("name")));
+  } catch (_) {}
+  res.known_suppliers = known;
+  const fresh = $app.findRecordById("upd_docs", rec.id); fresh.set("ocr", res); $app.saveNoValidate(fresh);
+  return res;
+}
+module.exports = { ocrJob, ocrFinish, num, SKK_ROLES, UPD_ROLES, ddmmyyyy, syncActs };

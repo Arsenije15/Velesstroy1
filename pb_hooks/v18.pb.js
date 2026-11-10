@@ -9,30 +9,37 @@ routerAdd("POST", "/api/vs/upd/ocr", (e) => {
   if (!L.isSuper(a) && rec.getString("uploaded_by") !== a.id) throw new ForbiddenError("Это не ваш файл.");
   if (!rec.getString("file")) throw new BadRequestError("Файл не загружен.");
   const path = $app.dataDir() + "/storage/" + rec.collection().id + "/" + rec.id + "/" + rec.getString("file");
+  const b = e.requestInfo().body || {};
+  if (!b.wait) {   // 1.9.2: чтение идёт в фоне — страница не ждёт минуту (иначе прокси/VPN обрывают ответ: ошибка 502)
+    const job = K.ocrJob(rec.id);
+    try { $os.cmd("sh", "-c", 'mkdir -p "$(dirname "$3")"; rm -f "$3" "$3.tmp"; date +%s > "$3.start"; ( timeout 280 nice -n 10 python3 "$1" "$2" > "$3.tmp" 2>&1; echo; echo "__EXIT__$?" >> "$3.tmp"; mv "$3.tmp" "$3" ) </dev/null >/dev/null 2>&1 &', "sh", `${__hooks}/ocr_upd.py`, path, job).run(); }
+    catch (err) { throw new BadRequestError("Распознавание не запустилось на сервере: " + String(err).slice(0, 200)); }
+    return e.json(200, { started: true });
+  }
   let txt = "";
-  // запуск через sh: код выхода и сообщения Python всегда возвращаются — видно настоящую причину ошибки
   try { txt = toString($os.cmd("sh", "-c", 'timeout 280 python3 "$1" "$2" 2>&1; echo; echo "__EXIT__$?"', "sh", `${__hooks}/ocr_upd.py`, path).output()); }
   catch (err) { throw new BadRequestError("Распознавание не запустилось на сервере: " + String(err).slice(0, 200)); }
-  const code = (txt.match(/__EXIT__(\d+)/) || [])[1];
-  const body = txt.replace(/\n?__EXIT__\d+\s*$/, "").trim();
-  let res = null;
-  const js = body.slice(body.indexOf("{"), body.lastIndexOf("}") + 1);
-  try { res = JSON.parse(js); } catch (_) {
-    if (code === "124") throw new BadRequestError("Чтение заняло больше 4 минут — загрузите файл меньше (до 6 страниц) или фото без лишнего фона.");
-    throw new BadRequestError("Ошибка распознавания на сервере (код " + code + "): " + body.split("\n").filter(Boolean).slice(-3).join(" | ").slice(0, 400));
-  }
-  if (res.error) throw new BadRequestError(res.error);
-  delete res.debug;
-  const known = [];
-  try {
-    const rows = arrayOf(new DynamicModel({ supplier: "" }));
-    $app.db().newQuery("SELECT DISTINCT supplier FROM acts WHERE supplier != '' LIMIT 800").all(rows); rows.forEach((r) => known.push(r.supplier));
-    $app.findRecordsByFilter("upd_docs", "status != 'draft' && supplier != ''", "-created", 300, 0).forEach((r) => known.push(r.getString("supplier")));
-    $app.findRecordsByFilter("suggestions", "field = 'supplier'", "-last", 300, 0).forEach((r) => known.push(r.getString("value")));
-  } catch (_) {}
-  res.known_suppliers = known;
-  rec.set("ocr", res); $app.saveNoValidate(rec);
+  const res = K.ocrFinish(L, rec, txt);
   return e.json(200, res);
+}, $apis.requireAuth("users"));
+// 1.9.2: состояние фонового чтения
+routerAdd("GET", "/api/vs/upd/ocr_status/{id}", (e) => {
+  const L = require(`${__hooks}/lib.js`), K = require(`${__hooks}/lib18.js`);
+  const a = L.requireRole(e, K.UPD_ROLES);
+  const rec = $app.findRecordById("upd_docs", e.request.pathValue("id"));
+  if (!L.isSuper(a) && rec.getString("uploaded_by") !== a.id) throw new ForbiddenError("Это не ваш файл.");
+  const job = K.ocrJob(rec.id);
+  let txt = null; try { txt = toString($os.readFile(job)); } catch (_) {}
+  if (txt === null) {
+    let st = 0; try { st = parseInt(toString($os.readFile(job + ".start")), 10) || 0; } catch (_) {}
+    if (!st) return e.json(200, { status: "none" });
+    const sec = Math.round(Date.now() / 1000 - st);
+    if (sec > 330) { try { $os.remove(job + ".start"); } catch (_) {} return e.json(200, { status: "error", message: "Чтение не закончилось за 5 минут — впишите № УПД и поставщика вручную." }); }
+    return e.json(200, { status: "running", sec: sec });
+  }
+  [job, job + ".start"].forEach((f) => { try { $os.remove(f); } catch (_) {} });
+  try { const res = K.ocrFinish(L, rec, txt); res.status = "done"; return e.json(200, res); }
+  catch (err) { return e.json(200, { status: "error", message: String(err && err.message || err).replace(/^.*?Error: /, "").slice(0, 500) }); }
 }, $apis.requireAuth("users"));
 
 // ---------- Сохранить УПД ----------

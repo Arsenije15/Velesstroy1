@@ -1629,6 +1629,36 @@ async function updMatch(id){
     closeModal();if(SKK.tab==="in"&&$("#skkb"))skkIn();else render(null,true)},"Связь с оперативкой сохранена")});
 }
 
+
+/* ----- 1.9.2: «Материалы — всё в одном месте»: новый приход + оперативка + МПЗ (в «Задачах и согласованиях») ----- */
+const HUB={tab:"in",q:"",seq:0,data:null};
+function hubHtml(){const T=[["in","📦 Новый приход"],["oper","📋 Оперативка"],["mpz","▦ Остатки МПЗ"]];
+  return `<div class="card" id="hub"><b>🔎 Материалы — всё в одном месте</b><div class="muted">новый приход с фото · оперативка (PID, шифр, стадия поставки) · остатки МПЗ</div>
+   <div class="row" style="margin-top:6px"><input id="hubq" value="${esc(HUB.q)}" placeholder="материал, PID, шифр, № УПД, поставщик" style="flex:1;min-width:160px"><button class="btn p sm" id="hubb">Найти</button>${HUB.q?`<button class="btn sm" id="hubx" aria-label="Очистить">✕</button>`:""}</div>
+   <div class="tabs" style="margin-top:8px;flex-wrap:wrap">${T.map(([k,t])=>{const d=HUB.data&&HUB.data[k];return `<button class="${HUB.tab===k?"on":""}" data-hubt="${k}">${t}${d?` (${d.total})`:""}</button>`}).join("")}</div>
+   <div id="hubr" style="max-height:65vh;overflow:auto;margin-top:6px">${hubBody()}</div></div>`}
+function hubBody(){if(!HUB.data)return `<div class="muted">Загрузка…</div>`;const d=HUB.data[HUB.tab];
+  if(!d)return `<div class="muted">Введите запрос — например «арматура 16», PID или № УПД.</div>`;
+  if(!d.items.length)return `<div class="muted">Ничего не найдено</div>`;
+  const more=d.total>d.items.length?`<div class="muted" style="margin-top:6px">Показаны первые ${d.items.length} из ${d.total} — уточните запрос.</div>`:"";
+  if(HUB.tab==="oper")return d.items.map(x=>`<div style="padding:6px 0;border-bottom:1px dashed var(--line)"><b>${esc(x.pid)}</b> · ${esc(x.name_proj||x.name_supp||x.name_1c)} <span class="muted">— ${fmtQ(x.qty_c||x.qty)} ${esc(x.unit_c||x.unit)}${x.qty_delivered?`, поставлено ${fmtQ(x.qty_delivered)}`:""}</span>
+    <div class="muted">${esc([x.object,x.subobject].filter(Boolean).join(" / "))}${x.code?` · <b>${esc(x.code)}</b>`:""}</div><div>${esc(x.supplier)} ${stagePill(x.stage)}${x.torg?` <span class="muted">УПД/ТОРГ ${esc(x.torg)}</span>`:""}</div></div>`).join("")+more;
+  if(HUB.tab==="mpz")return `<div class="tw"><table><tr><th>Номенклатура</th><th>Код</th><th>Склад</th><th>Остаток</th><th>Качество</th></tr>${d.items.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.code)}</td><td>${esc(whShort(x.warehouse))}</td><td class="r" style="white-space:nowrap"><b>${fmtQ(x.qty_end)}</b> ${esc(x.unit)}</td><td>${esc(x.quality)}</td></tr>`).join("")}</table></div>`+more;
+  return d.items.map(u=>{const its=updItems(u);return `<div style="padding:8px 0;border-bottom:1px dashed var(--line)" data-hubin="${u.id}"><b>УПД № ${esc(u.number)}</b> <span class="muted">${u.date?dmy(u.date):"принят "+dt(u.created)}</span><div><b>${esc(u.supplier)}</b></div>
+    ${its.length?`<div class="tw" style="margin-top:4px"><table><tr><th>Материал</th><th>Кол-во</th><th>PID</th><th>Объект / шифр</th><th>Стадия</th></tr>${its.map(x=>`<tr><td>${esc(x.name)}</td><td class="r" style="white-space:nowrap">${fmtQ(x.qty)} ${esc(x.unit)}</td><td><b>${esc(x.pid||"")}</b></td><td>${esc(x.object||"")}${x.objcode?`<div><b>${esc(x.objcode)}</b></div>`:""}</td><td>${stagePill(x.stage)}</td></tr>`).join("")}</table></div>`:`<div class="muted">Позиции не внесены — смотрите фото УПД.</div>`}
+    ${updPhotoBlock(u.id,d.ph,d.ft,false)}</div>`}).join("")+more}
+async function hubLoad(){const my=++HUB.seq;const W=lcq(HUB.q).split(/\s+/).filter(Boolean).slice(0,6);const L=(c,f,sort,n)=>api("GET",`/api/collections/${c}/records?perPage=${n}&sort=${sort}${f?"&filter="+encodeURIComponent(f):""}`).catch(()=>({items:[],totalItems:0}));
+  const sf=W.map(w=>`search_lc~"${flt(w)}"`).join("&&");
+  const [op,mp,inn]=await Promise.all([W.length?L("oper_rows",sf,"pid,line_no",40):null,W.length?L("mpz_stock",sf,"name,warehouse",40):null,L("upd_docs",["status!='draft'"].concat(W.map(w=>`search_lc~"${flt(w)}"`)).join("&&"),"-created",15)]);
+  const ph=inn.items.length?await all("upd_photos",inn.items.map(u=>`upd="${u.id}"`).join("||"),"created").catch(()=>[]):[];const ft=ph.length?await fileToken():"";
+  if(my!==HUB.seq)return;
+  HUB.data={oper:op&&{total:op.totalItems,items:op.items},mpz:mp&&{total:mp.totalItems,items:mp.items},in:{total:inn.totalItems,items:inn.items,ph,ft}};
+  if(W.length&&HUB.tab!=="in"&&HUB.data[HUB.tab]&&!HUB.data[HUB.tab].total){const best=["in","oper","mpz"].find(k=>HUB.data[k]&&HUB.data[k].total);if(best)HUB.tab=best}
+  hubPaint()}
+function hubPaint(){const h=$("#hub");if(!h)return;h.outerHTML=hubHtml();hubBind()}
+function hubBind(){const go=()=>{HUB.q=$("#hubq").value.trim();HUB.data=null;hubPaint();hubLoad()};
+  $("#hubb").onclick=go;$("#hubq").onkeydown=e=>{if(e.key==="Enter")go()};const x=$("#hubx");if(x)x.onclick=()=>{$("#hubq").value="";go()};
+  document.querySelectorAll("[data-hubt]").forEach(b=>b.onclick=()=>{HUB.tab=b.dataset.hubt;hubPaint()})}
 /* ----- «Задачи и согласования» ----- */
 const TOP={arch:false,q:"",res:"",seq:0,people:{}};
 const topicMembersPick=(sel,only)=>{const U=(S.data.users||[]).filter(u=>u.active!==false&&(!only||only.includes(u.id)));
@@ -1640,11 +1670,12 @@ async function vTopics(_id,changed){
   const prog=t=>{let d=0,n=0;subs.filter(s=>s.topic===t.id).forEach(s=>{(Array.isArray(s.stages)?s.stages:[]).forEach(x=>{n++;if(x.done)d++})});return [d,n]};
   $("#main").innerHTML=`<h1>Задачи и согласования</h1><div class="tabs" style="margin-bottom:10px"><button class="${TOP.arch?"":"on"}" data-ta="0">Активные</button><button class="${TOP.arch?"on":""}" data-ta="1">Архив</button></div>
    ${can.boss()&&!TOP.arch?`<div class="row" style="margin-bottom:10px"><button class="btn p" id="tpnew">＋ Новая тема</button></div>`:""}
-   <div id="tpl">${list.length?`<div class="card list">${list.map(t=>{const [d,n]=prog(t),ns=subs.filter(s=>s.topic===t.id).length;return `<a class="it" href="#/topic/${t.id}"><div style="flex:1"><b>${esc(t.title)}</b>
+   ${TOP.arch?"":hubHtml()}<div id="tpl">${list.length?`<div class="card list">${list.map(t=>{const [d,n]=prog(t),ns=subs.filter(s=>s.topic===t.id).length;return `<a class="it" href="#/topic/${t.id}"><div style="flex:1"><b>${esc(t.title)}</b>
      <div class="muted">${ns} подтем · участников ${(t.members||[]).length} · обновлено ${dt(t.updated)}</div>${n?`<div style="height:6px;background:var(--line);border-radius:3px;margin-top:6px"><div style="height:6px;width:${Math.round(d/n*100)}%;background:var(--g);border-radius:3px"></div></div>`:""}</div>
      <span class="pill ${t.status==="open"?(n&&d===n?"g":"b"):"gr"}">${n?d+" / "+n:"—"}</span></a>`}).join("")}</div>`:`<div class="card empty">${TOP.arch?"Архив пуст":can.boss()?"Тем пока нет — создайте первую":"Вас пока не добавили ни в одну тему"}</div>`}</div>`;
   document.querySelectorAll("[data-ta]").forEach(b=>b.onclick=()=>{TOP.arch=b.dataset.ta==="1";vTopics()});
   const nb=$("#tpnew");if(nb)nb.onclick=()=>topicEdit(null);
+  if($("#hub")){hubBind();if(!HUB.data)hubLoad()}
 }
 function topicEdit(t){
   modal(`<h3>${t?"Изменить тему":"Новая тема"}</h3><label class="f" for="tpt">Название</label><input id="tpt" value="${esc(t?t.title:"")}" placeholder="Поставка лифтов, корпус В1">
@@ -1692,8 +1723,7 @@ async function vTopic(id,changed){
    <h1 id="tpv">${esc(t.title)} ${open?"":`<span class="pill gr">АРХИВ</span>`}</h1>${t.description?`<div class="card" style="white-space:pre-wrap">${esc(t.description)}</div>`:""}
    <div class="card"><div class="muted">Участники: ${people.map(p=>esc(p.name)).join(", ")||"—"}</div>
     <div class="row" style="margin-top:8px"><button class="btn sm" id="tplink">🔗 Скопировать ссылку</button><a class="btn sm" target="_blank" rel="noopener" href="https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent("Тема «"+t.title+"»")}">Telegram</a><a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/?text=${share}">WhatsApp</a></div></div>
-   <div class="card"><b>🔎 Поиск материала</b> <span class="muted">— оперативка (PID, шифр, стадия поставки) и остатки МПЗ</span>
-    <div class="row" style="margin-top:6px"><input id="tpq" value="${esc(TOP.q)}" placeholder="арматура 16, PID, № УПД…" style="flex:1"><button class="btn p sm" id="tpqb">Найти</button></div><div id="tps">${TOP.res}</div></div>
+   ${hubHtml()}
    <div class="row" style="justify-content:space-between;margin-top:6px"><h2>Подтемы (${subs.length})</h2>${B&&open?`<button class="btn p sm" id="sbnew">＋ Подтема</button>`:""}</div>
    ${subs.map(s=>{const st=Array.isArray(s.stages)?s.stages:[],d=st.filter(x=>x.done).length,mem=(s.members||[]).includes(me),can2=(B||mem)&&open&&(s.status==="open"||B),ms=msgs.filter(m=>m.subtopic===s.id);
      return `<div class="card" data-sub="${s.id}" style="border-left:5px solid ${s.status==="closed"?"var(--line)":st.length&&d===st.length?"var(--g)":"var(--b, #2563eb)"}">
@@ -1705,7 +1735,7 @@ async function vTopic(id,changed){
       ${can2?`<div class="row" style="margin-top:6px"><input id="tm_${s.id}" placeholder="Короткое сообщение…" style="flex:1"><button class="btn sm" data-msg="${s.id}">➤</button></div>`:""}
       ${B?`<div class="row" style="margin-top:8px"><button class="btn sm" data-sbed="${s.id}">✏ Подтема</button><button class="btn sm" data-sbst="${s.id}">${s.status==="open"?"Закрыть подтему":"Открыть подтему"}</button></div>`:""}</div>`}).join("")||`<div class="card empty">Подтем пока нет</div>`}`;
   $("#tplink").onclick=async()=>{try{await navigator.clipboard.writeText(link);toast("Ссылка скопирована")}catch(_){prompt("Ссылка на тему:",link)}};
-  const sq=()=>{TOP.q=$("#tpq").value.trim();topicSearch()};$("#tpqb").onclick=sq;$("#tpq").onkeydown=e=>{if(e.key==="Enter")sq()};
+  hubBind();if(!HUB.data)hubLoad();
   const ed=$("#tped");if(ed)ed.onclick=()=>topicEdit(t);
   const ts=$("#tpst");if(ts)ts.onclick=()=>{if(confirm(open?"Закрыть тему и перенести в архив?":"Открыть тему снова?"))act(ts,async()=>{await api("POST","/api/vs/topic/status",{id,status:open?"closed":"open"});render(null,true)},open?"Тема в архиве":"Тема открыта")};
   const sn=$("#sbnew");if(sn)sn.onclick=()=>subEdit(t,null,people);
@@ -1756,7 +1786,10 @@ async function updUpload(file){
   try{const fd=new FormData();fd.append("status","draft");fd.append("uploaded_by",S.user.id);fd.append("file",file);
     let rec;try{rec=await api("POST","/api/collections/upd_docs/records",fd,true)}catch(e){throw new Error("Файл «"+(file.name||"фото")+"» не загрузился ("+(file.type||"тип не определён")+", "+Math.round(file.size/1024)+" КБ): "+e.message)}
     say("Читаю УПД — обычно до минуты, не закрывайте страницу…");const t0=Date.now();const tick=setInterval(()=>say(`Читаю УПД… ${Math.round((Date.now()-t0)/1000)} с`),1000);
-    try{await api("POST","/api/vs/upd/ocr",{id:rec.id})}catch(e){toast("Прочитать не получилось ("+e.message+"). Достаточно вписать № УПД и поставщика — фото УПД и груза добавите после сохранения.","err")}finally{clearInterval(tick)}
+    try{await api("POST","/api/vs/upd/ocr",{id:rec.id});
+      for(;;){await new Promise(r=>setTimeout(r,2500));const st=await api("GET","/api/vs/upd/ocr_status/"+rec.id);
+        if(st.status==="done")break;if(st.status==="error"||st.status==="none")throw new Error(st.message||"чтение не запустилось");if(Date.now()-t0>340000)throw new Error("чтение не закончилось за 5 минут")}
+    }catch(e){toast("Прочитать не получилось ("+e.message+"). Достаточно вписать № УПД и поставщика — фото УПД и груза добавите после сохранения.","err")}finally{clearInterval(tick)}
     location.hash="#/updedit/"+rec.id;
   }catch(e){say("⚠ "+e.message);toast(e.message,"err")}
 }
