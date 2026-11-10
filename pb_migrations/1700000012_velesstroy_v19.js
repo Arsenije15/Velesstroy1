@@ -106,4 +106,3 @@ migrate((app) => {
 
   ["topic_msgs", "subtopics", "topics", "upd_photos", "oper_rows", "suppliers"].forEach((n) => { try { app.delete(app.findCollectionByNameOrId(n)); } catch (_) {} });
 });
-        

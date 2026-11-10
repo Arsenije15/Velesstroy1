@@ -172,7 +172,7 @@ routerAdd("POST", "/api/vs/skk/act/fix", (e) => {
     tx.save(act);
     act.getStringSlice("upds").forEach((id) => { try { const u = tx.findRecordById("upd_docs", id); u.set("status", allFixed ? "ok" : "act"); tx.saveNoValidate(u); } catch (_) {} });
     K.syncActs(L, X, tx, act, L.userName(a));
-                                                                                                       L.log(tx, a, "skk_act_fix", "skk_acts", act.id, "Акт СКК № " + act.getString("number") + ": «" + String(x.material).slice(0, 80) + "» — " + (fixed ? "устранено: " + x.fix_note : "снова не устранено") +
+    L.log(tx, a, "skk_act_fix", "skk_acts", act.id, "Акт СКК № " + act.getString("number") + ": «" + String(x.material).slice(0, 80) + "» — " + (fixed ? "устранено: " + x.fix_note : "снова не устранено") +
       (allFixed ? ". Все замечания устранены — акт закрыт" : ""), {});
     out = { status: act.getString("status") };
   });
@@ -214,4 +214,3 @@ cronAdd("vs_upd_drafts", "40 2 * * *", () => {
   const d = new Date(Date.now() - 2 * 86400000).toISOString().replace("T", " ");
   try { $app.findRecordsByFilter("upd_docs", "status = 'draft' && created < {:d}", "", 500, 0, { d: d }).forEach((r) => $app.delete(r)); } catch (err) { console.log("upd cleanup: " + err); }
 });
-      

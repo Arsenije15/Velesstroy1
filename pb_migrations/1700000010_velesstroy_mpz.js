@@ -28,4 +28,3 @@ migrate((app) => {
 }, (app) => {
   try { app.delete(app.findCollectionByNameOrId("mpz_stock")); } catch (_) {}
 });
-                                            

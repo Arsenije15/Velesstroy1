@@ -96,4 +96,3 @@ routerAdd("POST", "/api/vs/archive/delete_sheet", (e) => {
   });
   return e.json(200, { removed: n });
 }, $apis.requireAuth("users"));
-                                               

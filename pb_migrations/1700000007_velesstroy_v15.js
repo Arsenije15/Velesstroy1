@@ -68,4 +68,3 @@ migrate((app) => {
 }, (app) => {
   ["request_notes", "request_archive"].forEach((n) => { try { app.delete(app.findCollectionByNameOrId(n)); } catch (_) {} });
 });
-        

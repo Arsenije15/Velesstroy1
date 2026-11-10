@@ -163,7 +163,7 @@ routerAdd("POST", "/api/vs/sub/save", (e) => {
     const msg = new Record(tx.findCollectionByNameOrId("topic_msgs"));
     msg.set("topic", t.id); msg.set("subtopic", s.id); msg.set("user", L.authId(a) ? a.id : ""); msg.set("user_name", L.userName(a)); msg.set("kind", "sys");
     msg.set("text", b.id ? "изменил(а) подтему: этапов " + stages.length + ", участников " + mem.length : "открыл(а) подтему: этапов " + stages.length + ", участников " + mem.length); tx.save(msg);
-        Q.topicLog(L, tx, a, t.id, "«" + t.getString("title") + "» → подтема «" + title + "»" + (b.id ? " изменена" : " открыта"));
+    Q.topicLog(L, tx, a, t.id, "«" + t.getString("title") + "» → подтема «" + title + "»" + (b.id ? " изменена" : " открыта"));
     out = { id: s.id };
   });
   return e.json(200, out);
@@ -224,4 +224,3 @@ routerAdd("GET", "/api/vs/topic/people/{id}", (e) => {
   ids.forEach((id) => { try { const u = $app.findRecordById("users", id); out.push({ id: u.id, name: u.getString("name") || u.getString("username"), role: u.getString("role"), company: u.getString("warehouse") }); } catch (_) {} });
   return e.json(200, { people: out });
 }, $apis.requireAuth("users"));
-    

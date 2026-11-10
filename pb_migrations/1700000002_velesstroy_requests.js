@@ -1,4 +1,4 @@
-// VELESSTROY — заявки на выдачу ТМЦ (добавляется к существующей базе, данные не трогает)
+/// VELESSTROY — заявки на выдачу ТМЦ (добавляется к существующей базе, данные не трогает)
 migrate((app) => {
   const AUTH = '@request.auth.id != "" && @request.auth.active = true';
   const USERS = app.findCollectionByNameOrId("users").id;

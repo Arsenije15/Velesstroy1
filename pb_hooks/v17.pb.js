@@ -136,4 +136,3 @@ routerAdd("GET", "/api/vs/mpz/meta", (e) => {
   const m = one[0] || { n: 0 };
   return e.json(200, { n: m.n, period: m.period, source: m.source, at: m.at, sum: parseFloat(m.sum) || 0, warehouses: wh.map((x) => ({ v: x.v, n: x.n })), qualities: q.map((x) => ({ v: x.v, n: x.n })) });
 }, $apis.requireAuth("users"));
-                                                                                   

@@ -204,4 +204,3 @@ function createShipment(L, tx, a, b) {
 }
 
 module.exports = { OVR_ROLES, guard, deny, check, ovrSave, conflictText, remember, REMEMBER, rememberRecord, jsonArr, shipRequests, createShipment, SEARCH, lc, searchText, SIGNS, cyr, keyOf, updKeys, updSearchKeys, updKeysField, supplierKey, supplierMatch, isOpenStatus, findActs };
-    

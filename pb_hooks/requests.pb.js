@@ -206,7 +206,7 @@ routerAdd("POST", "/api/vs/shipment/step", (e) => {
     const steps = X.jsonArr(s, "steps");
     let text = "";
     if (L.str(b.add)) {
-                if (steps.length >= 20) throw new BadRequestError("Не больше 20 этапов.");
+      if (steps.length >= 20) throw new BadRequestError("Не больше 20 этапов.");
       steps.push({ name: L.str(b.add).slice(0, 100), at: "", by: "", by_name: "" });
       X.remember(tx, "step", L.str(b.add));
       text = "добавлен этап «" + L.str(b.add) + "»";
@@ -329,4 +329,3 @@ onRecordCreateRequest((e) => {
 // ---------- 1.3: запомнить ручной ввод (подсказки) ----------
 onRecordAfterCreateSuccess((e) => { const X = require(`${__hooks}/lib_ext.js`); X.rememberRecord(e.app, e.record); e.next(); },
   "requests", "request_items", "request_shipments", "receipts", "reservations");
-          

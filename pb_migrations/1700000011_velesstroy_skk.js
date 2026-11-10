@@ -55,4 +55,3 @@ migrate((app) => {
 }, (app) => {
   ["skk_acts", "upd_docs"].forEach((n) => { try { app.delete(app.findCollectionByNameOrId(n)); } catch (_) {} });
 });
-    

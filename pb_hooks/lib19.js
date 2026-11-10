@@ -28,4 +28,3 @@ function subAccess(L, a, s, t) {
   if (t.getString("status") === "closed") throw new BadRequestError("Тема в архиве.");
 }
 module.exports = { topicLog, subAccess, OPER_ROLES, BOSS_ROLES, toks, sim, isBoss, isMember, upsertSupplier, stagesOf };
-                                                                  

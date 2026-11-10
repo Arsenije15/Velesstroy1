@@ -191,7 +191,7 @@ routerAdd("POST", "/api/vs/request/uchet", (e) => {
       }
     } else if (act === "reopen") {
       if (us !== "done") throw new BadRequestError("Учёт не завершён.");
-          r.set("uchet_status", "in_uchet"); r.set("uchet_done_at", ""); r.set("uchet_done_by", "");
+      r.set("uchet_status", "in_uchet"); r.set("uchet_done_at", ""); r.set("uchet_done_by", "");
       text = head + "учёт открыт повторно" + (L.str(b.comment) ? ": " + L.str(b.comment) : "");
     } else throw new BadRequestError("Неизвестное действие.");
     tx.save(r);
@@ -253,4 +253,3 @@ routerAdd("POST", "/api/vs/archive/import", (e) => {
   });
   return e.json(200, { total: total, removed: removed });
 }, $apis.requireAuth("users"));
-                        

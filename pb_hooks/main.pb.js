@@ -211,7 +211,7 @@ routerAdd("POST", "/api/vs/receipt/complete", (e) => {
 routerAdd("POST", "/api/vs/reserve", (e) => {
   const L = require(`${__hooks}/lib.js`);
   const X = require(`${__hooks}/lib_ext.js`);
-         const a = L.requireRole(e, L.WRITE_ROLES);
+  const a = L.requireRole(e, L.WRITE_ROLES);
   const b = e.requestInfo().body || {};
   const g = X.guard(L, a, b);
   const s = L.parse(b.start), en = L.parse(b.end);
@@ -421,7 +421,7 @@ routerAdd("POST", "/api/vs/receipt/allow", (e) => {
   $app.runInTransaction((tx) => {
     const r = tx.findRecordById("receipts", L.str(b.receipt));
     const st = r.getString("status");
-        if (st !== "denied" && st !== "rejected") throw new BadRequestError("Приёмка не запрещена — обход не нужен.");
+    if (st !== "denied" && st !== "rejected") throw new BadRequestError("Приёмка не запрещена — обход не нужен.");
     X.deny(g, st === "denied" ? "Приёмка УПД № " + r.getString("upd_number") + " запрещена правилом базы инструкций." : "В приёмке УПД № " + r.getString("upd_number") + " отказано руководителем.");
     X.check(g);
     r.set("status", "in_progress"); tx.save(r);

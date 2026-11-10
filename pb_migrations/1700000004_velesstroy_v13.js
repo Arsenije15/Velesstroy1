@@ -49,4 +49,3 @@ migrate((app) => {
 }, (app) => {
   try { app.delete(app.findCollectionByNameOrId("suggestions")); } catch (_) {}
 });
-      

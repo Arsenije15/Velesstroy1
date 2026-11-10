@@ -228,4 +228,3 @@ migrate((app) => {
   ["activity_log", "reservations", "resources", "attachments", "checklist_items", "checklist_templates", "approvals", "receipts", "rules"]
     .forEach((n) => { try { app.delete(app.findCollectionByNameOrId(n)); } catch (_) {} });
 });
-       

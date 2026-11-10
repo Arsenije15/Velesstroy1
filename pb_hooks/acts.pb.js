@@ -99,4 +99,3 @@ onRecordUpdate((e) => {
   e.record.set("search_lc", X.searchText(e.record.collection().name, e.record));
   e.next();
 }, "requests", "request_items", "acts", "receipts");
-        

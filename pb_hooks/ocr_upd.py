@@ -236,7 +236,7 @@ def table_rows(img):
         for j, x in enumerate(numrow[1]):
             k = NUMROW.get(x.strip())
             if k and k not in col and j not in col.values(): col[k] = j
-      if not ("name" in col and "qty" in col): return {"cols": col, "heads": heads, "items": []}
+    if not ("name" in col and "qty" in col): return {"cols": col, "heads": heads, "items": []}
     start = numrow[0] + 1 if numrow else 1
     items, totals = [], {}
     for a, b in bands[start:]:
@@ -332,4 +332,3 @@ def main(path):
 
 if __name__ == "__main__":
     main(sys.argv[1])
-            

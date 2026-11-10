@@ -152,4 +152,3 @@ module.exports = {
   WRITE_ROLES, ROLE_RU, todayLocal, fmt, parse, str, normUpd, normOrg, role, isSuper, userName,
   requireRole, authId, log, evaluate, createChecklist, conflictCheck, activeReservations, effEnd,
 };
-    
