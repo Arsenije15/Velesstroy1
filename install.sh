@@ -51,7 +51,8 @@ say "Копирую программу (данные в $APP/pb_data не тро
 rm -rf "$APP/pb_hooks" "$APP/pb_migrations" "$APP/pb_public"
 cp -r "$SRC/pb_hooks" "$SRC/pb_migrations" "$SRC/pb_public" "$APP/"
 id velesstroy >/dev/null 2>&1 || useradd --system --home "$APP" --shell /usr/sbin/nologin velesstroy
-mkdir -p "$APP/pb_data"; chown -R velesstroy:velesstroy "$APP"
+mkdir -p "$APP/pb_data"; chown -R velesstroy:velesstroy "$APP" 2>/dev/null || true   # служба работает: временные файлы базы (-wal/-shm) могут исчезнуть во время chown — это не ошибка
+chown velesstroy:velesstroy "$APP" "$APP/pb_data" "$APP/pb_data/data.db" 2>/dev/null || true
 
 if [ -n "$DOMAIN" ]; then echo "$DOMAIN" > "$APP/.domain"; elif [ -f "$APP/.domain" ]; then DOMAIN=$(cat "$APP/.domain"); fi
 if [ -n "$DOMAIN" ]; then SERVE="serve $DOMAIN"; else SERVE="serve --http 0.0.0.0:80"; fi
