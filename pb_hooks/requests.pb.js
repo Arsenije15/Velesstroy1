@@ -187,7 +187,10 @@ const shipCreate = (e) => {
   const a = L.requireRole(e, L.WRITE_ROLES);
   const b = e.requestInfo().body || {};
   let out = null;
-  $app.runInTransaction((tx) => { out = { shipment: X.createShipment(L, tx, a, b).id }; });
+  // 1.9.8: отгрузка из очереди телефона (без интернета) — повторная отправка той же записи не создаёт дубль
+  const cid = L.str(b.client_id).replace(/[^a-z0-9_-]/gi, "").slice(0, 40);
+  if (cid) { try { const ex = $app.findFirstRecordByFilter("request_shipments", "client_id = {:c}", { c: cid }); return e.json(200, { shipment: ex.id, duplicate: true }); } catch (_) {} }
+  $app.runInTransaction((tx) => { const s = X.createShipment(L, tx, a, b); if (cid) { s.set("client_id", cid); tx.save(s); } out = { shipment: s.id }; });
   return e.json(200, out);
 };
 routerAdd("POST", "/api/vs/request/shipment/create", shipCreate, $apis.requireAuth("users"));

@@ -162,7 +162,7 @@ async function api(method,path,body,isForm){
   if(body&&!isForm)h["Content-Type"]="application/json";
   let r;
   try{r=await fetch(path,{method,headers:h,body:body?(isForm?body:JSON.stringify(body)):undefined})}
-  catch(e){setOnline(false);throw new Error("Нет связи с сервером. Проверьте интернет и повторите.")}
+  catch(e){setOnline(false);const er=new Error("Нет связи с сервером. Проверьте интернет и повторите.");er.net=true;throw er}
   setOnline(true);
   let j=null;try{j=await r.json()}catch(_){}
   if(r.status===401&&S.auth){logout(true);throw new Error("Сессия истекла — войдите снова.")}
@@ -218,7 +218,9 @@ async function act(btn,fn,okMsg){
   catch(e){toast(e.message,"err")}
   finally{if(btn)btn.disabled=false}
 }
-function setOnline(v){S.online=v;$("#netbar").classList.toggle("show",!v);paintNet()}
+function setOnline(v){S.online=v;$("#netbar").classList.toggle("show",!v);paintNet();
+  if(!v&&S.user&&!S.off&&offCanUse()&&!setOnline.t)setOnline.t=setTimeout(async()=>{setOnline.t=null;if(!S.online&&!S.off){OFF.data=await offGet("data");if(OFF.data&&await offStart())toast("Нет интернета — включён режим без связи","err")}},4000);
+  if(v&&setOnline.t){clearTimeout(setOnline.t);setOnline.t=null}}
 function paintNet(){const n=$("#net");if(!n)return;n.className="net"+(!S.online?" off":S.rt!=="on"?" wait":"");
   n.title=!S.online?"Нет связи":S.rt==="on"?"Онлайн: изменения приходят автоматически":"Подключение…"}
 
@@ -259,7 +261,7 @@ function rtStart(){
 }
 async function flushAll(){(can.coord()?["users"]:Object.keys(LOAD)).forEach(c=>pend.add(c));pend.add("checklist_items");pend.add("attachments");pend.add("activity_log");pend.add("request_items");pend.add("request_files");clearTimeout(pendT);pendT=setTimeout(flush,50)}
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&S.auth){flushAll();if(!es||es.readyState===2)rtStart()}});
-setInterval(()=>{if(S.auth&&!document.hidden)flushAll()},60000); // страховка при плохой связи
+setInterval(()=>{if(S.auth&&!document.hidden&&!S.off){flushAll();offSnap(false)}},60000); // страховка при плохой связи; копия заявок для работы без сети
 setInterval(()=>{if(S.auth&&location.hash.startsWith("#/resources"))render([])},30000); // статусы по времени
 
 /* ---------- Вход ---------- */
@@ -277,11 +279,13 @@ function drawLogin(){
     await boot()})};
 }
 async function boot(){
+  let net=true;
   try{const j=await api("POST","/api/collections/users/auth-refresh");S.auth=j.token;S.user=j.record;try{localStorage.setItem("vs_auth",JSON.stringify({t:j.token,u:j.record}))}catch(_){}}
-  catch(e){if(!S.auth)return;if(e.status)return logout(true)}
+  catch(e){if(!S.auth)return;if(e.status)return logout(true);net=false}
   shell();
+  if(!net&&await offStart())return;   // 1.9.8: без интернета — заявки, отгрузка и фото груза из памяти телефона
   try{await load(can.coord()?["users"]:Object.keys(LOAD))}catch(e){toast(e.message,"err")}
-  rtStart();route();
+  rtStart();route();offAfterOnline();
 }
 
 /* ---------- Каркас ---------- */
@@ -297,7 +301,7 @@ function shell(){
   $("#lo").onclick=()=>{if(confirm("Выйти из системы?"))logout()};
 }
 window.addEventListener("hashchange",route);
-function route(){if(!S.user)return;const home=can.coord()?"#/topics":can.skkView()?"#/skk":"#/home";if(!location.hash||location.hash==="#/")location.hash=home;
+function route(){if(!S.user)return;if(S.off)return offRoute();const home=can.coord()?"#/topics":can.skkView()?"#/skk":"#/home";if(!location.hash||location.hash==="#/")location.hash=home;
   if(can.coord()&&!/^#\/(topics|topic)(\/|$)/.test(location.hash)){location.hash=home;return}
   if(can.skkView()&&!/^#\/(skk|upd|updedit|skkact|skkactedit|oper|mpz|topics|topic)(\/|$)/.test(location.hash)){location.hash=home;return}
   S.route=location.hash.slice(2);render(null,true)}
@@ -2741,6 +2745,122 @@ function userForm(id){
     const p=$("#up",box).value;if(p){if(p.length<8)throw new Error("Пароль не короче 8 символов.");d.password=p;d.passwordConfirm=p}else if(!id)throw new Error("Задайте пароль.");
     await api(id?"PATCH":"POST","/api/collections/users/records"+(id?"/"+id:""),d);closeModal();await load(["users"]);vUsers()},"Сохранено")});
 }
+
+/* ---------- 1.9.8: БЕЗ ИНТЕРНЕТА — заявки (поиск), отгрузка, фото груза ----------
+   Пока есть сеть, телефон сохраняет у себя открытые и недавние заявки с позициями и отгрузки.
+   Без сети: поиск по заявкам, подготовка отгрузки и фото груза — в очередь; при появлении сети очередь отправляется сама. */
+const OFF={data:null,box:[],syncing:false,lastSync:0};
+const offDB=(mode,fn)=>new Promise((res,rej)=>{const o=indexedDB.open("vs_offline",1);o.onupgradeneeded=()=>{o.result.createObjectStore("kv")};o.onerror=()=>rej(o.error);
+  o.onsuccess=()=>{const tx=o.result.transaction("kv",mode);const r=fn(tx.objectStore("kv"));tx.oncomplete=()=>{res(r&&r.result);o.result.close()};tx.onerror=()=>rej(tx.error)}});
+const offGet=k=>offDB("readonly",s=>s.get(k)).catch(()=>null);
+const offPut=(k,v)=>offDB("readwrite",s=>s.put(v,k));
+const offCanUse=()=>S.user&&["admin","manager","storekeeper"].includes(S.user.role);
+async function offLoadBox(){OFF.box=(await offGet("outbox"))||[];offPaint();return OFF.box}
+async function offSaveBox(){await offPut("outbox",OFF.box);offPaint()}
+function offPaint(){let b=$("#offq");const n=OFF.box.length;if(!b&&$("header")){b=document.createElement("button");b.id="offq";b.className="btn sm";b.style.cssText="background:#f2b705;color:#14181f;border:0;margin-left:6px";$("header").insertBefore(b,$("#net"));b.onclick=()=>offQueueView()}
+  if(b){b.style.display=n?"":"none";b.textContent="⏳ "+n+" в очереди"+(OFF.box.some(x=>x.err)?" ⚠":"")}}
+// копия заявок для работы без сети (раз в 5 минут, пока есть связь)
+async function offSnap(force){if(!offCanUse()||S.off||(!force&&Date.now()-OFF.lastSync<300000))return;OFF.lastSync=Date.now();
+  try{const d90=new Date(Date.now()-90*86400000).toISOString().replace("T"," ");
+    const [reqs,items,ships,res]=await Promise.all([all("requests",`status="open"||created>="${d90}"`,"-created"),all("request_items",`request.status="open"||request.created>="${d90}"`,"sort"),
+      all("request_shipments",`status="preparing"||status="sent"||created>="${new Date(Date.now()-14*86400000).toISOString().replace("T"," ")}"`,"-created"),Promise.resolve(S.data.resources||[])]);
+    OFF.data={at:new Date().toISOString(),user:S.user.id,requests:reqs,items,ships,resources:res.map(r=>({id:r.id,name:r.name,category:r.category})),users:(S.data.users||[]).map(u=>({id:u.id,name:u.name,username:u.username})),
+      steps:sugList("steps_tpl")[0]||"",vehicles:sugList("vehicle").slice(0,40),drivers:sugList("driver").slice(0,40)};
+    await offPut("data",OFF.data)}catch(_){}}
+async function offStart(){if(!offCanUse())return false;OFF.data=await offGet("data");await offLoadBox();
+  if(!OFF.data){toast("Нет интернета, а данных на телефоне ещё нет — откройте программу один раз при связи.","err");return false}
+  S.off=true;S.data.requests=OFF.data.requests;S.data.shipments=OFF.data.ships;S.data.resources=OFF.data.resources;S.data.users=S.data.users||OFF.data.users;
+  setOnline(false);$("#netbar").textContent="БЕЗ ИНТЕРНЕТА — заявки, отгрузка и фото груза работают; всё отправится само, когда появится связь";
+  if(!/^#\/(requests|request)(\/|$)/.test(location.hash))location.hash="#/requests";offRoute();offWatch();return true}
+// связь появилась — отправляем очередь и возвращаемся в обычный режим
+function offWatch(){if(OFF.w)return;OFF.w=setInterval(offTry,20000);window.addEventListener("online",offTry)}
+async function offTry(){if(OFF.syncing)return;try{await fetch("/api/health",{cache:"no-store"})}catch(_){return}
+  if(S.off){S.off=false;$("#netbar").textContent="НЕТ СВЯЗИ С СЕРВЕРОМ — данные на экране могут быть неактуальны";setOnline(true);
+    try{const j=await api("POST","/api/collections/users/auth-refresh");S.auth=j.token;S.user=j.record}catch(e){if(e.status)return logout(true)}
+    try{await load(Object.keys(LOAD))}catch(_){}rtStart()}
+  await offFlush();route()}
+function offAfterOnline(){offLoadBox().then(()=>{if(OFF.box.length)offFlush()});offWatch();setTimeout(()=>offSnap(true),3000)}
+const offId=()=>"m"+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+async function offFlush(){if(OFF.syncing||!OFF.box.length)return;OFF.syncing=true;let sent=0;
+  try{for(const x of OFF.box.slice()){if(x.done)continue;try{
+      if(x.type==="ship"&&!x.shipment){const r=await api("POST","/api/vs/shipment/create",Object.assign({},x.body,{client_id:x.id}));x.shipment=r.shipment;await offSaveBox()}
+      const sid=x.type==="ship"?x.shipment:x.ship;
+      for(const p of x.photos||[]){if(p.sent)continue;const fd=new FormData();fd.append("request",x.req);fd.append("kind","shipment");fd.append("uploaded_by",S.user.id);fd.append("shipment",sid);fd.append("client_id",p.id);
+        fd.append("file",new File([p.blob],p.name||"foto.jpg",{type:p.blob.type||"image/jpeg"}));
+        try{await api("POST","/api/collections/request_files/records",fd,true)}catch(e){if(!(e.message||"").includes("client_id"))throw e}   // уже отправлено раньше — не дубль
+        p.sent=true;await offSaveBox()}
+      OFF.box=OFF.box.filter(y=>y!==x);delete x.err;sent++;await offSaveBox()}
+    catch(e){if(e.net)break;x.err=e.message;await offSaveBox()}}}
+  finally{OFF.syncing=false}
+  if(sent){toast("Из очереди отправлено: "+sent,"ok");OFF.lastSync=0;offSnap(true)}}
+function offQueueView(){modal(`<h3>⏳ Очередь (${OFF.box.length})</h3><div class="muted">Отправится само, когда будет связь.</div>
+   ${OFF.box.map((x,i)=>`<div class="card" style="margin-top:8px;padding:10px"><b>${x.type==="ship"?"🚚 Отгрузка "+esc(x.body.vehicle):"📷 Фото груза к отгрузке "+esc(x.vehicle||"")}</b>
+    <div class="muted">${esc(x.label||"")} · фото: ${(x.photos||[]).length} · ${dt(x.at)}</div>${x.err?`<div style="color:var(--r);font-weight:700">Не принято: ${esc(x.err)}</div><button class="btn sm" data-qd="${i}">Убрать из очереди</button>`:""}</div>`).join("")||'<div class="muted">Пусто</div>'}
+   <div class="row" style="margin-top:12px"><button class="btn p grow" id="qgo">Отправить сейчас</button><button class="btn" data-close>Закрыть</button></div>`,box=>{
+   $("#qgo",box).onclick=e=>act(e.target,async()=>{await offTry();closeModal();if(OFF.box.length)toast("Связи пока нет — попробуем позже","err")});
+   box.querySelectorAll("[data-qd]").forEach(b=>b.onclick=async()=>{if(!confirm("Убрать из очереди? Данные не отправятся."))return;OFF.box.splice(+b.dataset.qd,1);await offSaveBox();closeModal();offQueueView()})})}
+// ---- экраны без сети ----
+const OFR={q:""};
+function offRoute(){S.route=location.hash.slice(2);const [p,id]=S.route.split("/");document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("on",a.dataset.n==="requests"));
+  if(p==="request"&&id)return offReq(id);if(p!=="requests"){location.hash="#/requests";return}offList()}
+const offItems=rid=>OFF.data.items.filter(i=>i.request===rid);
+const offRest=i=>Math.max(0,Math.round((num(i.qty_ordered)-num(i.qty_issued))*1000)/1000);
+function offShipsOf(rid){const L=OFF.data.ships.filter(s=>s.request===rid||jarr(s.lines).some(l=>offItems(rid).some(i=>i.id===l.item)));
+  return L.concat(OFF.box.filter(x=>x.type==="ship"&&x.reqs.includes(rid)).map(x=>({id:x.id,queued:true,vehicle:x.body.vehicle,driver:x.body.driver,status:"preparing",lines:x.body.lines,photos:(x.photos||[]).length})))}
+function offBanner(){return `<div class="banner yellow" style="font-size:15px">📴 Без интернета. Данные на ${dt(OFF.data.at)}. Отгрузка и фото груза уйдут сами при связи.${OFF.box.length?` В очереди: <b>${OFF.box.length}</b>`:""}</div>`}
+function offList(){const q=OFR.q;const R=OFF.data.requests.filter(r=>!q||wmatch(q,[r.number,r.object,r.recipient,r.note].concat(offItems(r.id).map(i=>i.material+" "+i.supplier)).join(" ")));
+  $("#main").innerHTML=`<h1>Заявки</h1>${offBanner()}
+   <div class="card"><div class="row"><input id="ofq" value="${esc(q)}" placeholder="🔎 № заявки, объект, получатель, материал" style="flex:1;min-width:160px"><button class="btn p" id="ofb">НАЙТИ</button></div>
+    <div class="row" style="margin-top:8px"><button class="btn acc" id="ofsh">🚚 Подготовить отгрузку</button></div></div>
+   ${OFF.data.ships.filter(s=>s.status==="preparing"||s.status==="sent").length||OFF.box.length?`<h2>Отгрузки</h2><div class="card list">${OFF.data.ships.filter(s=>s.status==="preparing"||s.status==="sent").map(s=>`<div class="it"><div style="flex:1"><b>🚚 ${esc(s.vehicle)}</b> <span class="pill ${SHS[s.status][1]}">${SHS[s.status][0]}</span><div class="muted">${jarr(s.lines).length} поз.${s.driver?" · водитель "+esc(s.driver):""}</div></div><label class="btn sm">📷 Фото груза<input type="file" accept="image/*" capture="environment" multiple hidden data-ofp="${s.id}"></label></div>`).join("")}
+     ${OFF.box.filter(x=>x.type==="ship").map(x=>`<div class="it"><div style="flex:1"><b>🚚 ${esc(x.body.vehicle)}</b> <span class="pill y">В ОЧЕРЕДИ</span><div class="muted">${x.body.lines.length} поз. · фото ${(x.photos||[]).length}</div></div></div>`).join("")}</div>`:""}
+   <h2>Заявки (${R.length})</h2><div class="card list">${R.slice(0,150).map(r=>{const its=offItems(r.id),full=its.filter(i=>offRest(i)<=0).length;const s=RQS[r.status]||["",""];
+     return `<a class="it" href="#/request/${r.id}"><div style="flex:1;min-width:0"><b>№ ${esc(r.number)}</b> <span class="muted">${r.req_date?dt(r.req_date).slice(0,10):""}</span><div class="muted">${esc(r.object||"")}${r.recipient?" · "+esc(r.recipient):""}</div></div><span class="pill ${s[1]}">${full}/${its.length}</span></a>`}).join("")||'<div class="empty">Ничего не найдено</div>'}</div>`;
+  const go=()=>{OFR.q=$("#ofq").value.trim();offList()};$("#ofb").onclick=go;$("#ofq").onkeydown=e=>{if(e.key==="Enter")go()};
+  $("#ofsh").onclick=()=>offShipForm(null);offPhotoBind()}
+function offReq(id){const r=OFF.data.requests.find(x=>x.id===id);if(!r){$("#main").innerHTML=offBanner()+`<div class="card empty">Этой заявки нет в памяти телефона</div>`;return}
+  const its=offItems(id),sh=offShipsOf(id);
+  $("#main").innerHTML=`<div class="row noprint"><a class="btn sm" href="#/requests">← Заявки</a></div><h1>Заявка № ${esc(r.number)}</h1>${offBanner()}
+   <div class="card"><div class="kv"><b>Объект</b><span>${esc(r.object||"—")}</span><b>Получатель</b><span>${esc(r.recipient||"—")}</span>${r.note?`<b>Примечание</b><span>${esc(r.note)}</span>`:""}</div>
+    <div class="row" style="margin-top:8px"><button class="btn acc" id="ofsh">🚚 Отгрузка по этой заявке</button></div></div>
+   ${sh.length?`<h2>Отгрузки</h2><div class="card list">${sh.map(s=>`<div class="it"><div style="flex:1"><b>🚚 ${esc(s.vehicle)}</b> <span class="pill ${s.queued?"y":SHS[s.status][1]}">${s.queued?"В ОЧЕРЕДИ":SHS[s.status][0]}</span><div class="muted">${jarr(s.lines).length} поз.${s.queued?" · фото "+s.photos:""}</div></div>${!s.queued&&(s.status==="preparing"||s.status==="sent")?`<label class="btn sm">📷 Фото груза<input type="file" accept="image/*" capture="environment" multiple hidden data-ofp="${s.id}"></label>`:""}</div>`).join("")}</div>`:""}
+   <h2>Позиции (${its.length})</h2>${its.map((it,i)=>`<div class="card"><div class="muted">Позиция ${i+1}${it.rd?" · РД "+esc(it.rd):""}</div><b>${esc(it.material)}</b>
+    <div class="muted">${it.supplier?"Поставщик: "+esc(it.supplier):""}${it.supply_doc?" · "+esc(it.supply_doc):""}</div>
+    <div>Заказано <b>${fmtQ(it.qty_ordered)} ${esc(it.unit)}</b> · выдано <b>${fmtQ(it.qty_issued)}</b> · осталось <b>${fmtQ(offRest(it))}</b></div></div>`).join("")}`;
+  $("#ofsh").onclick=()=>offShipForm(id);offPhotoBind()}
+function offPhotoBind(){document.querySelectorAll("[data-ofp]").forEach(inp=>inp.onchange=()=>act(null,async()=>{const s=OFF.data.ships.find(x=>x.id===inp.dataset.ofp);
+  const photos=[];for(const f of inp.files)photos.push({id:offId(),name:f.name,blob:await shrink(f)});
+  OFF.box.push({id:offId(),type:"photo",ship:s.id,req:s.request,vehicle:s.vehicle,label:"заявка "+((OFF.data.requests.find(r=>r.id===s.request)||{}).number||""),photos,at:new Date().toISOString()});
+  await offSaveBox();route()},"Фото в очереди"))}
+function offShipForm(reqId){const reqs={};OFF.data.requests.filter(r=>r.status==="open").forEach(r=>reqs[r.id]=r);
+  const items=OFF.data.items.filter(i=>reqs[i.request]);const sel=new Map();if(reqId)items.filter(i=>i.request===reqId&&offRest(i)>0).forEach(i=>sel.set(i.id,offRest(i)));let photos=[];
+  modal(`<h3>🚚 Отгрузка (без интернета)</h3><div class="muted">Сохранится в телефоне и отправится, когда появится связь.</div>
+   <label class="f">Машина (марка, госномер) *</label><input id="ofv" list="ofvl"><datalist id="ofvl">${(OFF.data.vehicles||[]).map(v=>`<option value="${esc(v)}">`).join("")}</datalist>
+   <label class="f">Водитель</label><input id="ofd" list="ofdl"><datalist id="ofdl">${(OFF.data.drivers||[]).map(v=>`<option value="${esc(v)}">`).join("")}</datalist>
+   <label class="f">Время в пути, часов</label><input id="ofh" inputmode="decimal" value="4">
+   <h3 style="margin-top:12px">Позиции <span class="muted" id="ofc"></span></h3><input id="ofs" placeholder="Найти: № заявки или материал"><div id="ofl" style="max-height:300px;overflow:auto;margin-top:6px"></div>
+   <h3 style="margin-top:12px">📷 Фото груза</h3><label class="btn acc">Сфотографировать<input type="file" id="ofph" accept="image/*" capture="environment" multiple hidden></label> <label class="btn">Из галереи<input type="file" id="ofpg" accept="image/*" multiple hidden></label><div id="ofpv" class="row" style="gap:6px;margin-top:6px"></div>
+   <label class="f">Примечание</label><input id="ofn">
+   <div class="row" style="margin-top:14px"><button class="btn p grow" id="mok">СОХРАНИТЬ В ОЧЕРЕДЬ</button><button class="btn" data-close>Отмена</button></div>`,box=>{
+   const draw=()=>{const q=$("#ofs",box).value.trim();const m=i=>!q||wmatch(q,reqs[i.request].number+" "+i.material+" "+(reqs[i.request].object||""));
+     const ch=items.filter(i=>sel.has(i.id)),ot=items.filter(i=>!sel.has(i.id)&&m(i)&&(q||!reqId||i.request===reqId)).slice(0,60);
+     const row=i=>{const on=sel.has(i.id);return `<div class="line"><input type="checkbox" data-li="${i.id}" ${on?"checked":""}><div style="flex:1;min-width:0"><b>№ ${esc(reqs[i.request].number)}</b> · ${esc(i.material)}<div class="muted">осталось ${fmtQ(offRest(i))} из ${fmtQ(i.qty_ordered)} ${esc(i.unit)}</div></div>${on?`<input data-lq="${i.id}" inputmode="decimal" value="${fmtQ(sel.get(i.id))}" style="width:90px;min-height:40px">`:""}</div>`};
+     $("#ofl",box).innerHTML=ch.map(row).join("")+ot.map(row).join("")||'<div class="muted">Ничего не найдено</div>';$("#ofc",box).textContent=sel.size?"· выбрано "+sel.size:"";
+     box.querySelectorAll("[data-li]").forEach(c=>c.onchange=()=>{const it=items.find(x=>x.id===c.dataset.li);if(c.checked)sel.set(it.id,offRest(it)||num(it.qty_ordered));else sel.delete(it.id);draw()});
+     box.querySelectorAll("[data-lq]").forEach(c=>c.oninput=()=>sel.set(c.dataset.lq,c.value))};
+   draw();$("#ofs",box).oninput=draw;
+   const addPh=async inp=>{for(const f of inp.files)photos.push({id:offId(),name:f.name,blob:await shrink(f)});inp.value="";
+     $("#ofpv",box).innerHTML=photos.map(p=>`<img src="${URL.createObjectURL(p.blob)}" alt="" style="width:70px;height:70px;object-fit:cover;border-radius:8px">`).join("")};
+   $("#ofph",box).onchange=e=>addPh(e.target);$("#ofpg",box).onchange=e=>addPh(e.target);
+   $("#mok",box).onclick=e=>act(e.target,async()=>{const v=$("#ofv",box).value.trim();if(!v)throw new Error("Укажите машину.");
+     const lines=[...sel.entries()].map(([item,qty])=>({item,qty:String(qty).replace(",",".")}));if(!lines.length)throw new Error("Выберите хотя бы одну позицию.");
+     const rq=[...new Set(lines.map(l=>items.find(i=>i.id===l.item).request))];
+     const steps=(OFF.data.steps||"Погрузка\nВыезд\nПрибытие на объект\nРазгрузка").split("\n").map(x=>x.trim()).filter(Boolean);
+     OFF.box.push({id:offId(),type:"ship",reqs:rq,req:rq[0],label:"заявк"+(rq.length>1?"и":"а")+" № "+rq.map(x=>reqs[x].number).join(", "),
+       body:{request:"",lines,steps,vehicle:v,driver:$("#ofd",box).value.trim(),hours:$("#ofh",box).value,note:$("#ofn",box).value,resources:[]},photos,at:new Date().toISOString()});
+     await offSaveBox();closeModal();route()},"Отгрузка сохранена в очередь")})}
+// приложение открывается без интернета (сохранённая страница в телефоне)
+if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("/sw.js").catch(()=>{}));
 
 /* ---------- 1.9.7: КОНСТРУКТОР ПОЛЕЙ (Настройки → Поля форм) ---------- */
 // Свои поля (тип, обязательность, порядок) и настройки встроенных полей (название, скрыть) — без программиста.
