@@ -14,6 +14,7 @@ h2{font-size:14px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut)
 .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:13px;font-weight:700;background:var(--line);white-space:nowrap}
 .pill.g{background:var(--gbg);color:var(--g)}.pill.b{background:var(--bbg);color:var(--b)}.pill.r{background:var(--rbg);color:var(--r)}.pill.y{background:var(--ybg);color:var(--y)}
 input,select,textarea{font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);width:100%}
+.pk{display:flex;gap:8px;align-items:center;padding:4px 0}.pk input{width:22px;height:22px;flex:none}
 label.f{display:block;font-size:13px;font-weight:700;color:var(--mut);margin:10px 0 4px}
 button{font:inherit;font-weight:700;padding:10px 14px;border:0;border-radius:10px;background:var(--acc);color:#14181f;cursor:pointer}button.sec{background:var(--line);color:var(--ink)}button.sm{padding:6px 10px;font-size:14px}
 button:disabled{opacity:.6}
@@ -44,6 +45,23 @@ const fdt=s=>{if(!s)return"";const m=String(s).match(/^(\d{4})-(\d{2})-(\d{2})(?
   return (s.slice(0,10)===today?"сегодня":m[3]+"."+m[2])+(m[4]?" "+m[4]+":"+m[5]:"")};
 const ST={plan:["План / бронь","b"],work:["Работает","y"],done:["Закончил","g"],cancel:["Отменено",""]};
 const KIND={tech:"🏗 Техника",people:"👷 Люди",other:"📦 Другое"};
+// 1.9.7: свои поля (Настройки → Поля форм)
+const XFP={
+  input(d,v){const a=`data-xk="${d.key}"`;v=v==null?"":v;const lab=`<label class="f">${esc(d.label)}${d.required?" *":""}${d.hint?` <span class="mut">— ${esc(d.hint)}</span>`:""}</label>`;
+    if(d.type==="bool")return `<label class="pk" style="margin-top:8px"><input type="checkbox" ${a} ${v===true?"checked":""}> <b>${esc(d.label)}${d.required?" *":""}</b></label>`;
+    if(d.type==="select")return lab+`<select ${a}><option value="">—</option>${(d.options||[]).map(o=>`<option ${o===v?"selected":""}>${esc(o)}</option>`).join("")}</select>`;
+    if(d.type==="photo")return "";
+    return lab+`<input ${a} ${d.type==="number"?'inputmode="decimal"':d.type==="date"?'type="date"':""} value="${esc(v)}">`},
+  custom:F=>(F||[]).filter(d=>!d.builtin&&!d.hidden&&d.type!=="photo"),
+  block(F,ex){return XFP.custom(F).map(d=>XFP.input(d,(ex||{})[d.key])).join("")},
+  read(sc,old){const o=Object.assign({},old||{});sc.querySelectorAll("[data-xk]").forEach(i=>{o[i.dataset.xk]=i.type==="checkbox"?i.checked:i.value.trim()});return o},
+  check(sc,F,ids){const m=[];XFP.custom(F).filter(d=>d.required).forEach(d=>{const i=sc.querySelector(`[data-xk="${d.key}"]`);if(i&&(i.type==="checkbox"?!i.checked:!i.value.trim()))m.push(d.label)});
+    (F||[]).filter(d=>d.builtin&&d.required&&!d.hidden&&ids[d.key]).forEach(d=>{const i=sc.querySelector(ids[d.key]);if(i&&!i.value.trim())m.push(d.label||d.key)});
+    if(m.length)throw new Error("Заполните «"+m.join("», «")+"»")},
+  apply(sc,F,ids,core){(F||[]).filter(d=>d.builtin&&ids[d.key]).forEach(d=>{const el=sc.querySelector(ids[d.key]);if(!el)return;const w=el.parentElement;const lab=w&&w.querySelector("label.f")&&w.children.length<=2?w.querySelector("label.f"):el.previousElementSibling&&el.previousElementSibling.matches("label")?el.previousElementSibling:null;
+    if(d.label&&lab)lab.textContent=d.label;if(d.hidden&&!(core||[]).includes(d.key)){el.style.display="none";if(lab)lab.style.display="none"}})},
+  val:(d,v)=>d.type==="bool"?(v?"да":"нет"):d.type==="date"?String(v).split("-").reverse().join("."):String(v),
+  line(F,ex){return XFP.custom(F).filter(d=>ex&&ex[d.key]!==undefined&&ex[d.key]!==""&&!(d.type==="bool"&&ex[d.key]===false)).map(d=>`${esc(d.label)}: <b>${esc(XFP.val(d,ex[d.key]))}</b>`).join(" · ")}};
 let D=null,F={kind:"",q:""},timer=null,busy=false;
 let NAME="";try{NAME=localStorage.getItem("vs_site_name")||""}catch(_){}
 function toast(t){const e=document.getElementById("toast");e.textContent=t;e.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display="none",4000)}
@@ -98,7 +116,7 @@ function card(r){const s=ST[r.status]||["",""],n=nowL(),late=live(r)&&r.end&&r.e
    <div class="row" style="justify-content:space-between"><b style="font-size:17px">${esc(r.title)}</b><span><span class="pill ${s[1]}">${s[0]}</span>${late?' <span class="pill r">срок вышел</span>':""}</span></div>
    <div class="mut">${KIND[r.kind]||""}${r.who?" · <b>"+esc(r.who)+"</b>":""}</div>
    <div>🕑 ${r.start?esc(fdt(r.start)):"—"} → ${r.end?esc(fdt(r.end)):"—"}${r.place?`<br>📍 ${esc(r.place)}`:""}</div>
-   ${r.note?`<div style="white-space:pre-wrap;margin-top:4px">${esc(r.note)}</div>`:""}
+   ${r.note?`<div style="white-space:pre-wrap;margin-top:4px">${esc(r.note)}</div>`:""}${XFP.line(D.fields,r.extra)?`<div style="margin-top:4px">${XFP.line(D.fields,r.extra)}</div>`:""}
    ${r.photos&&r.photos.length?`<div class="ph">${r.photos.map(p=>`<img loading="lazy" src="/api/files/site_board/${r.id}/${encodeURIComponent(p)}?thumb=480x0" data-img="/api/files/site_board/${r.id}/${encodeURIComponent(p)}" alt="фото">`).join("")}</div>`:""}
    <div class="mut" style="margin-top:4px">${esc(r.author)}${r.edited_by&&r.edited_by!==r.author?" · изменил(а) "+esc(r.edited_by):""} <a href="javascript:void 0" data-hist="${r.id}">история</a></div>
    <div id="h_${r.id}" style="display:none" class="mut">${(r.history||[]).slice().reverse().map(h=>`<div>${esc(fdt(String(h.at).replace(" ","T")))} — ${esc(h.by)}: ${esc(h.what)}</div>`).join("")}</div>
@@ -121,12 +139,14 @@ function form(r){need(()=>{const x=r||{kind:"tech",status:"plan",start:nowL()};
    <label class="f">Место выгрузки / работ</label><input id="fp" value="${esc(x.place||"")}" placeholder="Корпус В1, площадка 3">
    <div class="g2"><div><label class="f">С</label><input id="fa" type="datetime-local" value="${esc(x.start||"")}"></div><div><label class="f">До (когда закончит)</label><input id="fb" type="datetime-local" value="${esc(x.end||"")}"></div></div>
    <label class="f">Комментарий</label><textarea id="fn" rows="2">${esc(x.note||"")}</textarea>
-   <label class="f">Фото</label><input id="fph" type="file" accept="image/*" multiple>
-   <div class="row" style="margin-top:14px"><button id="fok" style="flex:1">СОХРАНИТЬ</button><button class="sec" data-close>Отмена</button></div>`,b=>{
+   ${XFP.block(D.fields,x.extra)}<label class="f">Фото</label><input id="fph" type="file" accept="image/*" multiple>
+   <div class="row" style="margin-top:14px"><button id="fok" style="flex:1">СОХРАНИТЬ</button><button class="sec" data-close>Отмена</button></div>`,b=>{XFP.apply(b,D.fields,{title:"#ft",who:"#fw",place:"#fp",start:"#fa",end:"#fb",note:"#fn"},["title"]);
    b.querySelector("#fok").onclick=async e=>{const v=id=>b.querySelector(id).value.trim();if(!v("#ft")){toast("Что за техника или люди?");return}
+     try{XFP.check(b,D.fields,{title:"#ft",who:"#fw",place:"#fp",start:"#fa",end:"#fb",note:"#fn"})}catch(err){toast(err.message);return}
      e.target.disabled=true;busy=true;
      try{const fd=new FormData();if(r)fd.append("id",r.id);fd.append("name",NAME);
        [["title","#ft"],["kind","#fk"],["status","#fs"],["who","#fw"],["place","#fp"],["start","#fa"],["end","#fb"],["note","#fn"]].forEach(([k,s])=>fd.append(k,v(s)));
+       if(XFP.custom(D.fields).length)fd.append("extra",JSON.stringify(XFP.read(b,r&&r.extra)));
        for(const f of b.querySelector("#fph").files)fd.append("photos",await shrink(f));
        const j=await call("POST","/save",fd);closeM();
        if(j.clash&&j.clash.length)modal(`<h3 style="margin-top:0">⚠ «${esc(v("#ft"))}» в это время уже записан</h3>${j.clash.map(c=>`<div class="card">${esc(fdt(c.start))} → ${esc(fdt(c.end)||"—")}<br><b>${esc(c.who||"")}</b>${c.place?" · "+esc(c.place):""}</div>`).join("")}<div class="mut">Запись сохранена — договоритесь, кто первый.</div><div class="row" style="margin-top:10px"><button data-close style="flex:1">Понятно</button></div>`);

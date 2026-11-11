@@ -46,6 +46,23 @@ const FIND={q:"",tab:"upd",res:null};
 function modal(h,bind){const m=document.getElementById("modal"),b=document.getElementById("mb");b.innerHTML=h;m.style.display="flex";busy=true;bind&&bind(b);b.querySelectorAll("[data-close]").forEach(x=>x.onclick=closeM)}
 function closeM(){document.getElementById("modal").style.display="none";busy=false}
 document.addEventListener("click",e=>{if(e.target.id==="modal")closeM()});
+// 1.9.7: свои поля (Настройки → Поля форм)
+const XFP={
+  input(d,v){const a=`data-xk="${d.key}"`;v=v==null?"":v;const lab=`<label class="f">${esc(d.label)}${d.required?" *":""}${d.hint?` <span class="mut">— ${esc(d.hint)}</span>`:""}</label>`;
+    if(d.type==="bool")return `<label class="pk" style="margin-top:8px"><input type="checkbox" ${a} ${v===true?"checked":""}> <b>${esc(d.label)}${d.required?" *":""}</b></label>`;
+    if(d.type==="select")return lab+`<select ${a}><option value="">—</option>${(d.options||[]).map(o=>`<option ${o===v?"selected":""}>${esc(o)}</option>`).join("")}</select>`;
+    if(d.type==="photo")return "";
+    return lab+`<input ${a} ${d.type==="number"?'inputmode="decimal"':d.type==="date"?'type="date"':""} value="${esc(v)}">`},
+  custom:F=>(F||[]).filter(d=>!d.builtin&&!d.hidden&&d.type!=="photo"),
+  block(F,ex){return XFP.custom(F).map(d=>XFP.input(d,(ex||{})[d.key])).join("")},
+  read(sc,old){const o=Object.assign({},old||{});sc.querySelectorAll("[data-xk]").forEach(i=>{o[i.dataset.xk]=i.type==="checkbox"?i.checked:i.value.trim()});return o},
+  check(sc,F,ids){const m=[];XFP.custom(F).filter(d=>d.required).forEach(d=>{const i=sc.querySelector(`[data-xk="${d.key}"]`);if(i&&(i.type==="checkbox"?!i.checked:!i.value.trim()))m.push(d.label)});
+    (F||[]).filter(d=>d.builtin&&d.required&&!d.hidden&&ids[d.key]).forEach(d=>{const i=sc.querySelector(ids[d.key]);if(i&&!i.value.trim())m.push(d.label||d.key)});
+    if(m.length)throw new Error("Заполните «"+m.join("», «")+"»")},
+  apply(sc,F,ids,core){(F||[]).filter(d=>d.builtin&&ids[d.key]).forEach(d=>{const el=sc.querySelector(ids[d.key]);if(!el)return;const w=el.parentElement;const lab=w&&w.querySelector("label.f")&&w.children.length<=2?w.querySelector("label.f"):el.previousElementSibling&&el.previousElementSibling.matches("label")?el.previousElementSibling:null;
+    if(d.label&&lab)lab.textContent=d.label;if(d.hidden&&!(core||[]).includes(d.key)){el.style.display="none";if(lab)lab.style.display="none"}})},
+  val:(d,v)=>d.type==="bool"?(v?"да":"нет"):d.type==="date"?String(v).split("-").reverse().join("."):String(v),
+  line(F,ex){return XFP.custom(F).filter(d=>ex&&ex[d.key]!==undefined&&ex[d.key]!==""&&!(d.type==="bool"&&ex[d.key]===false)).map(d=>`${esc(d.label)}: <b>${esc(XFP.val(d,ex[d.key]))}</b>`).join(" · ")}};
 const GR={ruk:"Руководители",sklad:"Склад",ogi:"ОГИ",omts:"ОМТС",skk:"СКК",podr:"Подрядчики","":"Без группы"};
 let DIR=null;const dir=async()=>DIR||(DIR=(await call("GET","/directory")).people);
 const zUrl=t=>location.origin+"/z.html?t="+t;
@@ -62,11 +79,11 @@ async function subForm(s){const P=await dir();const st=s?s.stages:[{},{}];
   modal(`<h3 style="margin-top:0">${s?"Изменить подтему":"Новая подтема"}</h3><label class="f">Название</label><input id="st" value="${esc(s?s.title:"")}">
    <label class="f">Описание</label><textarea id="sd" rows="2">${esc(s?s.description:"")}</textarea>
    <label class="f">Этапы</label><div id="sst">${st.map(stH).join("")}</div><button type="button" class="sec" id="sadd" style="margin-top:6px;padding:6px 10px">＋ Этап</button>
-   <label class="f">Кто участвует</label>${pickH(P,s?s.member_ids||[]:[DATA.me.id])}
-   <div class="row" style="margin-top:12px"><button id="sok" style="flex:1">СОХРАНИТЬ</button><button class="sec" data-close>Отмена</button></div>`,b=>{bindPick(b);
+   ${XFP.block(DATA.fields,s?s.extra:{})}<label class="f">Кто участвует</label>${pickH(P,s?s.member_ids||[]:[DATA.me.id])}
+   <div class="row" style="margin-top:12px"><button id="sok" style="flex:1">СОХРАНИТЬ</button><button class="sec" data-close>Отмена</button></div>`,b=>{bindPick(b);XFP.apply(b,DATA.fields,{title:"#st",description:"#sd"},["title"]);
    const bx=()=>b.querySelectorAll("[data-stx]").forEach(x=>x.onclick=()=>x.closest("[data-stg]").remove());bx();b.querySelector("#sadd").onclick=()=>{b.querySelector("#sst").insertAdjacentHTML("beforeend",stH({}));bx()};
-   b.querySelector("#sok").onclick=async e=>{e.target.disabled=true;try{const stages=[...b.querySelectorAll("[data-stg]")].map(r=>({uid:r.dataset.stg,name:r.querySelector('[data-k="name"]').value,deadline:r.querySelector('[data-k="deadline"]').value})).filter(x=>x.name.trim());
-     await call("POST","/sub_save",{id:s?s.id:"",title:b.querySelector("#st").value,description:b.querySelector("#sd").value,members:picked(b),stages});closeM();toast("Подтема сохранена");lastSig="";load()}catch(err){toast(err.message)}finally{e.target.disabled=false}}})}
+   b.querySelector("#sok").onclick=async e=>{e.target.disabled=true;try{XFP.check(b,DATA.fields,{title:"#st",description:"#sd"});const stages=[...b.querySelectorAll("[data-stg]")].map(r=>({uid:r.dataset.stg,name:r.querySelector('[data-k="name"]').value,deadline:r.querySelector('[data-k="deadline"]').value})).filter(x=>x.name.trim());
+     await call("POST","/sub_save",{id:s?s.id:"",title:b.querySelector("#st").value,description:b.querySelector("#sd").value,members:picked(b),stages,extra:XFP.read(b,s&&s.extra)});closeM();toast("Подтема сохранена");lastSig="";load()}catch(err){toast(err.message)}finally{e.target.disabled=false}}})}
 async function peopleForm(){const P=await dir();const d=DATA;
   modal(`<h3 style="margin-top:0">👥 Участники темы (${d.members.length})</h3><div class="mut">Дайте человеку его личную ссылку — он увидит только эту тему.</div>
    <div style="max-height:40vh;overflow:auto;margin-top:6px">${d.members.filter(m=>m.id!==d.me.id).map(m=>`<div style="padding:6px 0;border-bottom:1px dashed var(--line)" data-pm="${m.id}"><div class="row" style="justify-content:space-between"><b>${esc(m.name)}</b><button class="sec" style="padding:6px 10px" data-lk="${m.id}">🔗 Ссылка</button></div><div data-out></div></div>`).join("")||'<div class="mut">Пока только вы</div>'}</div>
@@ -106,7 +123,7 @@ function render(){const d=DATA,open=d.topic.status==="open",today=new Date(Date.
    ${d.subs.map(s=>{const st=s.stages,dn=st.filter(x=>x.done).length,can=open&&s.status==="open",ms=d.msgs.filter(m=>m.sub===s.id);
      return `<div class="card" style="border-left:5px solid ${s.status==="closed"?"var(--line)":st.length&&dn===st.length?"var(--g)":"var(--b)"}">
       <div class="row" style="justify-content:space-between"><b style="font-size:17px">${esc(s.title)}</b><span class="pill ${s.status==="closed"?"":st.length&&dn===st.length?"g":"b"}">${s.status==="closed"?"ЗАКРЫТА":dn+" / "+st.length}</span></div>
-      ${s.description?`<div style="white-space:pre-wrap;margin-top:4px">${esc(s.description)}</div>`:""}<div class="mut" style="margin-top:4px">Участвуют: ${s.members.map(esc).join(", ")}</div>
+      ${s.description?`<div style="white-space:pre-wrap;margin-top:4px">${esc(s.description)}</div>`:""}${XFP.line(d.fields,s.extra)?`<div style="margin-top:4px">${XFP.line(d.fields,s.extra)}</div>`:""}<div class="mut" style="margin-top:4px">Участвуют: ${s.members.map(esc).join(", ")}</div>
       <div style="margin-top:6px">${st.map(x=>{const late=!x.done&&x.deadline&&x.deadline<today;return `<label class="st ${x.done?"done":""}"><input type="checkbox" data-stage="${s.id}:${esc(x.uid)}" ${x.done?"checked":""} ${can?"":"disabled"}>
         <span style="flex:1"><span class="t">${esc(x.name)}</span>${x.deadline?` <span class="pill ${late?"r":x.done?"g":""}">до ${dmy(x.deadline)}</span>`:""}${x.done?`<div class="mut">✔ ${esc(x.done_by)}, ${dt(x.done_at)}</div>`:""}</span></label>`}).join("")||'<div class="mut">Этапов нет</div>'}</div>
       <div style="margin-top:8px"><div class="mut">Сообщения (${ms.filter(m=>m.kind==="msg").length})</div><div style="max-height:300px;overflow:auto" data-scroll>${ms.slice(-60).map(m=>`<div class="msg ${m.kind==="msg"?"":"sys"}"><b>${esc(m.user)}</b> <span class="mut">${dt(m.at)}</span><div style="white-space:pre-wrap">${esc(m.text)}</div></div>`).join("")||'<div class="mut">Пока нет</div>'}</div></div>

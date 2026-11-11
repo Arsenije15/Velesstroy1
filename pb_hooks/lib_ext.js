@@ -94,7 +94,12 @@ const SEARCH = {
   activity_log: ["summary", "user_name"],
 };
 function lc(s) { return String(s || "").toLowerCase().replace(/ё/g, "е"); }
-function searchText(col, rec) { return lc((SEARCH[col] || []).map((f) => rec.getString(f)).join(" ")).slice(0, 6000); }
+function searchText(col, rec) {
+  let t = (SEARCH[col] || []).map((f) => rec.getString(f)).join(" ");
+  // 1.9.7: значения своих полей (Настройки → поля форм) тоже ищутся
+  if (col === "requests" || col === "request_items") { try { const x = JSON.parse(rec.getString("extra") || "{}") || {}; t += " " + Object.keys(x).map((k) => (typeof x[k] === "boolean" ? "" : String(x[k]))).join(" "); } catch (_) {} }
+  return lc(t).slice(0, 6000);
+}
 
 // ---------- 1.3: обход запрета (override) с объяснением — только администратор и руководитель ----------
 // Все запреты собираются; если объяснение не дано или прав нет — ошибка «⛔ …» (клиент предлагает обход).

@@ -306,8 +306,8 @@ function render(changedCols,force){
   if(!S.user||!$("#main"))return;
   const [p,id]=S.route.split("/");
   document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("on",a.dataset.n===(p==="receipt"?"receive":p==="request"?"requests":/^(upd|updedit|skkact|skkactedit|oper)$/.test(p)?"skk":p==="topic"?"topics":p)));
-  const V={home:vHome,receive:vReceive,receipt:vReceipt,requests:vRequests,request:vRequest,resources:vResources,history:vHistory,rules:vRules,users:vUsers,split:vSplit,report:vReport,mpz:vMpz,skk:vSkk,upd:vUpd,updedit:vUpdEdit,skkact:vSkkAct,skkactedit:vSkkActEdit,oper:vOper,topics:vTopics,topic:vTopic}[p]||vHome;
-  if(p==="users"&&!can.admin())return vHome();
+  const V={fields:vFields,home:vHome,receive:vReceive,receipt:vReceipt,requests:vRequests,request:vRequest,resources:vResources,history:vHistory,rules:vRules,users:vUsers,split:vSplit,report:vReport,mpz:vMpz,skk:vSkk,upd:vUpd,updedit:vUpdEdit,skkact:vSkkAct,skkactedit:vSkkActEdit,oper:vOper,topics:vTopics,topic:vTopic}[p]||vHome;
+  if((p==="users"||p==="fields")&&!can.admin())return vHome();
   const key=S.route;if(key!==lastKey){window.scrollTo(0,0);lastKey=key;dirty.clear()}
   // Обновление пришло, пока человек вводит данные: сохраняем введённое, фокус и курсор
   const keep=[...dirty].map(i=>{const el=document.getElementById(i);return el?[i,el.value]:null}).filter(Boolean);
@@ -720,7 +720,7 @@ function fixSuppliers(vals,known){
 // Новая заявка или изменение существующей (ed = {r, items}). Поля шапки — как в бумажной форме.
 const HEADF=[["planned_date","Планируемая дата получения ТМЦ","например: 25.09.2026"],["from_wh","Со склада (склад отправителя)",""],["to_org","Для (организация / склад получателя)",""],
   ["contract_no","По договору №",""],["contract_date","Договор от","«07» октября 2024"],["poa_no","Доверенность №",""],["poa_date","Доверенность от",""]];
-async function requestForm(ed){await sugFresh(["object","recipient","material","supplier","unit","rd","from_wh","to_org","contract_no","poa_no","tmc_kind"]);
+async function requestForm(ed){await sugFresh(["object","recipient","material","supplier","unit","rd","from_wh","to_org","contract_no","poa_no","tmc_kind"]);await xfLoad();
   const E=!!ed,R=ed?ed.r:{};
   const row=(i,it)=>{it=it||{};const v=k=>esc(it[k]==null?"":it[k]);
    return `<div class="card" data-row ${it.id?`data-id="${it.id}"`:""} style="background:var(--bg);margin-bottom:8px;padding:10px">
@@ -735,7 +735,7 @@ async function requestForm(ed){await sugFresh(["object","recipient","material","
     <label class="f">Наименование в 1С (складское)</label><input data-k="name1c" value="${v("name1c")}">
     <div class="row"><div class="grow"><label class="f">Объект / код подобъекта</label><input data-k="objcode" value="${v("objcode")}"></div>
     <div class="grow"><label class="f">Наличие остатков, готовность к выдаче</label><input data-k="stock_note" value="${v("stock_note")}"></div></div></details>
-   <div data-alt class="muted"></div><div data-hint></div></div>`};
+   ${xfBlock("request_item",it.extra)}<div data-alt class="muted"></div><div data-hint></div></div>`};
   const rows0=E?ed.items.map((it,i)=>row(i+1,it)).join(""):row(1);
   const hv=k=>esc(R[k]||"");
   modal(`<h3>${E?"Изменить заявку № "+esc(R.number):"Новая заявка на выдачу"}</h3><div class="muted">${E?"Можно менять всё: шапку, позиции, заказанное количество. Каждое изменение запишется в журнал (было → стало).":"Выданное количество вносится потом в заявке. Изменить заявку можно, пока она открыта."}</div>
@@ -751,11 +751,11 @@ async function requestForm(ed){await sugFresh(["object","recipient","material","
    <details style="margin-top:10px" ${E&&HEADF.some(f=>R[f[0]])?"open":""}><summary style="cursor:pointer;font-weight:700">Шапка печатной формы (склад, договор, доверенность)</summary>
     ${HEADF.map(f=>`<label class="f">${f[1]}</label><input id="h_${f[0]}" value="${hv(f[0])}" placeholder="${esc(f[2])}" ${["from_wh","to_org","contract_no","poa_no"].includes(f[0])?`data-sug="${f[0]}" ${E?"":"data-prefill"}`:""}>`).join("")}
     <label class="f">Наименование вида ТМЦ</label><select id="h_tmc_kind"><option value="">—</option>${["проектные","непроектные"].map(k=>`<option ${R.tmc_kind===k?"selected":""}>${k}</option>`).join("")}</select></details>
-   <h3 style="margin-top:14px">Позиции</h3><div id="rrows">${rows0}</div>
+   ${xfBlock("request",R.extra)}<h3 style="margin-top:14px">Позиции</h3><div id="rrows">${rows0}</div>
    <button type="button" class="btn sm" id="radd">＋ Добавить позицию</button>
    <div class="row" style="margin-top:14px"><button class="btn p grow" id="mok">${E?"СОХРАНИТЬ ИЗМЕНЕНИЯ":"СОХРАНИТЬ ЗАЯВКУ"}</button><button class="btn" data-close>Отмена</button></div>`,
   box=>{
-    const deleted=[];
+    const deleted=[];xfApply(box,"request");xfApply(box,"request_item");
     const renum=()=>box.querySelectorAll("[data-row]").forEach((r,i)=>r.querySelector("b").textContent="Позиция "+(i+1));
     const bindDel=()=>box.querySelectorAll("[data-del]").forEach(d=>d.onclick=()=>{const rw=d.closest("[data-row]");
       if(box.querySelectorAll("[data-row]").length<=1)return toast("В заявке должна остаться хотя бы одна позиция","err");
@@ -803,17 +803,20 @@ async function requestForm(ed){await sugFresh(["object","recipient","material","
       renum();bindDel();bindHint();sugAttach(box);
       box.querySelectorAll("[data-row] [data-k=supplier],[data-row] [data-k=supply_doc]").forEach(el=>el.dispatchEvent(new Event("change")));
       const nw=box.querySelectorAll(".ocrw").length;
+      xfApply(box,"request_item");
       $("#ocrs",box).innerHTML=`<div class="banner ${nw?"yellow":"green"}" style="font-size:15px;margin:0">Прочитано позиций: ${res.items.length}${res.pages>1?" со страниц: "+res.pages:""} за ${Math.round((res.ms||0)/1000)} с
         <small>${nw?"Жёлтые поля — проверьте по бумаге ("+nw+").":"Сомнительных полей нет."} Сверьте количество и УПД перед сохранением. Скан приложится к заявке.</small></div>`};
     ["#ocrc","#ocrf"].forEach(sel=>{const inp=$(sel,box);if(!inp)return;inp.onchange=()=>{const f=inp.files[0];inp.value="";
       act(null,()=>ocrRun(f)).then(()=>{const st=$("#ocrs",box);if(st&&/Читаю|Загружаю/.test(st.textContent))st.innerHTML=`<div class="muted" style="color:var(--r)">Не получилось прочитать — заполните вручную или попробуйте другое фото.</div>`})}});
-    $("#radd",box).onclick=()=>{$("#rrows",box).insertAdjacentHTML("beforeend",row(box.querySelectorAll("[data-row]").length+1));bindDel();bindHint();sugAttach(box);
+    $("#radd",box).onclick=()=>{$("#rrows",box).insertAdjacentHTML("beforeend",row(box.querySelectorAll("[data-row]").length+1));bindDel();bindHint();sugAttach(box);xfApply(box,"request_item");
       const rs=box.querySelectorAll("[data-row]");rs[rs.length-1].querySelector("input").focus()};
     $("#mok",box).onclick=e=>act(e.target,async()=>{
-      const items=[...box.querySelectorAll("[data-row]")].map(r=>{const o={};if(r.dataset.id)o.id=r.dataset.id;r.querySelectorAll("[data-k]").forEach(i=>o[i.dataset.k]=i.value.trim());return o});
+      const items=[...box.querySelectorAll("[data-row]")].map(r=>{const o={};if(r.dataset.id)o.id=r.dataset.id;r.querySelectorAll("[data-k]").forEach(i=>o[i.dataset.k]=i.value.trim());if(r.querySelector("[data-xk]"))o.extra=xfRead(r);return o});
       if(!$("#rn",box).value.trim())throw new Error("Укажите номер заявки.");
+      xfCheck(box,"request");[...box.querySelectorAll("[data-row]")].forEach((r,i)=>{if([...r.querySelectorAll("[data-k]")].some(x=>x.value.trim()))xfCheck(r,"request_item","Позиция "+(i+1))});
       const head={number:$("#rn",box).value,req_date:$("#rd",box).value?$("#rd",box).value+" 12:00:00.000Z":"",object:$("#ro",box).value,recipient:$("#rr",box).value,note:$("#rm",box).value,tmc_kind:$("#h_tmc_kind",box).value};
       HEADF.forEach(f=>head[f[0]]=$("#h_"+f[0],box).value.trim());
+      const hx=box.querySelector('[data-xf="request"]');if(hx)head.extra=xfRead(hx);
       if(E){const j=await api("POST","/api/vs/request/update",Object.assign({request:R.id,items:items.concat(deleted.map(id=>({id,delete:true})))},head));
         closeModal();S.curReq=null;await load(["requests"]);vRequest(R.id,["requests"]);toast(j.changed?"Изменено: "+j.changed:"Изменений нет","ok");return}
       const j=await api("POST","/api/vs/request/create",Object.assign({items},head));
@@ -838,7 +841,7 @@ async function vRequest(id,changedCols){
     // фото сборных отгрузок, загруженные со страниц других заявок
     const sid=ships.map(x=>x.id);let sf=[];if(sid.length){try{sf=await all("request_files",sid.map(x=>`shipment="${x}"`).join("||"),"created")}catch(_){}}
     sf.forEach(f=>{if(!files.some(x=>x.id===f.id))files.push(f)});
-    S.curReq={r,items,ships,files,notes};
+    S.curReq={r,items,ships,files,notes};await xfLoad();
   }}catch(e){$("#main").innerHTML=`<div class="banner red">${esc(e.message)}</div>`;return}
   if(S.route!=="request/"+id)return;
   const {r,items,ships,files}=S.curReq;const notes=S.curReq.notes||[];const open=r.status==="open",W=can.write()&&open,M=can.manage(),WS=can.write()&&r.status!=="cancelled";
@@ -854,17 +857,17 @@ async function vRequest(id,changedCols){
    <b>Дата заявки</b><span>${r.req_date?dt(r.req_date).slice(0,10):"—"}</span><b>Объект</b><span>${esc(r.object||"—")}</span>
    <b>Получатель</b><span>${esc(r.recipient||"—")}</span><b>Создал</b><span>${esc(uname(r.created_by))}, ${dt(r.created)}</span>
    ${r.note?`<b>Примечание</b><span>${esc(r.note)}</span>`:""}
-   ${HEADF.filter(f=>r[f[0]]).map(f=>`<b>${esc(f[1])}</b><span>${esc(r[f[0]])}</span>`).join("")}${r.tmc_kind?`<b>Вид ТМЦ</b><span>${esc(r.tmc_kind)}</span>`:""}
+   ${HEADF.filter(f=>r[f[0]]).map(f=>`<b>${esc(f[1])}</b><span>${esc(r[f[0]])}</span>`).join("")}${r.tmc_kind?`<b>Вид ТМЦ</b><span>${esc(r.tmc_kind)}</span>`:""}${xfKV("request",r.extra)}
    ${r.status!=="open"?`<b>${r.status==="closed"?"Закрыл":"Аннулировал"}</b><span>${esc(uname(r.closed_by))}, ${dt(r.closed_at)}${r.close_comment?" — «"+esc(r.close_comment)+"»":""}</span>`:""}
   </div></div>
-  ${ovrBlock(r.overrides)}
+  ${ovrBlock(r.overrides)}<div id="xffr"></div>
   <div class="banner ${full===items.length?"green":full||items.some(i=>num(i.qty_issued)>0)?"yellow":"gray"}" style="font-size:17px">Выдано полностью: ${full} из ${items.length} поз.</div>
   ${items.map((it,i)=>{const st=istOf(it),ov=overQ(it);const rest=Math.max(0,num(it.qty_ordered)-num(it.qty_issued));const acts=jarr(it.acts);
    return `<div class="card res st-${ov>0?"over":itemState(it)==="full"?"free":itemState(it)==="part"?"reserved":"unavailable"}">
    <div class="top"><div style="min-width:0"><div class="muted">Позиция ${i+1}${it.rd?" · РД "+esc(it.rd):""}</div><div class="name">${esc(it.material)}</div>
     <div class="muted">${it.supplier?"Поставщик: "+esc(it.supplier):"Поставщик не указан"}${it.supply_doc?" · "+esc(it.supply_doc):""}</div>
     ${it.project_name&&it.project_name!==it.material?`<div class="muted">Проектное: ${esc(it.project_name)}</div>`:""}${it.name1c&&it.name1c!==it.material?`<div class="muted">В 1С: ${esc(it.name1c)}</div>`:""}${it.objcode?`<div class="muted">Объект/код: ${esc(it.objcode)}</div>`:""}${it.stock_note?`<div class="muted">Наличие: ${esc(it.stock_note)}</div>`:""}
-    ${acts.length?`<div style="color:var(--v);font-weight:700;margin-top:4px">⚠ Неустранённый акт № ${acts.map(a=>esc(a.act_no)).filter((v,k,a)=>a.indexOf(v)===k).join(", ")} — служебная записка</div>`:""}</div><span class="pill ${st[1]}">${st[0]}</span></div>
+    ${xfLine("request_item",it.extra)?`<div class="muted">${xfLine("request_item",it.extra)}</div>`:""}${acts.length?`<div style="color:var(--v);font-weight:700;margin-top:4px">⚠ Неустранённый акт № ${acts.map(a=>esc(a.act_no)).filter((v,k,a)=>a.indexOf(v)===k).join(", ")} — служебная записка</div>`:""}</div><span class="pill ${st[1]}">${st[0]}</span></div>
    <div class="row" style="margin-top:10px;align-items:flex-end">
     <div class="grow"><label class="f">Заказано</label><div style="min-height:48px;padding:10px 12px;border:1px dashed var(--line);border-radius:8px;background:var(--bg);font-weight:800">${fmtQ(it.qty_ordered)} ${esc(it.unit)}</div></div>
     <div class="grow"><label class="f">Выдано${it.unit?", "+esc(it.unit):""}</label>${W?`<input id="iq_${it.id}" data-iq="${it.id}" inputmode="decimal" value="${fmtQ(it.qty_issued)}" style="font-weight:800">`
@@ -899,6 +902,7 @@ async function vRequest(id,changedCols){
   document.querySelectorAll("[data-iq]").forEach(inp=>inp.onchange=()=>act(null,()=>save(inp.dataset.iq,inp.value),"Сохранено").then(()=>{
     if(dirty.has("iq_"+inp.dataset.iq)){dirty.delete("iq_"+inp.dataset.iq);vRequest(id,["request_items"])} })); // ошибка → вернуть сохранённое значение
   document.querySelectorAll("[data-full]").forEach(b=>b.onclick=()=>{const it=items.find(x=>x.id===b.dataset.full);act(b,()=>save(it.id,it.qty_ordered),"Выдано полностью")});
+  xfFilesBlock("request",r.id,W).then(h=>{const x=$("#xffr");if(x&&h){x.innerHTML=h;xfFilesBind(()=>vRequest(id,["request_files"]))}});   // 1.9.7: фото в своих полях
   document.querySelectorAll("[data-sig]").forEach(c=>c.onchange=()=>{const key=c.dataset.sig;
     if(!c.checked){act(null,async()=>{await api("POST","/api/vs/request/sign",{request:id,key,value:false});await refresh()},"Подпись снята");return}
     c.checked=false;const d=SIGNS.find(x=>x[0]===key);
@@ -1757,19 +1761,20 @@ async function topicEdit(t){const dir=await loadDir();
     const r=await api("POST","/api/vs/topic/save",{id:t?t.id:"",title:$("#tpt",box).value,description:$("#tpd",box).value,members:[...box.querySelectorAll("[data-mem]:checked")].map(c=>c.dataset.mem)});
     closeModal();if(t)render(null,true);else location.hash="#/topic/"+r.id},"Тема сохранена")});
 }
-async function subEdit(t,s,people){const dir=await loadDir();
+async function subEdit(t,s,people){const dir=await loadDir();await xfLoad();
   const st=s&&Array.isArray(s.stages)?s.stages:[];const all=people.map(p=>p.id);
   const stH=(x)=>`<div class="row" data-stg="${esc(x.uid||"")}" style="gap:6px;margin-top:4px"><input data-k="name" value="${esc(x.name||"")}" placeholder="Этап: согласовать чертежи" style="flex:1;min-width:160px"><input data-k="deadline" type="date" value="${esc(x.deadline||"")}" style="width:auto"><button class="btn sm" data-stx aria-label="Удалить этап">✕</button></div>`;
   modal(`<h3>${s?"Изменить подтему":"Новая подтема"}</h3><label class="f" for="sbt">Название</label><input id="sbt" value="${esc(s?s.title:"")}">
    <label class="f" for="sbd">Описание</label><textarea id="sbd" rows="2">${esc(s?s.description:"")}</textarea>
    <label class="f">Этапы</label><div id="sbst">${(st.length?st:[{},{}]).map(stH).join("")}</div><button class="btn sm" id="sbadd" style="margin-top:6px">＋ Этап</button>
-   <label class="f">Кто участвует в подтеме <span class="muted">(можно любого — он добавится в тему)</span></label>${memberPick(dir,s?s.members||[]:[])}
-   <div class="row" style="margin-top:12px"><button class="btn p grow" id="mok">СОХРАНИТЬ</button><button class="btn" data-close>Отмена</button></div>`,box=>{bindPick(box);
+   ${xfBlock("subtopic",s?s.extra:{})}<label class="f">Кто участвует в подтеме <span class="muted">(можно любого — он добавится в тему)</span></label>${memberPick(dir,s?s.members||[]:[])}
+   <div class="row" style="margin-top:12px"><button class="btn p grow" id="mok">СОХРАНИТЬ</button><button class="btn" data-close>Отмена</button></div>`,box=>{bindPick(box);xfApply(box,"subtopic");
     const bx=()=>box.querySelectorAll("[data-stx]").forEach(b=>b.onclick=()=>b.closest("[data-stg]").remove());bx();
     $("#sbadd",box).onclick=()=>{$("#sbst",box).insertAdjacentHTML("beforeend",stH({}));bx()};
     $("#mok",box).onclick=e=>act(e.target,async()=>{
       const stages=[...box.querySelectorAll("[data-stg]")].map(r=>({uid:r.dataset.stg,name:r.querySelector('[data-k="name"]').value,deadline:r.querySelector('[data-k="deadline"]').value})).filter(x=>x.name.trim());
-      await api("POST","/api/vs/sub/save",{id:s?s.id:"",topic:t.id,title:$("#sbt",box).value,description:$("#sbd",box).value,members:[...box.querySelectorAll("[data-mem]:checked")].map(c=>c.dataset.mem),stages});
+      xfCheck(box,"subtopic");const sx=box.querySelector('[data-xf="subtopic"]');
+      await api("POST","/api/vs/sub/save",Object.assign({id:s?s.id:"",topic:t.id,title:$("#sbt",box).value,description:$("#sbd",box).value,members:[...box.querySelectorAll("[data-mem]:checked")].map(c=>c.dataset.mem),stages},sx?{extra:xfRead(sx,s&&s.extra)}:{}));
       closeModal();render(null,true)},"Подтема сохранена")});
 }
 async function topicSearch(){const my=++TOP.seq;const q=lcq(TOP.q);const box=$("#tps");if(!box)return;
@@ -1805,7 +1810,7 @@ async function topicLinks(t,people){
   };
   modal(await draw(),bindM);
 }
-async function vTopic(id,changed){
+async function vTopic(id,changed){await xfLoad();
   if(changed&&!changed.some(c=>/^(topics|subtopics|topic_msgs)$/.test(c))&&$("#tpv"))return;
   let t;try{t=await api("GET","/api/collections/topics/records/"+id)}catch(e){if(S.route==="topic/"+id)$("#main").innerHTML=`<div class="card empty">Тема не найдена или у вас нет доступа.<br><a href="#/topics">← К темам</a></div>`;return}
   const [subs,msgs,pp]=await Promise.all([all("subtopics",`topic="${id}"`,"sort"),all("topic_msgs",`topic="${id}"`,"created"),api("GET","/api/vs/topic/people/"+id).catch(()=>({people:[]}))]);
@@ -1823,7 +1828,7 @@ async function vTopic(id,changed){
    ${subs.map(s=>{const st=Array.isArray(s.stages)?s.stages:[],d=st.filter(x=>x.done).length,mem=(s.members||[]).includes(me),can2=(B||mem)&&open&&(s.status==="open"||B),ms=msgs.filter(m=>m.subtopic===s.id);
      return `<div class="card" data-sub="${s.id}" style="border-left:5px solid ${s.status==="closed"?"var(--line)":st.length&&d===st.length?"var(--g)":"var(--b, #2563eb)"}">
       <div class="row" style="justify-content:space-between"><b style="font-size:17px">${esc(s.title)}</b><span class="pill ${s.status==="closed"?"gr":d===st.length&&st.length?"g":"b"}">${s.status==="closed"?"ЗАКРЫТА":d+" / "+st.length}</span></div>
-      ${s.description?`<div style="white-space:pre-wrap;margin-top:4px">${esc(s.description)}</div>`:""}<div class="muted" style="margin-top:4px">Участвуют: ${(s.members||[]).map(P).map(esc).join(", ")}</div>
+      ${s.description?`<div style="white-space:pre-wrap;margin-top:4px">${esc(s.description)}</div>`:""}${xfLine("subtopic",s.extra)?`<div style="margin-top:4px">${xfLine("subtopic",s.extra)}</div>`:""}<div class="muted" style="margin-top:4px">Участвуют: ${(s.members||[]).map(P).map(esc).join(", ")}</div>
       <div style="margin-top:8px">${st.map(x=>{const late=!x.done&&x.deadline&&x.deadline<today;return `<label class="row" style="gap:10px;padding:6px 0;border-bottom:1px dashed var(--line)"><input type="checkbox" data-stage="${s.id}:${esc(x.uid)}" ${x.done?"checked":""} ${can2?"":"disabled"} style="width:24px;height:24px">
         <span style="flex:1;${x.done?"text-decoration:line-through;opacity:.7":""}">${esc(x.name)}${x.deadline?` <span class="pill ${late?"r":x.done?"g":"gr"}">до ${dmy(x.deadline)}</span>`:""}${x.done?`<div class="muted">✔ ${esc(x.done_by)}, ${dt(x.done_at)}</div>`:""}</span></label>`}).join("")||`<div class="muted">Этапов нет</div>`}</div>
       <details style="margin-top:8px" ${ms.length&&ms.length<=6?"open":""}><summary class="muted">Сообщения (${ms.filter(m=>m.kind==="msg").length})</summary><div style="max-height:260px;overflow:auto">${ms.slice(-40).map(m=>`<div style="padding:4px 0;${m.kind==="msg"?"":"opacity:.7;font-size:13px"}"><b>${esc(m.user_name)}</b> <span class="muted">${dt(m.created)}</span><div style="white-space:pre-wrap">${esc(m.text)}</div></div>`).join("")}</div></details>
@@ -1891,7 +1896,7 @@ async function updUpload(file){
 }
 async function updManual(){const fd=new FormData();fd.append("status","draft");fd.append("uploaded_by",S.user.id);
   const rec=await api("POST","/api/collections/upd_docs/records",fd,true);location.hash="#/updedit/"+rec.id}
-async function vUpdEdit(id,changed){
+async function vUpdEdit(id,changed){await xfLoad();
   if(changed&&$("#ueform"))return;
   const u=await api("GET","/api/collections/upd_docs/records/"+id);if(S.route!=="updedit/"+id)return;
   const o=u.ocr&&u.ocr.header?u.ocr:null,h=o?o.header:{};const draft=u.status==="draft";
@@ -1924,23 +1929,23 @@ async function vUpdEdit(id,changed){
    <div class="card" id="ueform"><div class="row" style="margin-bottom:8px">${u.file?`<a class="btn sm" href="${furl}" target="_blank" rel="noopener">📄 Открыть документ</a>`:`<span class="muted">Без файла — заполните по бумажному УПД</span>`}${isImg?`<img src="${furl}" alt="УПД" style="max-height:90px;border-radius:6px">`:""}</div>
     <div class="g2x"><div><label class="f" for="uen">№ УПД / счёт-фактуры</label><input id="uen" value="${esc(v.number)}"${W(draft&&(!h.number||h.number_unsure),"Сверьте")}></div><div><label class="f" for="ued">Дата</label><input id="ued" type="date" value="${esc(v.date)}"${W(draft&&(!h.date||h.date_unsure),"Сверьте")}></div></div>
     <label class="f" for="ues">Поставщик (продавец)</label><input id="ues" data-sug="supplier" value="${esc(v.supplier)}">
-    <label class="f">Позиции (${items.length})</label><div class="tw"><table><tr><th>№</th><th>Наименование</th><th>Кол-во</th><th>Ед.</th><th></th></tr><tbody id="uerows">${items.map(rowH).join("")}</tbody></table></div>
+    ${xfBlock("upd",u.extra)}<label class="f">Позиции (${items.length})</label><div class="tw"><table><tr><th>№</th><th>Наименование</th><th>Кол-во</th><th>Ед.</th><th></th></tr><tbody id="uerows">${items.map(rowH).join("")}</tbody></table></div>
     <button class="btn sm" id="ueadd" style="margin-top:6px">＋ Строка</button>
     <label class="f" for="uenote">Примечание</label><textarea id="uenote" rows="2">${esc(v.note)}</textarea>
     <div class="row" style="margin-top:14px"><button class="btn p grow" id="uesave">СОХРАНИТЬ УПД</button><button class="btn" id="uexl">⬇ Excel</button></div></div>`;
-  sugAttach($("#main"));
+  sugAttach($("#main"));xfApply($("#main"),"upd");
   const bindX=()=>document.querySelectorAll("[data-uix]").forEach(b=>b.onclick=()=>b.closest("tr").remove());bindX();
   $("#ueadd").onclick=()=>{$("#uerows").insertAdjacentHTML("beforeend",rowH({warn:[]},Date.now()));bindX()};
   // 1.9.5: позиции из формы (то, что сейчас на экране) — для сохранения и для Excel до сохранения
   const formItems=()=>[...document.querySelectorAll("#uerows tr")].map(tr=>{const g=k=>{const el=tr.querySelector(`[data-k="${k}"]`);return el?el.value.trim():""};const x={name:g("name"),unit:g("unit"),qty:g("qty")};HID.forEach(k=>x[k]=g(k));return x}).filter(x=>x.name);
   $("#uexl").onclick=()=>updExcel({number:$("#uen").value.trim(),date:$("#ued").value,supplier:$("#ues").value.trim(),status:u.status},formItems().map(x=>Object.assign({},x,{qty:numQ(x.qty)})));
   $("#uesave").onclick=e=>act(e.target,async()=>{
-    const its=formItems();
-    const r=await api("POST","/api/vs/upd/save",{id:u.id,number:$("#uen").value,date:$("#ued").value,supplier:$("#ues").value.trim(),inn:v.inn,kpp:v.kpp,basis:v.basis,spec:v.spec,
-      total:v.total,total_nt:v.total_nt,note:$("#uenote").value,items:its});
+    const its=formItems();xfCheck($("#main"),"upd");const ux=$('[data-xf="upd"]');
+    const r=await api("POST","/api/vs/upd/save",Object.assign({id:u.id,number:$("#uen").value,date:$("#ued").value,supplier:$("#ues").value.trim(),inn:v.inn,kpp:v.kpp,basis:v.basis,spec:v.spec,
+      total:v.total,total_nt:v.total_nt,note:$("#uenote").value,items:its},ux?{extra:xfRead(ux)}:{}));
     location.hash="#/upd/"+r.id},"УПД сохранён");
 }
-async function vUpd(id,changed){
+async function vUpd(id,changed){await xfLoad();
   if(changed&&$("#updv"))return;
   const [u,acts,uph]=await Promise.all([api("GET","/api/collections/upd_docs/records/"+id),all("skk_acts",`upds~"${id}"`,"-date"),all("upd_photos",`upd="${id}"`,"created")]);if(S.route!=="upd/"+id)return;
   if(u.status==="draft"){location.hash="#/updedit/"+id;return}
@@ -1949,14 +1954,15 @@ async function vUpd(id,changed){
   $("#main").innerHTML=`<div class="row noprint"><a class="btn sm" href="#/skk">← К списку УПД</a>${can.upd()?`<a class="btn sm" href="#/updedit/${u.id}">✏ Изменить</a>`:""}${can.skk()?`<button class="btn p sm" id="updact">⚠ АКТ</button>`:""}<button class="btn sm" id="updxl">⬇ Excel</button>${can.upd()?`<label class="btn sm acc">📎 Спецификация (Excel)<input type="file" id="updspec" accept=".xlsx" hidden></label>`:""}${(can.manage()||can.skk())&&!acts.length?`<button class="btn sm" id="upddel">🗑 Удалить</button>`:""}</div>
    <h1 id="updv">УПД № ${esc(u.number)} <span class="pill ${UST[u.status][1]}">${UST[u.status][0]}</span></h1>
    <div class="card"><div class="kv"><b>Дата</b><span>${dmy(u.date)}</span><b>Поставщик</b><span>${esc(u.supplier)}${u.inn?` · ИНН ${esc(u.inn)}`:""}</span>${u.basis?`<b>Основание</b><span>${esc(u.basis)}</span>`:""}
-    ${u.spec?`<b>Спецификация</b><span>№ ${esc(u.spec)}</span>`:""}${+u.total?`<b>Всего</b><span>${money(u.total)} ₽${u.total_nt?` (без НДС ${money(u.total_nt)})`:""}</span>`:""}<b>Позиций</b><span>${its.length}</span><b>Загрузил</b><span>${esc(uname(u.uploaded_by))}, ${dt(u.created)}</span>${u.note?`<b>Примечание</b><span>${esc(u.note)}</span>`:""}</div>
-    ${u.file?`<div style="margin-top:8px"><a class="btn sm" href="${furl}" target="_blank" rel="noopener">📄 Документ</a></div>`:""}<div id="updph">${updPhotoBlock(u.id,uph,ft,can.upd())}</div></div>
+    ${u.spec?`<b>Спецификация</b><span>№ ${esc(u.spec)}</span>`:""}${+u.total?`<b>Всего</b><span>${money(u.total)} ₽${u.total_nt?` (без НДС ${money(u.total_nt)})`:""}</span>`:""}<b>Позиций</b><span>${its.length}</span>${xfKV("upd",u.extra)}<b>Загрузил</b><span>${esc(uname(u.uploaded_by))}, ${dt(u.created)}</span>${u.note?`<b>Примечание</b><span>${esc(u.note)}</span>`:""}</div>
+    ${u.file?`<div style="margin-top:8px"><a class="btn sm" href="${furl}" target="_blank" rel="noopener">📄 Документ</a></div>`:""}<div id="updph">${updPhotoBlock(u.id,uph,ft,can.upd())}</div></div><div id="xffu"></div>
    ${acts.length?`<h2>Акты по этому УПД</h2><div class="card list">${acts.map(a=>`<a class="it" href="#/skkact/${a.id}"><div style="flex:1"><b>Акт № ${esc(a.number)}</b> от ${dmy(a.date)}<div class="muted">устранено ${actRows(a).filter(x=>x.fixed).length} из ${actRows(a).length}</div></div><span class="pill ${a.status==="open"?"r":"b"}">${a.status==="open"?"ОТКРЫТ":"ЗАКРЫТ"}</span></a>`).join("")}</div>`:""}
    <h2>Позиции (${its.length})</h2>${can.upd()?`<div class="row noprint" style="margin-bottom:6px"><button class="btn sm" id="updmatch">⇄ Сопоставить с оперативкой</button></div>`:""}<div class="card"><div class="tw"><table><tr><th>№</th>${PX.code?"<th>Код</th>":""}<th>Наименование</th><th>Кол-во</th>${PX.money?"<th>Цена</th><th>Сумма с НДС</th>":""}</tr>${its.map((x,i)=>`<tr><td>${i+1}</td>${PX.code?`<td>${esc(x.code)}</td>`:""}<td>${esc(x.name)}${x.spec_no?`<div class="muted">📎 спец. поз. ${esc(x.spec_no)}${x.spec_name&&x.spec_name!==x.name?` · <b>${esc(x.spec_name)}</b>`:""}${x.objcode?` · шифр <b>${esc(x.objcode)}</b>`:""}</div>`:""}${x.pid||x.object?`<div class="muted">PID <b>${esc(x.pid||"—")}</b> · ${esc(x.object||"")}${x.objcode&&!x.spec_no?" · <b>"+esc(x.objcode)+"</b>":""}</div>`:""}${x.stage?stagePill(x.stage):""}</td><td class="r" style="white-space:nowrap">${fmtQ(x.qty)} ${esc(x.unit)}</td>${PX.money?`<td class="r">${money(x.price)}</td><td class="r">${money(x.total)}</td>`:""}</tr>`).join("")}</table></div></div>`;
   bindUpdPhotos($("#updph"),()=>vUpd(id));
   const mt=$("#updmatch");if(mt)mt.onclick=()=>act(mt,()=>updMatch(u.id));
   const ab=$("#updact");if(ab)ab.onclick=()=>{SKK.newAct={upds:[u.id]};location.hash="#/skkactedit/new"};
   $("#updxl").onclick=()=>updExcel(u,its);
+  xfFilesBlock("upd",u.id,can.upd()).then(h=>{const x=$("#xffu");if(x&&h){x.innerHTML=h;xfFilesBind(()=>vUpd(id))}});
   const usp=$("#updspec");if(usp)usp.onchange=async e=>{const f=e.target.files[0];e.target.value="";if(!f)return;try{const r=await applySpec(f,[u.id]);toast(specMsg(r));vUpd(id)}catch(err){toast(err.message,"err")}};
   const db=$("#upddel");if(db)db.onclick=()=>{if(!confirm("Удалить УПД № "+u.number+"?"))return;act(db,async()=>{await api("POST","/api/vs/upd/delete",{id:u.id});location.hash="#/skk"},"УПД удалён")};
 }
@@ -1975,7 +1981,7 @@ async function skkActList(){
 }
 async function nextActNo(){try{const l=await all("skk_acts","","-created");const n=l.map(a=>{const m=String(a.number).match(/^(\D*)(\d+)$/);return m?[m[1],+m[2]]:null}).filter(Boolean);
   if(!n.length)return "";const top=n.reduce((a,b)=>b[1]>a[1]?b:a);return top[0]+(top[1]+1)}catch(_){return ""}}
-async function vSkkActEdit(id,changed){
+async function vSkkActEdit(id,changed){await xfLoad();
   if(changed&&$("#aeform"))return;
   if(!can.skk()){location.hash="#/skk";return}
   const isNew=id==="new";const a=isNew?null:await api("GET","/api/collections/skk_acts/records/"+id);
@@ -2004,7 +2010,7 @@ async function vSkkActEdit(id,changed){
     <label class="f">Несоответствие (почему акт)</label><textarea data-k="issue" rows="2" data-sug="skk_issue">${esc(x.issue||"")}</textarea>
     <label class="f">Решение</label><textarea data-k="decision" rows="2" data-sug="skk_decision">${esc(x.decision||"")}</textarea>
     <label class="row" style="margin-top:8px;gap:8px"><input type="checkbox" data-k="fixed" ${x.fixed?"checked":""} style="width:24px;height:24px"> <b>Устранено</b></label>
-    <input data-k="fix_note" placeholder="Как устранено / причина закрытия" value="${esc(x.fix_note||"")}" style="margin-top:4px"><input type="hidden" data-k="upd" value="${esc(x.upd||"")}"><input type="hidden" data-k="whole" value="${x.whole?"1":""}"></div>`;
+    <input data-k="fix_note" placeholder="Как устранено / причина закрытия" value="${esc(x.fix_note||"")}" style="margin-top:4px"><input type="hidden" data-k="upd" value="${esc(x.upd||"")}"><input type="hidden" data-k="whole" value="${x.whole?"1":""}">${xfBlock("act_row",x.extra)}</div>`;
   const draw=()=>{
     const su=sel.map(U).filter(Boolean).concat(manual);const sameSup=st.supplier?updsAll.filter(u=>!sel.includes(u.id)&&(!st.supplier||u.supplier===st.supplier)):updsAll.filter(u=>!sel.includes(u.id));
     $("#main").innerHTML=`<div class="row noprint"><a class="btn sm" href="#/${isNew?"skk":"skkact/"+id}">← Назад</a></div><h1>${isNew?"Новый акт СКК":"Изменить акт № "+esc(st.number)}</h1>
@@ -2022,11 +2028,11 @@ async function vSkkActEdit(id,changed){
      <label class="f" for="aecn">Заключение</label><textarea id="aecn" rows="2">${esc(st.conclusion||"")}</textarea>
      <label class="f" for="aevd">Вывод</label><textarea id="aevd" rows="2">${esc(st.verdict||"")}</textarea>
      <div class="row" style="margin-top:14px"><button class="btn p grow" id="aesave">СОХРАНИТЬ АКТ</button></div></div>`;
-    sugAttach($("#main"));bind()};
+    sugAttach($("#main"));xfApply($("#main"),"act_row");bind()};
   const collect=()=>{st.number=$("#aen").value.trim();st.date=$("#aed").value;st.object=$("#aeo").value;st.rep_osk=$("#ae1").value;st.rep_sklad=$("#ae2").value;st.rep_omts=$("#ae3").value;st.supplier=$("#aes").value.trim();
     st.upd_line=$("#ael").value;st.conclusion=$("#aecn").value;st.verdict=$("#aevd").value;
     st.rows=[...document.querySelectorAll("[data-ar]")].map(c=>{const g=k=>{const el=c.querySelector(`[data-k="${k}"]`);return el.type==="checkbox"?el.checked:el.value.trim()};const old=st.rows[+c.dataset.ar]||{};
-      return {uid:c.dataset.uid,material:g("material"),volume:g("volume"),code:g("code"),issue:g("issue"),decision:g("decision"),fixed:g("fixed"),fix_note:g("fix_note"),upd:g("upd"),whole:g("whole")==="1",fixed_at:old.fixed_at}})};
+      return {uid:c.dataset.uid,material:g("material"),volume:g("volume"),code:g("code"),issue:g("issue"),decision:g("decision"),fixed:g("fixed"),fix_note:g("fix_note"),upd:g("upd"),whole:g("whole")==="1",fixed_at:old.fixed_at,extra:xfRead(c,old.extra)}})};
   const bind=()=>{
     document.querySelectorAll("[data-arx]").forEach(b=>b.onclick=()=>{collect();st.rows.splice(+b.closest("[data-ar]").dataset.ar,1);draw()});
     document.querySelectorAll("[data-unsel]").forEach(b=>b.onclick=e=>{e.preventDefault();collect();sel=sel.filter(x=>x!==b.dataset.unsel);st.upd_line="";draw()});
@@ -2064,11 +2070,11 @@ async function vSkkActEdit(id,changed){
         $("#piq",box).oninput=e=>{const q=lcq(e.target.value);box.querySelectorAll("[data-pil]").forEach(l=>l.style.display=!q||wmatch(q,l.textContent)?"":"none")};
         $("#mok",box).onclick=()=>{collect();
         box.querySelectorAll("[data-pi]:checked").forEach(c=>{const [uid,i]=c.dataset.pi.split(":");const u=U(uid),x=updItems(u)[+i];st.rows.push(itemRow(u,x))});closeModal();draw()}})};
-  const bindSave=()=>{$("#aesave").onclick=e=>act(e.target,async()=>{collect();const r=await api("POST","/api/vs/skk/act/save",Object.assign({},st,{id:isNew?"":id,upds:sel}));SKK.newAct=null;location.hash="#/skkact/"+r.id},"Акт сохранён")};
+  const bindSave=()=>{$("#aesave").onclick=e=>act(e.target,async()=>{collect();document.querySelectorAll("[data-ar]").forEach((c,i)=>xfCheck(c,"act_row","Строка "+(i+1)));const r=await api("POST","/api/vs/skk/act/save",Object.assign({},st,{id:isNew?"":id,upds:sel}));SKK.newAct=null;location.hash="#/skkact/"+r.id},"Акт сохранён")};
   draw();
   if(pickOnOpen)pickItems(sel.map(U).filter(Boolean));
 }
-async function vSkkAct(id,changed){
+async function vSkkAct(id,changed){await xfLoad();
   if(changed&&$("#actv"))return;
   const a=await api("GET","/api/collections/skk_acts/records/"+id);if(S.route!=="skkact/"+id)return;const rows=actRows(a),n=rows.filter(x=>x.fixed).length;
   $("#main").innerHTML=`<div class="row noprint"><a class="btn sm" href="#/skk" id="toacts">← К актам</a>${can.skk()?`<a class="btn sm" href="#/skkactedit/${a.id}">✏ Изменить</a>`:""}<button class="btn sm" id="actpr">🖨 Печать / PDF</button><button class="btn sm" id="actxl">⬇ Excel</button></div>
@@ -2079,7 +2085,7 @@ async function vSkkAct(id,changed){
      ${can.skk()?`<input type="checkbox" data-fix="${esc(x.uid)}" ${x.fixed?"checked":""} style="width:28px;height:28px;flex:none" aria-label="Устранено">`:`<span style="font-size:22px">${x.fixed?"✅":"⬜"}</span>`}
      <div style="flex:1;min-width:0"><b>${i+1}. ${esc(x.material)}</b>${x.volume?` — ${esc(x.volume)}`:""}${x.code?`<div class="muted">${esc(x.code)}</div>`:""}
       <div style="margin-top:4px"><span class="pill r">Несоответствие</span> ${esc(x.issue)}</div>${x.decision?`<div style="margin-top:4px"><span class="pill y">Решение</span> ${esc(x.decision)}</div>`:""}
-      ${x.fixed?`<div style="margin-top:4px;color:var(--g);font-weight:700">✔ Устранено ${dt(x.fixed_at)}${x.fixed_by?" ("+esc(x.fixed_by)+")":""}: ${esc(x.fix_note)}</div>`:""}</div></div></div>`).join("")}
+      ${xfLine("act_row",x.extra)?`<div class="muted" style="margin-top:4px">${xfLine("act_row",x.extra)}</div>`:""}${x.fixed?`<div style="margin-top:4px;color:var(--g);font-weight:700">✔ Устранено ${dt(x.fixed_at)}${x.fixed_by?" ("+esc(x.fixed_by)+")":""}: ${esc(x.fix_note)}</div>`:""}</div></div></div>`).join("")}
    <div class="card"><b>Заключение:</b> ${esc(a.conclusion)}<br><b>Вывод:</b> ${esc(a.verdict)}</div>`;
   $("#toacts").onclick=()=>{SKK.tab="acts"};
   $("#actpr").onclick=()=>printAct(a);$("#actxl").onclick=()=>actExcel(a);
@@ -2160,7 +2166,7 @@ function updExcel(u,its){
   const head=["№","Наименование товара","Кол-во","Ед. изм."].concat(oc?["PID","Шифр объекта","Раздел / стадия"]:[]).concat(spn?["Наименование по спецификации"]:[]);
   const W=[6,70,11,9].concat(oc?[12,24,26]:[]).concat(spn?[60]:[]),L=String.fromCharCode(64+W.length);
   const info=[[{v:"УПД № "+(u.number||"—")+(u.date?" от "+dmy(u.date):""),s:XS.title}],[{v:u.supplier||"",s:XS.sub}],
-    [{v:"Позиций: "+its.length+(u.status==="draft"?" · черновик, не сохранён":"")+" · выгружено "+new Date().toLocaleString("ru-RU"),s:XS.sub}],[]];
+    [{v:"Позиций: "+its.length+(u.status==="draft"?" · черновик, не сохранён":"")+" · выгружено "+new Date().toLocaleString("ru-RU")+xfCols("upd").filter(d=>xfCell(d,u.extra)!=="").map(d=>" · "+d.label+": "+xfCell(d,u.extra)).join(""),s:XS.sub}],[]];
   const r1=info.concat([head.map(v=>({v,s:XS.head}))]);
   its.forEach((x,i)=>{const q=numQ(x.qty);r1.push([{v:i+1,s:XS.num},{v:x.name||"",s:T},{v:q==null?String(x.qty||""):q,s:q==null?XS.sR:XS.num},{v:x.unit||"",s:T}].concat(oc?[{v:x.pid||"",s:x.pid?XS.sG:T},{v:x.objcode||"",s:T},{v:[x.section,x.stage].filter(Boolean).join(" / "),s:T}]:[]).concat(spn?[{v:x.spec_name&&x.spec_name!==x.name?x.spec_name:"",s:x.spec_name&&x.spec_name!==x.name?XS.tO:T}]:[]))});
   // итог по единицам
@@ -2181,11 +2187,11 @@ function actExcel(a){
   const r=[[{v:"АКТ № "+a.number+" от "+dmy(a.date),s:XS.title}],[{v:a.object,s:XS.sub}],[],
     [{v:"Представитель ОСК",s:XS.head},{v:a.rep_osk,s:T}],[{v:"Представитель склада",s:XS.head},{v:a.rep_sklad,s:T}],[{v:"Представитель ОМТС",s:XS.head},{v:a.rep_omts,s:T}],
     [{v:"Полученных по накладной",s:XS.head},{v:a.upd_line,s:T}],[{v:"Поставщик",s:XS.head},{v:a.supplier,s:T}],[],
-    ["п/п","Наименование материала / фактические параметры","Объём","Шифр РД/ПД","Несоответствие","Решение","Устранено","Дата устранения, причина закрытия"].map(v=>({v,s:XS.head}))];
-  rows.forEach((x,i)=>r.push([{v:i+1,s:XS.num},{v:x.material,s:T},{v:x.volume,s:T},{v:x.code,s:T},{v:x.issue,s:XS.sR},{v:x.decision,s:T},{v:x.fixed?"ДА":"НЕТ",s:x.fixed?XS.sG:XS.sR},{v:x.fixed?dmy(String(x.fixed_at).slice(0,10))+" — "+(x.fix_note||""):"",s:T}]));
+    ["п/п","Наименование материала / фактические параметры","Объём","Шифр РД/ПД","Несоответствие","Решение","Устранено","Дата устранения, причина закрытия"].concat(xfCols("act_row").map(d=>d.label)).map(v=>({v,s:XS.head}))];
+  rows.forEach((x,i)=>r.push([{v:i+1,s:XS.num},{v:x.material,s:T},{v:x.volume,s:T},{v:x.code,s:T},{v:x.issue,s:XS.sR},{v:x.decision,s:T},{v:x.fixed?"ДА":"НЕТ",s:x.fixed?XS.sG:XS.sR},{v:x.fixed?dmy(String(x.fixed_at).slice(0,10))+" — "+(x.fix_note||""):"",s:T}].concat(xfCols("act_row").map(d=>({v:xfCell(d,x.extra),s:d.type==="number"?XS.num:T})))));
   r.push([]);r.push([{v:"Заключение",s:XS.head},{v:a.conclusion,s:T}]);r.push([{v:"Вывод",s:XS.head},{v:a.verdict,s:XS.sO}]);
   const last=r.length;
-  saveBlob(xlsxBlob([{name:"Акт "+String(a.number).replace(/[\\/?*\[\]:]/g,"-").slice(0,25),cols:[22,44,12,26,34,34,11,36],rows:r,merges:["A1:H1","A2:H2","B4:H4","B5:H5","B6:H6","B7:H7","B8:H8","B"+(last-1)+":H"+(last-1),"B"+last+":H"+last]}]),"Akt_SKK_"+String(a.number).replace(/[^\wА-Яа-я-]/g,"_")+".xlsx");
+  saveBlob(xlsxBlob([{name:"Акт "+String(a.number).replace(/[\\/?*\[\]:]/g,"-").slice(0,25),cols:[22,44,12,26,34,34,11,36].concat(xfCols("act_row").map(()=>20)),rows:r.map(x=>x),merges:["A1:H1","A2:H2","B4:H4","B5:H5","B6:H6","B7:H7","B8:H8","B"+(last-1)+":H"+(last-1),"B"+last+":H"+last]}]),"Akt_SKK_"+String(a.number).replace(/[^\wА-Яа-я-]/g,"_")+".xlsx");
 }
 async function skkReport(){
   const t=new Date(Date.now()+180*60000).toISOString().slice(0,10);SKK.from=SKK.from||t.slice(0,8)+"01";SKK.to=SKK.to||t;
@@ -2481,19 +2487,21 @@ async function exportRequestList(){
   const reqs=await all("requests",f,"-created");
   if(!reqs.length)throw new Error("Нет заявок для выгрузки по выбранному фильтру.");
   let items=[];for(let i=0;i<reqs.length;i+=40){const part=reqs.slice(i,i+40);items=items.concat(await all("request_items",part.map(r=>`request="${r.id}"`).join("||"),"sort"))}
-  const H1=["№ заявки","Дата","Объект","Получатель","Позиций","Выдано полностью","Статус","Подписи","Закрыл / когда","Комментарий"];
+  await xfLoad();const XH=xfCols("request"),XI=xfCols("request_item");
+  const H1=["№ заявки","Дата","Объект","Получатель","Позиций","Выдано полностью","Статус","Подписи","Закрыл / когда","Комментарий"].concat(XH.map(d=>d.label));
   const r1=[[{v:"ЗАЯВКИ НА ВЫДАЧУ ТМЦ — СВОДКА",s:XS.title}],[{v:"Выгружено "+new Date().toLocaleString("ru-RU"),s:XS.sub}],[],{h:30,c:H1.map(h=>({v:h,s:XS.head}))}];
   reqs.forEach(r=>{const its=items.filter(i=>i.request===r.id);const full=its.filter(i=>itemState(i)==="full").length;const sg=sigsOf(r);const n=SIGNS.filter(x=>sg[x[0]]).length;
     r1.push([{v:r.number,s:XS.txt},{v:r.req_date?dt(r.req_date).slice(0,10):dt(r.created).slice(0,10),s:XS.txt},{v:r.object,s:XS.txt},{v:r.recipient,s:XS.txt},{v:its.length,s:XS.num},
       {v:full,s:full===its.length?XS.full:full?XS.part:XS.none},{v:rqPill(r)[0],s:rqXStyle(r)},{v:n+" из "+SIGNS.length,s:n===SIGNS.length?XS.sG:XS.sV},
-      {v:r.status!=="open"?uname(r.closed_by)+", "+dt(r.closed_at):"",s:XS.txt},{v:r.close_comment,s:XS.txt}])});
-  const H2=["№ заявки","Статус заявки","Объект","Заявитель (получатель)","РД","Материал","Поставщик","Ед. изм.","Заказано","Выдано","Осталось","Статус позиции"];
+      {v:r.status!=="open"?uname(r.closed_by)+", "+dt(r.closed_at):"",s:XS.txt},{v:r.close_comment,s:XS.txt}].concat(XH.map(d=>({v:xfCell(d,r.extra),s:d.type==="number"?XS.num:XS.txt}))))});
+  const H2=["№ заявки","Статус заявки","Объект","Заявитель (получатель)","РД","Материал","Поставщик","Ед. изм.","Заказано","Выдано","Осталось","Статус позиции"].concat(XI.map(d=>d.label));
   const r2=[{h:30,c:H2.map(h=>({v:h,s:XS.head}))}];
   reqs.forEach(r=>items.filter(i=>i.request===r.id).forEach(it=>{const st=itemState(it);
     r2.push([{v:r.number,s:XS.txt},{v:rqPill(r)[0],s:XS.txt},{v:r.object,s:XS.txt},{v:r.recipient,s:XS.txt},{v:it.rd,s:XS.txt},{v:it.material,s:XS.txt},{v:it.supplier,s:XS.txt},{v:it.unit,s:XS.txt},
-      {v:num(it.qty_ordered),s:XS.lock},{v:num(it.qty_issued),s:overQ(it)>0?XS.over:qStyle[st]},{v:overQ(it)>0?-overQ(it):Math.max(0,Math.round((num(it.qty_ordered)-num(it.qty_issued))*1000)/1000),s:overQ(it)>0?XS.over:XS.num},{v:istOf(it)[0],s:overQ(it)>0?XS.sO:stStyle[st]}])}));
-  saveBlob(xlsxBlob([{name:"Заявки",cols:[14,12,28,24,10,16,22,12,30,30],rows:r1,freeze:4,merges:["A1:J1"],filter:"A4:J"+(r1.length)},
-    {name:"Позиции",cols:[14,22,24,24,12,36,24,8,11,11,11,14],rows:r2,freeze:1,filter:"A1:L"+r2.length}]),"Zayavki_"+new Date().toISOString().slice(0,10)+".xlsx");
+      {v:num(it.qty_ordered),s:XS.lock},{v:num(it.qty_issued),s:overQ(it)>0?XS.over:qStyle[st]},{v:overQ(it)>0?-overQ(it):Math.max(0,Math.round((num(it.qty_ordered)-num(it.qty_issued))*1000)/1000),s:overQ(it)>0?XS.over:XS.num},{v:istOf(it)[0],s:overQ(it)>0?XS.sO:stStyle[st]}].concat(XI.map(d=>({v:xfCell(d,it.extra),s:d.type==="number"?XS.num:XS.txt}))))}));
+  const cl=n=>{let x="";n++;while(n>0){const m=(n-1)%26;x=String.fromCharCode(65+m)+x;n=Math.floor((n-1)/26)}return x};
+  saveBlob(xlsxBlob([{name:"Заявки",cols:[14,12,28,24,10,16,22,12,30,30].concat(XH.map(()=>18)),rows:r1,freeze:4,merges:["A1:J1"],filter:"A4:"+cl(H1.length-1)+(r1.length)},
+    {name:"Позиции",cols:[14,22,24,24,12,36,24,8,11,11,11,14].concat(XI.map(()=>18)),rows:r2,freeze:1,filter:"A1:"+cl(H2.length-1)+r2.length}]),"Zayavki_"+new Date().toISOString().slice(0,10)+".xlsx");
 }
 
 /* ---------- АКТЫ НЕСООТВЕТСТВИЯ ---------- */
@@ -2704,7 +2712,7 @@ function tplForm(id){
 function vUsers(){
   const U=S.data.users||[];
   $("#main").innerHTML=`<h1>Управление пользователями</h1>
-  <div class="row noprint" style="margin-bottom:10px"><button class="btn acc" id="un">＋ Новый пользователь</button></div>
+  <div class="row noprint" style="margin-bottom:10px"><button class="btn acc" id="un">＋ Новый пользователь</button><a class="btn" href="#/fields">⚙ Поля форм (настройки)</a></div>
   <div class="card tw"><table><tr><th>Имя</th><th>Логин</th><th>Роль</th><th>Группа (задачи)</th><th>Статус</th><th></th></tr>
   ${U.map(u=>`<tr><td><b>${esc(u.name)}</b>${u.warehouse?`<div class="muted">${esc(u.warehouse)}</div>`:""}</td><td>${esc(u.username||u.email)}</td><td>${esc(T.roles[u.role]||u.role)}</td><td>${esc(TGR[u.tgroup]||"")}</td>
    <td>${u.active?`<span class="pill g">АКТИВЕН</span>`:`<span class="pill gr">ОТКЛЮЧЁН</span>`}${u.demo?` <span class="pill y">ТЕСТ</span>`:""}</td><td><button class="btn sm" data-ue="${u.id}">Изменить</button></td></tr>`).join("")}</table></div>
@@ -2733,6 +2741,97 @@ function userForm(id){
     const p=$("#up",box).value;if(p){if(p.length<8)throw new Error("Пароль не короче 8 символов.");d.password=p;d.passwordConfirm=p}else if(!id)throw new Error("Задайте пароль.");
     await api(id?"PATCH":"POST","/api/collections/users/records"+(id?"/"+id:""),d);closeModal();await load(["users"]);vUsers()},"Сохранено")});
 }
+
+/* ---------- 1.9.7: КОНСТРУКТОР ПОЛЕЙ (Настройки → Поля форм) ---------- */
+// Свои поля (тип, обязательность, порядок) и настройки встроенных полей (название, скрыть) — без программиста.
+const XF={j:null,at:0};
+async function xfLoad(force){if(!force&&XF.j&&Date.now()-XF.at<60000)return XF.j;try{XF.j=await api("GET","/api/vs/fields");XF.at=Date.now()}catch(_){XF.j=XF.j||{defs:{},forms:{},types:{},photo_ok:{}}}return XF.j}
+const xfDefs=f=>(XF.j&&XF.j.defs&&XF.j.defs[f])||[];
+const xfCustom=f=>xfDefs(f).filter(d=>!d.builtin&&!d.hidden);
+// встроенные поля форм: ключ, название по умолчанию, где стоит поле, обязательно для работы программы (не скрывается)
+const XB={
+  request:[["number","№ заявки","#rn",1],["req_date","Дата заявки","#rd",0],["object","Объект / подразделение","#ro",0],["recipient","Получатель / МОЛ","#rr",0],["note","Примечание","#rm",0]],
+  request_item:[["material","Материал","[data-k=material]",1],["supplier","Поставщик","[data-k=supplier]",0],["qty_ordered","Заказано","[data-k=qty_ordered]",1],["unit","Ед. изм.","[data-k=unit]",0],["rd","РД / № позиции","[data-k=rd]",0],["supply_doc","Док. поставки (УПД)","[data-k=supply_doc]",0]],
+  act_row:[["material","Наименование материала","[data-k=material]",1],["volume","Объём","[data-k=volume]",0],["code","Шифр рабочей / проектной документации","[data-k=code]",0],["issue","Несоответствие","[data-k=issue]",1],["decision","Решение","[data-k=decision]",0]],
+  upd:[["number","№ УПД","#uen",1],["date","Дата","#ued",0],["supplier","Поставщик","#ues",1],["note","Примечание","#uenote",0]],
+  subtopic:[["title","Название","#sbt",1],["description","Описание","#sbd",0]],
+  board:[["title","Что: техника / люди","#ft",1],["who","Кто работает / организация","#fw",0],["place","Место выгрузки / работ","#fp",0],["start","С","#fa",0],["end","До","#fb",0],["note","Комментарий","#fn",0]]};
+const xfB=(f,k)=>xfDefs(f).find(d=>d.builtin&&d.key===k);
+const xfLabelOf=(f,k,def)=>{const d=xfB(f,k);return d&&d.label?d.label:def};
+// поле ввода своего поля
+function xfInput(d,v){const a=`data-xk="${d.key}" data-xt="${d.type}"`;v=v==null?"":v;
+  if(d.type==="bool")return `<label class="row" style="gap:8px;margin-top:8px;font-weight:600"><input type="checkbox" ${a} ${v===true?"checked":""} style="width:22px;height:22px"> ${esc(d.label)}${d.required?" *":""}</label>`;
+  const lab=`<label class="f">${esc(d.label)}${d.required?" *":""}${d.hint?` <span class="muted">— ${esc(d.hint)}</span>`:""}</label>`;
+  if(d.type==="select")return lab+`<select ${a}><option value="">—</option>${(d.options||[]).map(o=>`<option ${o===v?"selected":""}>${esc(o)}</option>`).join("")}</select>`;
+  if(d.type==="photo")return lab+`<div class="muted">📎 файлы прикрепляются на странице записи после сохранения</div>`;
+  return lab+`<input ${a} ${d.type==="number"?'inputmode="decimal"':d.type==="date"?'type="date"':""} value="${esc(d.type==="number"&&v!==""?String(v).replace(".",","):v)}">`}
+const xfBlock=(f,extra)=>{const L=xfCustom(f);return L.length?`<div data-xf="${f}" class="xfb">${L.map(d=>xfInput(d,(extra||{})[d.key])).join("")}</div>`:""};
+function xfRead(scope,old){const o=Object.assign({},old||{});scope.querySelectorAll("[data-xk]").forEach(i=>{o[i.dataset.xk]=i.type==="checkbox"?i.checked:i.value.trim()});return o}
+// встроенные: переименовать / скрыть (обязательные для программы — только переименовать)
+function xfApply(scope,f){xfDefs(f).filter(d=>d.builtin).forEach(d=>{const b=(XB[f]||[]).find(x=>x[0]===d.key);if(!b)return;
+  scope.querySelectorAll(b[2]).forEach(el=>{const w=el.closest(".grow");let lab=w?w.querySelector("label.f"):el.previousElementSibling;if(lab&&!lab.matches("label"))lab=null;
+    if(d.label&&lab)lab.textContent=d.label+(d.required||b[3]?" *":"");
+    if(d.hidden&&!b[3]){if(w&&w.querySelectorAll("input,select,textarea").length===1)w.style.display="none";else{el.style.display="none";if(lab)lab.style.display="none"}}})})}
+// проверка обязательных (свои + встроенные, отмеченные обязательными)
+function xfCheck(scope,f,what){const miss=[];
+  xfCustom(f).filter(d=>d.required&&d.type!=="photo").forEach(d=>{const i=scope.querySelector(`[data-xk="${d.key}"]`);if(i&&(i.type==="checkbox"?!i.checked:!i.value.trim()))miss.push(d.label)});
+  xfDefs(f).filter(d=>d.builtin&&d.required&&!d.hidden).forEach(d=>{const b=(XB[f]||[]).find(x=>x[0]===d.key);if(!b)return;const i=scope.querySelector(b[2]);if(i&&!String(i.value||"").trim())miss.push(d.label||b[1])});
+  if(miss.length)throw new Error((what?what+": ":"")+"заполните «"+miss.join("», «")+"»")}
+// показ значений в карточке / просмотре
+const xfVal=(d,v)=>d.type==="bool"?(v?"да":"нет"):d.type==="date"?dmy(v):d.type==="number"?String(v).replace(".",","):String(v);
+const xfKV=(f,extra)=>xfCustom(f).filter(d=>d.type!=="photo"&&extra&&extra[d.key]!==undefined&&extra[d.key]!==""&&!(d.type==="bool"&&extra[d.key]===false)).map(d=>`<b>${esc(d.label)}</b><span>${esc(xfVal(d,extra[d.key]))}</span>`).join("");
+const xfLine=(f,extra)=>xfCustom(f).filter(d=>d.type!=="photo"&&extra&&extra[d.key]!==undefined&&extra[d.key]!==""&&!(d.type==="bool"&&extra[d.key]===false)).map(d=>`${esc(d.label)}: <b>${esc(xfVal(d,extra[d.key]))}</b>`).join(" · ");
+const xfCols=f=>xfCustom(f).filter(d=>d.type!=="photo");
+const xfCell=(d,extra)=>{const v=(extra||{})[d.key];return v===undefined||v===""?"":d.type==="number"&&typeof v==="number"?v:xfVal(d,v)};
+// фото / файлы своего поля на странице заявки или УПД
+async function xfFilesBlock(f,recId,canW){const P=xfCustom(f).filter(d=>d.type==="photo");if(!P.length)return "";
+  const fs=await all("field_files",`rec="${recId}"`,"created").catch(()=>[]);const ft=fs.length?await fileToken():"";
+  return `<div class="card" data-xff="${f}" data-rec="${recId}">${P.map(d=>{const L=fs.filter(x=>x.key===d.key);return `<b>${esc(d.label)}</b><div class="row" style="gap:6px;margin:6px 0;flex-wrap:wrap">${L.map(x=>{const u=`/api/files/field_files/${x.id}/${encodeURIComponent(x.file)}?token=${ft}`;
+    return /\.pdf$/i.test(x.file)?`<a class="btn sm" href="${u}" target="_blank" rel="noopener">📄 PDF</a>${canW?`<button class="btn sm" data-xfd="${x.id}">✕</button>`:""}`:`<span style="position:relative"><a href="${u}" target="_blank" rel="noopener"><img src="${u}&thumb=480x0" alt="" style="width:84px;height:84px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"></a>${canW?`<button class="btn sm" data-xfd="${x.id}" style="position:absolute;top:0;right:0;padding:2px 6px">✕</button>`:""}</span>`}).join("")||'<span class="muted">нет файлов</span>'}</div>
+    ${canW?`<label class="btn sm">📷 Добавить<input type="file" data-xfu="${d.key}" accept="image/*,application/pdf" multiple hidden></label>`:""}`}).join("<hr>")}</div>`}
+function xfFilesBind(again){document.querySelectorAll("[data-xff]").forEach(box=>{const f=box.dataset.xff,rec=box.dataset.rec;
+  box.querySelectorAll("[data-xfu]").forEach(i=>i.onchange=()=>act(null,async()=>{const fd=new FormData();fd.append("form",f);fd.append("rec",rec);fd.append("key",i.dataset.xfu);
+    for(const x of i.files)fd.append("file",/^image\//.test(x.type)?await shrink(x):x);await api("POST","/api/vs/fields/file",fd,true);again()},"Файлы добавлены"));
+  box.querySelectorAll("[data-xfd]").forEach(b=>b.onclick=()=>{if(confirm("Удалить файл?"))act(b,async()=>{await api("POST","/api/vs/fields/file_delete",{id:b.dataset.xfd});again()},"Удалено")})})}
+// ---- страница настройки ----
+const XFF={form:"request"};
+async function vFields(){const j=await xfLoad(true);if(S.route!=="fields")return;const f=XFF.form,D=j.defs[f]||[];
+  const B=XB[f].map(b=>{const d=D.find(x=>x.builtin&&x.key===b[0]);return {b,d}});const C=D.filter(d=>!d.builtin);
+  $("#main").innerHTML=`<div class="row noprint"><a class="btn sm" href="#/users">← Пользователи</a></div><h1>Поля форм</h1>
+   <div class="muted" style="margin-bottom:8px">Добавляйте свои поля, переименовывайте и скрывайте встроенные. Изменения видны всем сразу. Скрытое или удалённое поле не стирает уже введённые данные.</div>
+   <div class="tabs" style="flex-wrap:wrap;margin-bottom:10px">${["request","request_item","act_row","upd","subtopic","board"].filter(k=>j.forms[k]).map(k=>`<button class="${k===f?"on":""}" data-xff2="${k}">${esc(j.forms[k])}</button>`).join("")}</div>
+   <h2>Свои поля (${C.length})</h2><div class="card">${C.length?`<div class="tw"><table><tr><th>Название</th><th>Тип</th><th>Обяз.</th><th>Видно</th><th></th></tr>${C.map((d,i)=>`<tr${d.hidden?' class="muted"':""}><td><b>${esc(d.label)}</b>${d.type==="select"?`<div class="muted">${esc((d.options||[]).join(" · "))}</div>`:""}${d.hint?`<div class="muted">${esc(d.hint)}</div>`:""}</td><td>${esc(j.types[d.type]||d.type)}</td><td>${d.required?"✔":""}</td><td>${d.hidden?"скрыто":"✔"}</td>
+     <td style="white-space:nowrap"><button class="btn sm" data-up="${d.id}" ${i?"":"disabled"} aria-label="Выше">▲</button><button class="btn sm" data-dn="${d.id}" ${i<C.length-1?"":"disabled"} aria-label="Ниже">▼</button><button class="btn sm" data-xe="${d.id}">✏</button><button class="btn sm" data-xh="${d.id}">${d.hidden?"Показать":"Скрыть"}</button><button class="btn sm" data-xdel="${d.id}">🗑</button></td></tr>`).join("")}</table></div>`:'<div class="empty">Своих полей нет</div>'}
+    <div class="row" style="margin-top:8px"><button class="btn p" id="xfadd">＋ Добавить поле</button></div></div>
+   <h2>Встроенные поля</h2><div class="card tw"><table><tr><th>Поле</th><th>Название в форме</th><th>Обяз.</th><th>Видно</th><th></th></tr>${B.map(({b,d})=>`<tr><td class="muted">${esc(b[1])}${b[3]?' <span class="pill gr">нужно программе</span>':""}</td><td><b>${esc(d&&d.label||b[1])}</b></td><td>${b[3]||d&&d.required?"✔":""}</td><td>${d&&d.hidden?"скрыто":"✔"}</td>
+     <td style="white-space:nowrap"><button class="btn sm" data-be="${b[0]}">✏ Изменить</button>${d?`<button class="btn sm" data-br="${d.id}">↺ Как было</button>`:""}</td></tr>`).join("")}</table></div>`;
+  document.querySelectorAll("[data-xff2]").forEach(b=>b.onclick=()=>{XFF.form=b.dataset.xff2;vFields()});
+  const again=async()=>{await xfLoad(true);vFields()};
+  $("#xfadd").onclick=()=>xfEdit(f,null,again);
+  document.querySelectorAll("[data-xe]").forEach(b=>b.onclick=()=>xfEdit(f,C.find(d=>d.id===b.dataset.xe),again));
+  document.querySelectorAll("[data-xh]").forEach(b=>b.onclick=()=>{const d=C.find(x=>x.id===b.dataset.xh);act(b,async()=>{await api("POST","/api/vs/fields/save",Object.assign({},d,{hidden:!d.hidden}));await again()})});
+  document.querySelectorAll("[data-xdel]").forEach(b=>b.onclick=()=>{const d=C.find(x=>x.id===b.dataset.xdel);if(!confirm("Удалить поле «"+d.label+"»? Оно исчезнет из форм. Уже введённые значения останутся в записях, но видны не будут."))return;act(b,async()=>{await api("POST","/api/vs/fields/delete",{id:d.id});await again()},"Поле удалено")});
+  const mv=(id,dir)=>{const ids=C.map(d=>d.id);const i=ids.indexOf(id);const j2=i+dir;if(j2<0||j2>=ids.length)return;[ids[i],ids[j2]]=[ids[j2],ids[i]];act(null,async()=>{await api("POST","/api/vs/fields/order",{ids:B.filter(x=>x.d).map(x=>x.d.id).concat(ids)});await again()})};
+  document.querySelectorAll("[data-up]").forEach(b=>b.onclick=()=>mv(b.dataset.up,-1));document.querySelectorAll("[data-dn]").forEach(b=>b.onclick=()=>mv(b.dataset.dn,1));
+  document.querySelectorAll("[data-be]").forEach(b=>b.onclick=()=>{const x=B.find(y=>y.b[0]===b.dataset.be);xfEditB(f,x.b,x.d,again)});
+  document.querySelectorAll("[data-br]").forEach(b=>b.onclick=()=>act(b,async()=>{await api("POST","/api/vs/fields/delete",{id:b.dataset.br});await again()},"Вернули как было"));
+}
+function xfEdit(f,d,done){const j=XF.j;const T=Object.keys(j.types).filter(t=>t!=="photo"||j.photo_ok[f]);
+  modal(`<h3>${d?"Изменить поле":"Новое поле"} — ${esc(j.forms[f])}</h3>
+   <label class="f">Название *</label><input id="xl" value="${esc(d?d.label:"")}" placeholder="например: Номер машины">
+   <label class="f">Тип</label><select id="xt" ${d?"disabled":""}>${T.map(t=>`<option value="${t}" ${d&&d.type===t?"selected":""}>${esc(j.types[t])}</option>`).join("")}</select>${d?'<div class="muted">тип после создания не меняется</div>':""}
+   <div id="xob"><label class="f">Варианты списка (каждый с новой строки)</label><textarea id="xo" rows="4">${esc(d?(d.options||[]).join("\n"):"")}</textarea></div>
+   <label class="f">Подсказка (необязательно)</label><input id="xhn" value="${esc(d?d.hint:"")}">
+   <label class="row" style="margin-top:10px;font-weight:600;gap:8px"><input type="checkbox" id="xr" ${d&&d.required?"checked":""} style="width:22px;height:22px"> Обязательное</label>
+   <div class="row" style="margin-top:14px"><button class="btn p grow" id="mok">СОХРАНИТЬ</button><button class="btn" data-close>Отмена</button></div>`,box=>{
+   const sw=()=>$("#xob",box).style.display=$("#xt",box).value==="select"?"":"none";sw();$("#xt",box).onchange=sw;
+   $("#mok",box).onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/fields/save",{id:d?d.id:"",form:f,label:$("#xl",box).value,type:$("#xt",box).value,options:$("#xo",box).value.split("\n"),hint:$("#xhn",box).value,required:$("#xr",box).checked,hidden:d?d.hidden:false});closeModal();await done()},"Сохранено")})}
+function xfEditB(f,b,d,done){
+  modal(`<h3>Встроенное поле «${esc(b[1])}»</h3><label class="f">Название в форме</label><input id="xl" value="${esc(d&&d.label||"")}" placeholder="${esc(b[1])}">
+   ${b[3]?`<div class="muted" style="margin-top:8px">Это поле нужно программе — его можно переименовать, но не скрыть.</div>`:`<label class="row" style="margin-top:10px;font-weight:600;gap:8px"><input type="checkbox" id="xh" ${d&&d.hidden?"checked":""} style="width:22px;height:22px"> Скрыть из формы</label>
+   <label class="row" style="margin-top:6px;font-weight:600;gap:8px"><input type="checkbox" id="xr" ${d&&d.required?"checked":""} style="width:22px;height:22px"> Обязательное</label>`}
+   <div class="row" style="margin-top:14px"><button class="btn p grow" id="mok">СОХРАНИТЬ</button><button class="btn" data-close>Отмена</button></div>`,box=>{
+   $("#mok",box).onclick=e=>act(e.target,async()=>{const h=$("#xh",box),r=$("#xr",box);await api("POST","/api/vs/fields/save",{form:f,builtin:true,key:b[0],core:!!b[3],label:$("#xl",box).value,hidden:h?h.checked:false,required:r?r.checked:false});closeModal();await done()},"Сохранено")})}
 
 /* ---------- Модальное окно ---------- */
 function modal(html,bind){closeModal();const m=document.createElement("div");m.className="modal";m.id="modal";m.innerHTML=`<div class="box">${html}</div>`;

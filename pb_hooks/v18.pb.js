@@ -75,8 +75,9 @@ routerAdd("POST", "/api/vs/upd/save", (e) => {
     rec.set("inn", L.str(b.inn).replace(/\D/g, "").slice(0, 12)); rec.set("kpp", L.str(b.kpp).replace(/\D/g, "").slice(0, 9));
     rec.set("basis", L.str(b.basis).slice(0, 500)); rec.set("spec", L.str(b.spec).slice(0, 40));
     rec.set("total_nt", K.num(b.total_nt)); rec.set("total", K.num(b.total)); rec.set("items", items); rec.set("note", L.str(b.note).slice(0, 2000));
+    const F7 = require(`${__hooks}/lib197.js`), ex7 = F7.clean(tx, "upd", b.extra, F7.oldExtra(rec)); rec.set("extra", ex7);   // 1.9.7: свои поля
     if (isNew) rec.set("status", "new");
-    rec.set("search_lc", X.lc([no, sup, L.str(b.inn), L.str(b.basis)].concat(items.map((x) => x.name + " " + x.code).filter((v, i, A) => A.indexOf(v) === i)).join(" ")).slice(0, 20000));   // 1.9.4: поиск по всем позициям (повторы — один раз)
+    rec.set("search_lc", X.lc([no, sup, L.str(b.inn), L.str(b.basis), F7.text($app, "upd", ex7)].concat(items.map((x) => x.name + " " + x.code).filter((v, i, A) => A.indexOf(v) === i)).join(" ")).slice(0, 20000));   // 1.9.4: поиск по всем позициям (повторы — один раз)
     tx.save(rec);
     X.remember(tx, "supplier", sup);
     if (g.msgs.length) X.ovrSave(L, tx, g, rec, "upd_docs", rec.id, "УПД № " + no);
@@ -134,6 +135,7 @@ routerAdd("POST", "/api/vs/skk/act/save", (e) => {
       const fixed = !!x.fixed;
       return { uid: L.str(x.uid) || ($security.randomString(8)), material: L.str(x.material).slice(0, 1000), volume: L.str(x.volume).slice(0, 60), code: L.str(x.code).slice(0, 300),
         issue: L.str(x.issue).slice(0, 1000), decision: L.str(x.decision).slice(0, 1000), upd: L.str(x.upd).slice(0, 30), whole: !!x.whole,
+        extra: require(`${__hooks}/lib197.js`).clean($app, "act_row", x.extra, x.extra),
         fixed: fixed, fix_note: L.str(x.fix_note).slice(0, 1000),
         fixed_at: fixed ? (o.fixed ? o.fixed_at : (L.str(x.fixed_at) || now)) : "", fixed_by: fixed ? (o.fixed ? o.fixed_by : L.userName(a)) : "" };
     }).filter((x) => x.material || x.issue);

@@ -20,7 +20,7 @@ routerAdd("POST", "/api/vs/request/create", (e) => {
     if (!material && !(qty > 0)) return; // пустая строка формы
     if (!material) throw new BadRequestError("Строка " + (i + 1) + ": укажите материал.");
     if (!(qty > 0)) throw new BadRequestError("Строка " + (i + 1) + ": укажите заказанное количество больше нуля.");
-    clean.push({ material: material, qty: qty, supplier: L.str(it.supplier), unit: L.str(it.unit), rd: L.str(it.rd), supply_doc: L.str(it.supply_doc),
+    clean.push({ extra: require(`${__hooks}/lib197.js`).clean($app, "request_item", it && it.extra, {}), material: material, qty: qty, supplier: L.str(it.supplier), unit: L.str(it.unit), rd: L.str(it.rd), supply_doc: L.str(it.supply_doc),
       project_name: L.str(it.project_name).slice(0, 1000), name1c: L.str(it.name1c).slice(0, 1000), objcode: L.str(it.objcode).slice(0, 300), stock_note: L.str(it.stock_note).slice(0, 500) });
   });
   if (!clean.length) throw new BadRequestError("Добавьте хотя бы одну позицию.");
@@ -44,6 +44,7 @@ routerAdd("POST", "/api/vs/request/create", (e) => {
     const d = L.parse(b.req_date);
     if (d) r.set("req_date", L.fmt(d));
     r.set("object", L.str(b.object)); r.set("recipient", L.str(b.recipient)); r.set("note", L.str(b.note));
+    r.set("extra", require(`${__hooks}/lib197.js`).clean(tx, "request", b.extra, {}));   // 1.9.7: свои поля
     // 1.5: шапка печатной формы
     [["planned_date", 40], ["from_wh", 300], ["to_org", 300], ["contract_no", 100], ["contract_date", 60], ["poa_no", 100], ["poa_date", 60], ["tmc_kind", 60]]
       .forEach((f) => { r.set(f[0], L.str(b[f[0]]).slice(0, f[1])); if (["from_wh", "to_org", "contract_no", "poa_no", "tmc_kind"].indexOf(f[0]) >= 0) X.remember(tx, f[0], L.str(b[f[0]])); });
@@ -57,7 +58,7 @@ routerAdd("POST", "/api/vs/request/create", (e) => {
       it.set("request", r.id); it.set("sort", (i + 1) * 10);
       it.set("material", c.material); it.set("supplier", c.supplier); it.set("unit", c.unit);
       it.set("qty_ordered", c.qty); it.set("qty_issued", 0); it.set("rd", c.rd); it.set("supply_doc", c.supply_doc);
-      it.set("acts", c.acts);
+      it.set("acts", c.acts); it.set("extra", c.extra);
       it.set("project_name", c.project_name); it.set("name1c", c.name1c); it.set("objcode", c.objcode); it.set("stock_note", c.stock_note);
       tx.save(it);
     });

@@ -31,6 +31,10 @@ routerAdd("POST", "/api/vs/request/update", (e) => {
       }
       r.set(f, nv); ch.push(HEAD[f] + ": «" + ov + "» → «" + nv + "»");
     });
+    if (b.extra !== undefined) {   // 1.9.7: свои поля шапки
+      const F = require(`${__hooks}/lib197.js`), oe = F.oldExtra(r), ne = F.clean(tx, "request", b.extra, oe);
+      if (JSON.stringify(ne) !== JSON.stringify(oe)) { r.set("extra", ne); ch.push("Свои поля шапки изменены"); }
+    }
     if (b.req_date !== undefined) {
       const d = L.parse(b.req_date), ov = r.getString("req_date").slice(0, 10), nv = d ? L.fmt(d).slice(0, 10) : "";
       if (ov !== nv) { r.set("req_date", d ? L.fmt(d) : ""); ch.push("Дата заявки: «" + ov + "» → «" + nv + "»"); }
@@ -69,6 +73,10 @@ routerAdd("POST", "/api/vs/request/update", (e) => {
           const nv = L.str(x[f]), ov = isNew ? "" : rec.getString(f);
           if (nv !== ov) { rec.set(f, nv); if (!isNew) diff.push(ITEM[f] + ": «" + ov + "» → «" + nv + "»"); }
         });
+        if (x.extra !== undefined) {   // 1.9.7: свои поля позиции
+          const F = require(`${__hooks}/lib197.js`), oe = isNew ? {} : F.oldExtra(rec), ne = F.clean(tx, "request_item", x.extra, oe);
+          if (JSON.stringify(ne) !== JSON.stringify(oe)) { rec.set("extra", ne); if (!isNew) diff.push("свои поля"); }
+        }
         const oq = isNew ? 0 : rec.getFloat("qty_ordered");
         if (isNew || Math.abs(oq - qty) > 1e-9) {
           if (!isNew && qty + 1e-9 < rec.getFloat("qty_issued")) X.deny(g, label + ": заказано " + fmtN(qty) + " меньше уже выданного " + fmtN(rec.getFloat("qty_issued")));

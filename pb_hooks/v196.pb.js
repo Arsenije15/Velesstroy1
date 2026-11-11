@@ -171,7 +171,7 @@ routerAdd("GET", "/api/vs/pub/site/{token}", (e) => {
   let names = [];
   try { names = $app.findRecordsByFilter("resources", "unavailable = false", "name", 300, 0).map((r) => ({ name: r.getString("name"), kind: r.getString("category") === "worker" ? "people" : "tech" })); } catch (_) {}
   e.response.header().set("Cache-Control", "no-store");
-  return e.json(200, { rows: rows.map(Z.boardOut), resources: names, now: L.fmt(new Date()) });
+  return e.json(200, { rows: rows.map(Z.boardOut), resources: names, fields: require(`${__hooks}/lib197.js`).defsOut($app, ["board"]).board, now: L.fmt(new Date()) });
 });
 routerAdd("POST", "/api/vs/pub/site/{token}/save", (e) => {
   const L = require(`${__hooks}/lib.js`), Z = require(`${__hooks}/lib196.js`);

@@ -54,8 +54,9 @@ routerAdd("GET", "/api/vs/pub/topic/{token}", (e) => {
     topic: { title: t.getString("title"), description: t.getString("description"), status: t.getString("status"), updated: t.getString("updated") },
     people: t.getStringSlice("members").map(nm),
     subs: subs.map((s) => ({ id: s.id, title: s.getString("title"), description: s.getString("description"), status: s.getString("status"),
-      members: s.getStringSlice("members").map(nm), member_ids: s.getStringSlice("members"), stages: Q.stagesOf(s).map((x) => ({ uid: x.uid, name: x.name, deadline: x.deadline, done: !!x.done, done_at: x.done_at, done_by: x.done_by })) })),
+      members: s.getStringSlice("members").map(nm), member_ids: s.getStringSlice("members"), extra: (() => { try { return JSON.parse(s.getString("extra") || "{}") || {}; } catch (_) { return {}; } })(), stages: Q.stagesOf(s).map((x) => ({ uid: x.uid, name: x.name, deadline: x.deadline, done: !!x.done, done_at: x.done_at, done_by: x.done_by })) })),
     msgs: msgs.map((m) => ({ sub: m.getString("subtopic"), user: m.getString("user_name"), kind: m.getString("kind"), text: m.getString("text"), at: m.getString("created") })),
+    fields: require(`${__hooks}/lib197.js`).defsOut($app, ["subtopic"]).subtopic,   // 1.9.7: свои поля подтемы
     now: L.fmt(new Date()),
   });
 });

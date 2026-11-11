@@ -79,6 +79,7 @@ function subSave(L, Q, tx, a, b) {
     return { uid: L.str(x.uid) || $security.randomString(8), name: L.str(x.name).trim().slice(0, 300), deadline: L.str(x.deadline).slice(0, 10), done: !!o.done, done_at: o.done_at || "", done_by: o.done_by || "" };
   }).filter((x) => x.name);
   s.set("topic", t.id); s.set("title", title.slice(0, 300)); s.set("description", L.str(b.description).slice(0, 3000)); s.set("members", mem); s.set("stages", stages);
+  { const F7 = require(`${__hooks}/lib197.js`); s.set("extra", F7.clean(tx, "subtopic", b.extra, F7.oldExtra(s))); }   // 1.9.7: свои поля
   if (!b.id) { s.set("status", "open"); s.set("sort", Date.now() / 1000); if (L.authId(a)) s.set("created_by", a.id); }
   tx.save(s);
   const tm = t.getStringSlice("members"); mem.forEach((m) => { if (tm.indexOf(m) < 0) tm.push(m); }); t.set("members", tm); tx.save(t);
@@ -139,7 +140,7 @@ function boardOut(r) {
   let h = []; try { h = JSON.parse(r.getString("history") || "[]") || []; } catch (_) {}
   return { id: r.id, kind: r.getString("kind"), title: r.getString("title"), who: r.getString("who"), place: r.getString("place"), start: r.getString("start"), end: r.getString("end"),
     status: r.getString("status"), note: r.getString("note"), author: r.getString("author"), edited_by: r.getString("edited_by"), updated: r.getString("updated"),
-    photos: r.getStringSlice("photos"), history: h.slice(-15) };
+    photos: r.getStringSlice("photos"), history: h.slice(-15), extra: (() => { try { return JSON.parse(r.getString("extra") || "{}") || {}; } catch (_) { return {}; } })() };
 }
 function boardSave(L, tx, b, files) {
   const nm = L.str(b.name).replace(/\s+/g, " ").trim().slice(0, 120);
@@ -163,6 +164,8 @@ function boardSave(L, tx, b, files) {
     [["title", title], ["who", L.str(b.who).slice(0, 200)], ["place", L.str(b.place).slice(0, 300)], ["start", st], ["end", en], ["status", status], ["kind", kind], ["note", L.str(b.note).slice(0, 2000)]].forEach(([k, v]) => {
       if (r.getString(k) !== v) { if (b.id) ch.push(k); r.set(k, v); }
     });
+    { const F7 = require(`${__hooks}/lib197.js`), oe = F7.oldExtra(r), ne = F7.clean(tx, "board", typeof b.extra === "string" ? (() => { try { return JSON.parse(b.extra); } catch (_) { return {}; } })() : b.extra, oe);
+      if (JSON.stringify(ne) !== JSON.stringify(oe)) { r.set("extra", ne); if (b.id) ch.push("свои поля"); } }
     if (!b.id) { r.set("author", nm); h.push({ at: now, by: nm, what: "добавил(а)" }); } else if (ch.length) h.push({ at: now, by: nm, what: "изменил(а): " + ch.join(", ") });
   }
   if (files && files.length) r.set("photos+", files.slice(0, 12));
