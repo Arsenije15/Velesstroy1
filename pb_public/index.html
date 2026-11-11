@@ -1839,10 +1839,12 @@ async function vUpdEdit(id,changed){
     if(ck&&ck.missing&&ck.missing.length)warns.push("Не прочитаны строки № "+ck.missing.join(", ")+" (по сквозной нумерации) — допишите их по документу.");
     if(ck&&ck.dup&&ck.dup.length)warns.push("Строки № "+ck.dup.join(", ")+" прочитаны дважды — удалите лишние.");
     const nq=items.filter(x=>x.warn.includes("qty")).length;if(nq)warns.push(`Количество в ${nq} строк(ах) прочитано неуверенно — они подсвечены жёлтым, сверьте с документом.`);
+    if(ck&&ck.totals_found===false)warns.push("Строка «Всего к оплате» не найдена — проверьте, прочитан ли последний лист и все строки документа.");
+    if(ck&&ck.sum_ok===false)warns.push(`Сумма прочитанных строк (${money(ck.items_sum)} ₽) не равна «Всего к оплате» (${money(ck.total_sum)} ₽ без налога) — какая-то строка пропущена или прочитана с ошибкой.`);
     if(o.pages_read&&o.pages&&o.pages_read<o.pages)warns.push(`Прочитано листов ${o.pages_read} из ${o.pages} — остальные позиции добавьте вручную.`);
     if(!items.length)warns.push("Таблица позиций не прочитана — добавьте строки вручную или сфотографируйте УПД ровнее и крупнее.")}
   $("#main").innerHTML=`<div class="row noprint"><a class="btn sm" href="#/${draft?"skk":"upd/"+u.id}">← Назад</a></div><h1>${draft?"Новый УПД — проверьте":"Изменить УПД № "+esc(u.number)}</h1>
-   ${draft&&o&&items.length?`<div class="banner" style="background:var(--gbg);color:var(--g)">Прочитано позиций: <b>${items.length}</b>${o.pages?` с ${o.pages_read||o.pages} лист.`:""} за ${Math.round((o.ms||0)/1000)} с.${ck&&ck.no_ok?` Нумерация 1–${ck.no_max} без пропусков.`:""}${ck&&ck.checked?` Количество сверено с ценой и суммой: ${ck.checked} из ${items.length}.`:""}</div>`:""}
+   ${draft&&o&&items.length?`<div class="banner" style="background:var(--gbg);color:var(--g)">Прочитано позиций: <b>${items.length}</b>${o.pages?` с ${o.pages_read||o.pages} лист.`:""} за ${Math.round((o.ms||0)/1000)} с.${ck&&ck.no_ok?` Нумерация 1–${ck.no_max} без пропусков.`:""}${ck&&ck.checked?` Количество сверено с ценой и суммой: ${ck.checked} из ${items.length}.`:""}${ck&&ck.sum_ok?` Сумма строк = «Всего к оплате» (${money(ck.total_sum)} ₽ без налога) — ни одна строка не потеряна.`:""}</div>`:""}
    ${warns.length?`<div class="banner" style="background:var(--ybg);color:var(--y)">${warns.map(esc).join("<br>")}</div>`:""}
    <div class="card" id="ueform"><div class="row" style="margin-bottom:8px">${u.file?`<a class="btn sm" href="${furl}" target="_blank" rel="noopener">📄 Открыть документ</a>`:`<span class="muted">Без файла — заполните по бумажному УПД</span>`}${isImg?`<img src="${furl}" alt="УПД" style="max-height:90px;border-radius:6px">`:""}</div>
     <div class="g2x"><div><label class="f" for="uen">№ УПД / счёт-фактуры</label><input id="uen" value="${esc(v.number)}"${W(draft&&(!h.number||h.number_unsure),"Сверьте")}></div><div><label class="f" for="ued">Дата</label><input id="ued" type="date" value="${esc(v.date)}"${W(draft&&(!h.date||h.date_unsure),"Сверьте")}></div></div>
@@ -1850,12 +1852,15 @@ async function vUpdEdit(id,changed){
     <label class="f">Позиции (${items.length})</label><div class="tw"><table><tr><th>№</th><th>Наименование</th><th>Кол-во</th><th>Ед.</th><th></th></tr><tbody id="uerows">${items.map(rowH).join("")}</tbody></table></div>
     <button class="btn sm" id="ueadd" style="margin-top:6px">＋ Строка</button>
     <label class="f" for="uenote">Примечание</label><textarea id="uenote" rows="2">${esc(v.note)}</textarea>
-    <div class="row" style="margin-top:14px"><button class="btn p grow" id="uesave">СОХРАНИТЬ УПД</button></div></div>`;
+    <div class="row" style="margin-top:14px"><button class="btn p grow" id="uesave">СОХРАНИТЬ УПД</button><button class="btn" id="uexl">⬇ Excel</button></div></div>`;
   sugAttach($("#main"));
   const bindX=()=>document.querySelectorAll("[data-uix]").forEach(b=>b.onclick=()=>b.closest("tr").remove());bindX();
   $("#ueadd").onclick=()=>{$("#uerows").insertAdjacentHTML("beforeend",rowH({warn:[]},Date.now()));bindX()};
+  // 1.9.5: позиции из формы (то, что сейчас на экране) — для сохранения и для Excel до сохранения
+  const formItems=()=>[...document.querySelectorAll("#uerows tr")].map(tr=>{const g=k=>{const el=tr.querySelector(`[data-k="${k}"]`);return el?el.value.trim():""};const x={name:g("name"),unit:g("unit"),qty:g("qty")};HID.forEach(k=>x[k]=g(k));return x}).filter(x=>x.name);
+  $("#uexl").onclick=()=>updExcel({number:$("#uen").value.trim(),date:$("#ued").value,supplier:$("#ues").value.trim(),status:u.status},formItems().map(x=>Object.assign({},x,{qty:numQ(x.qty)})));
   $("#uesave").onclick=e=>act(e.target,async()=>{
-    const its=[...document.querySelectorAll("#uerows tr")].map(tr=>{const g=k=>{const el=tr.querySelector(`[data-k="${k}"]`);return el?el.value.trim():""};const x={name:g("name"),unit:g("unit"),qty:g("qty")};HID.forEach(k=>x[k]=g(k));return x}).filter(x=>x.name);
+    const its=formItems();
     const r=await api("POST","/api/vs/upd/save",{id:u.id,number:$("#uen").value,date:$("#ued").value,supplier:$("#ues").value.trim(),inn:v.inn,kpp:v.kpp,basis:v.basis,spec:v.spec,
       total:v.total,total_nt:v.total_nt,note:$("#uenote").value,items:its});
     location.hash="#/upd/"+r.id},"УПД сохранён");
@@ -1866,7 +1871,7 @@ async function vUpd(id,changed){
   if(u.status==="draft"){location.hash="#/updedit/"+id;return}
   const ft=await fileToken();const furl=`/api/files/upd_docs/${u.id}/${encodeURIComponent(u.file)}?token=${ft}`;const its=updItems(u);
   const PX={code:its.some(x=>x.code),money:its.some(x=>+x.price||+x.total)};   // 1.9.4: цены/коды показываем, только если они есть (новые УПД читаются без них)
-  $("#main").innerHTML=`<div class="row noprint"><a class="btn sm" href="#/skk">← К списку УПД</a>${can.upd()?`<a class="btn sm" href="#/updedit/${u.id}">✏ Изменить</a>`:""}${can.skk()?`<button class="btn p sm" id="updact">⚠ АКТ</button>`:""}${(can.manage()||can.skk())&&!acts.length?`<button class="btn sm" id="upddel">🗑 Удалить</button>`:""}</div>
+  $("#main").innerHTML=`<div class="row noprint"><a class="btn sm" href="#/skk">← К списку УПД</a>${can.upd()?`<a class="btn sm" href="#/updedit/${u.id}">✏ Изменить</a>`:""}${can.skk()?`<button class="btn p sm" id="updact">⚠ АКТ</button>`:""}<button class="btn sm" id="updxl">⬇ Excel</button>${(can.manage()||can.skk())&&!acts.length?`<button class="btn sm" id="upddel">🗑 Удалить</button>`:""}</div>
    <h1 id="updv">УПД № ${esc(u.number)} <span class="pill ${UST[u.status][1]}">${UST[u.status][0]}</span></h1>
    <div class="card"><div class="kv"><b>Дата</b><span>${dmy(u.date)}</span><b>Поставщик</b><span>${esc(u.supplier)}${u.inn?` · ИНН ${esc(u.inn)}`:""}</span>${u.basis?`<b>Основание</b><span>${esc(u.basis)}</span>`:""}
     ${u.spec?`<b>Спецификация</b><span>№ ${esc(u.spec)}</span>`:""}${+u.total?`<b>Всего</b><span>${money(u.total)} ₽${u.total_nt?` (без НДС ${money(u.total_nt)})`:""}</span>`:""}<b>Позиций</b><span>${its.length}</span><b>Загрузил</b><span>${esc(uname(u.uploaded_by))}, ${dt(u.created)}</span>${u.note?`<b>Примечание</b><span>${esc(u.note)}</span>`:""}</div>
@@ -1876,6 +1881,7 @@ async function vUpd(id,changed){
   bindUpdPhotos($("#updph"),()=>vUpd(id));
   const mt=$("#updmatch");if(mt)mt.onclick=()=>act(mt,()=>updMatch(u.id));
   const ab=$("#updact");if(ab)ab.onclick=()=>{SKK.newAct={upds:[u.id]};location.hash="#/skkactedit/new"};
+  $("#updxl").onclick=()=>updExcel(u,its);
   const db=$("#upddel");if(db)db.onclick=()=>{if(!confirm("Удалить УПД № "+u.number+"?"))return;act(db,async()=>{await api("POST","/api/vs/upd/delete",{id:u.id});location.hash="#/skk"},"УПД удалён")};
 }
 async function skkActList(){
@@ -2034,6 +2040,30 @@ function printAct(a){
    .pf-src{font-size:7pt;color:#555;text-align:right;margin-top:3mm}
    @media print{body.printing>*:not(#prt){display:none!important}html,body.printing{background:#fff!important}#prt{position:static;inset:auto;background:#fff;padding:0;overflow:visible}.pfbar{display:none!important}.pfpage{width:auto;min-height:0;margin:0;padding:0;box-shadow:none}}`;
   document.body.classList.add("printing");const close=()=>{box.remove();document.body.classList.remove("printing")};$("#pfX").onclick=close;$("#pfGo").onclick=()=>window.print();
+}
+// 1.9.5: УПД в Excel — лист «Позиции» (как в документе) и «Сводка» (одинаковые наименования сложены)
+const numQ=v=>{const n=parseFloat(String(v==null?"":v).replace(/\s/g,"").replace(",","."));return isNaN(n)?null:n};
+function updExcel(u,its){
+  if(!its.length){toast("В УПД нет позиций","err");return}
+  const T=XS.txt,oc=its.some(x=>x.pid||x.objcode);
+  const head=["№","Наименование товара","Кол-во","Ед. изм."].concat(oc?["PID","Шифр объекта","Раздел / стадия"]:[]);
+  const W=[6,70,11,9].concat(oc?[12,24,26]:[]),L=String.fromCharCode(64+W.length);
+  const info=[[{v:"УПД № "+(u.number||"—")+(u.date?" от "+dmy(u.date):""),s:XS.title}],[{v:u.supplier||"",s:XS.sub}],
+    [{v:"Позиций: "+its.length+(u.status==="draft"?" · черновик, не сохранён":"")+" · выгружено "+new Date().toLocaleString("ru-RU"),s:XS.sub}],[]];
+  const r1=info.concat([head.map(v=>({v,s:XS.head}))]);
+  its.forEach((x,i)=>{const q=numQ(x.qty);r1.push([{v:i+1,s:XS.num},{v:x.name||"",s:T},{v:q==null?String(x.qty||""):q,s:q==null?XS.sR:XS.num},{v:x.unit||"",s:T}].concat(oc?[{v:x.pid||"",s:x.pid?XS.sG:T},{v:x.objcode||"",s:T},{v:[x.section,x.stage].filter(Boolean).join(" / "),s:T}]:[]))});
+  // итог по единицам
+  const byU={};its.forEach(x=>{const q=numQ(x.qty);if(q!=null){const k=x.unit||"—";byU[k]=(byU[k]||0)+q}});
+  r1.push([]);Object.keys(byU).forEach(k=>r1.push([{v:"",s:0},{v:"ИТОГО, "+k,s:XS.over},{v:Math.round(byU[k]*1000)/1000,s:XS.sO},{v:k,s:XS.over}]));
+  // сводка: одинаковые наименования
+  const G={};its.forEach((x,i)=>{const k=(x.name||"")+"\u0001"+(x.unit||"");if(!G[k])G[k]={name:x.name,unit:x.unit,qty:0,rows:[]};G[k].qty+=numQ(x.qty)||0;G[k].rows.push(i+1)});
+  const gs=Object.values(G).sort((a,b)=>a.name.localeCompare(b.name,"ru"));
+  const r2=[[{v:"Сводка по наименованиям — УПД № "+(u.number||"—")+(u.date?" от "+dmy(u.date):""),s:XS.title}],[{v:u.supplier||"",s:XS.sub}],
+    [{v:"Наименований: "+gs.length+" (строк в документе: "+its.length+")",s:XS.sub}],[],["№","Наименование товара","Кол-во всего","Ед. изм.","Строк","№ строк в УПД"].map(v=>({v,s:XS.head}))];
+  gs.forEach((g,i)=>r2.push([{v:i+1,s:XS.num},{v:g.name,s:T},{v:Math.round(g.qty*1000)/1000,s:XS.lock},{v:g.unit||"",s:T},{v:g.rows.length,s:XS.num},{v:g.rows.join(", "),s:T}]));
+  const fn="UPD_"+String(u.number||"bez_nomera").replace(/[^\wА-Яа-я-]/g,"_")+(u.date?"_"+u.date:"")+".xlsx";
+  saveBlob(xlsxBlob([{name:"Позиции",cols:W,rows:r1,freeze:5,merges:["A1:"+L+"1","A2:"+L+"2","A3:"+L+"3"],filter:"A5:"+L+(5+its.length)},
+    {name:"Сводка",cols:[6,70,13,9,8,40],rows:r2,freeze:5,merges:["A1:F1","A2:F2","A3:F3"],filter:"A5:F"+(5+gs.length)}]),fn);
 }
 function actExcel(a){
   const rows=actRows(a);const T=XS.txt,B={...{}};

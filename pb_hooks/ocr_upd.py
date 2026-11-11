@@ -198,10 +198,19 @@ def find_table(g):
     hp = hor.sum(1) / 255
     ys_all = peaks(hp, W * 0.35)
     if len(ys_all) < 2: return None
-    top0, bot0 = ys_all[0], ys_all[-1]
-    vp = ver[top0:bot0 + 1].sum(0) / 255
-    xs = [x for x in peaks(vp, (bot0 - top0) * 0.5) if 12 < x < W - 12]
-    if len(xs) < 6: return None
+    # 1.9.5: таблица — самый высокий участок между горизонтальными линиями, где ≥6 вертикальных линий.
+    # На последнем листе под короткой таблицей идут линии подписей — раньше из-за них лист не читался (терялась строка 301).
+    best = None
+    for i0 in range(min(len(ys_all) - 1, 6)):
+        for i1 in range(len(ys_all) - 1, i0, -1):
+            top0, bot0 = ys_all[i0], ys_all[i1]
+            if bot0 - top0 < 40: break
+            vp = ver[top0:bot0 + 1].sum(0) / 255
+            xs = [x for x in peaks(vp, (bot0 - top0) * 0.5) if 12 < x < W - 12]
+            # больше вертикальных линий важнее высоты: под таблицей линии подписей «съедают» внутренние колонки
+            if len(xs) >= 6 and (best is None or (len(xs), bot0 - top0) > (len(best[2]), best[1] - best[0])): best = (top0, bot0, xs)
+    if not best: return None
+    top0, bot0, xs = best
     x0, x1 = xs[0], xs[-1]
     ys = peaks(hor[:, x0:x1].sum(1) / 255, (x1 - x0) * 0.35)
     ys = [y for y in ys if top0 - 5 <= y <= bot0 + 5]
@@ -341,7 +350,7 @@ def table_rows(g, tb, tpl):
         unit = UM.get(unit, unit)
         ok = re.sub(r"\D", "", T.get("okei", ""))
         if ok in OKEI and (not unit or unit not in OKEI.values()): unit = OKEI[ok]
-        it = {"no": int(no) if no and len(no) <= 4 else None, "name": name, "unit": unit, "qty": q, "qty_raw": qraw}
+        it = {"no": int(no) if no and len(no) <= 4 else None, "name": name, "unit": unit, "qty": q, "qty_raw": qraw, "_sum": ssum}
         warn = []
         if q is None: warn.append("qty")
         elif price and ssum:
@@ -440,7 +449,13 @@ def main(path):
             chk["missing"] = [v for v in range(1, mx + 1) if v not in seen][:50]
             chk["dup"] = [v for v, c in seen.items() if c > 1][:50]
             chk["no_ok"] = not chk["missing"] and not chk["dup"] and mx == len(items)
-        if tot and tot.get("sum"): chk["total_sum"] = tot["sum"]
+        # 1.9.5: сверка «Всего к оплате» (стоимость без налога) с суммой строк — если строки потерялись, суммы не сойдутся
+        isum = round(sum(it.get("_sum") or 0 for it in items), 2)
+        for it in items: it.pop("_sum", None)
+        chk["totals_found"] = bool(tot and tot.get("sum"))
+        if chk["totals_found"]:
+            chk["total_sum"] = tot["sum"]; chk["items_sum"] = isum
+            chk["sum_ok"] = abs(isum - tot["sum"]) <= max(1.0, tot["sum"] * 0.0005)
         out({"header": h, "items": items, "check": chk, "pages": len(pages), "pages_read": len(dbg), "ms": int((time.time() - t0) * 1000), "debug": dbg})
     except Exception as e:
         out({"error": "Не удалось прочитать УПД: " + str(e)[:200]})
