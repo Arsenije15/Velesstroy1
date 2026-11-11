@@ -69,7 +69,8 @@ routerAdd("POST", "/api/vs/upd/save", (e) => {
       code: L.str(x.code).slice(0, 60), name: L.str(x.name).slice(0, 1000), unit: L.str(x.unit).slice(0, 20),
       qty: K.num(x.qty), price: K.num(x.price), sum: K.num(x.sum), total: K.num(x.total),
       pid: L.str(x.pid).slice(0, 60), objcode: L.str(x.objcode).slice(0, 300), section: L.str(x.section).slice(0, 120),
-      object: L.str(x.object).slice(0, 300), stage: L.str(x.stage).slice(0, 200), oper_id: L.str(x.oper_id).slice(0, 30) })).filter((x) => x.name);
+      object: L.str(x.object).slice(0, 300), stage: L.str(x.stage).slice(0, 200), oper_id: L.str(x.oper_id).slice(0, 30),
+      spec_name: L.str(x.spec_name).slice(0, 1000), spec_no: L.str(x.spec_no).slice(0, 20) })).filter((x) => x.name);   // 1.9.6: позиция из спецификации поставщика
     rec.set("number", no); rec.set("date", L.str(b.date)); rec.set("supplier", sup); rec.set("supplier_key", sk);
     rec.set("inn", L.str(b.inn).replace(/\D/g, "").slice(0, 12)); rec.set("kpp", L.str(b.kpp).replace(/\D/g, "").slice(0, 9));
     rec.set("basis", L.str(b.basis).slice(0, 500)); rec.set("spec", L.str(b.spec).slice(0, 40));

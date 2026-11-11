@@ -123,6 +123,7 @@ def fix_name(s):
     s = re.sub(r"\s+([,.;:)])", r"\1", s)
     s = re.sub(r"([(])\s+", r"\1", s)
     s = re.sub(r"\s{2,}", " ", s)
+    if s.count("(") > s.count(")") and re.search(r"[\\|\]1l]$", s): s = s[:-1] + ")"   # «(нерж.сталь\» → «(нерж.сталь)»
     return s.strip(" |_:;—-")
 
 MONTHS = {"январ": 1, "феврал": 2, "март": 3, "апрел": 4, "ма": 5, "июн": 6, "июл": 7, "август": 8, "сентябр": 9, "октябр": 10, "ноябр": 11, "декабр": 12}
@@ -140,7 +141,14 @@ def clean_org(v):
     v = v.replace("“", "\"").replace("”", "\"").replace("„", "\"").replace("«", "\"").replace("»", "\"").replace("''", "\"")
     v = re.sub(r"\s+", " ", v).strip(" .,:;|_-")
     m = re.match(r"(.*?\"[^\"]{2,80}\")", v)
-    return m.group(1) if m else v[:120]
+    v = m.group(1) if m else v[:120]
+    # 1.9.6: название в кавычках прочитано латиницей («KPENTOHH») — это русские буквы-двойники
+    def cyr(mm):
+        w = mm.group(1)
+        if re.search(r"[А-Яа-я]", w) or not re.search(r"[A-Z]{3}", w): return mm.group(0)
+        t = w.translate(str.maketrans("ABCEHKMOPTXYN", "АВСЕНКМОРТХУП"))
+        return mm.group(0) if re.search(r"[A-Za-z]", t) else '"' + t + '"'
+    return re.sub(r'"([^"]{3,80})"', cyr, v)
 
 def header_fields(t):
     t = re.sub(r"[ \t]+", " ", t)
@@ -192,28 +200,43 @@ def peaks(proj, minlen, gap=8):
     return [int(np.mean(p)) for p in grp]
 
 def find_table(g):
+    for th in (0.35, 0.2):   # 1.9.6: скан с бледными/рваными линиями (УПД № 925) — второй проход с мягким порогом
+        t = _find_table(g, th)
+        if t: return t
+    return None
+
+def _find_table(g, th):
     hor, ver = masks(g)
     H, W = g.shape
+    if th < 0.3:   # сшиваем разрывы в линиях скана
+        hor = cv2.morphologyEx(hor, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (max(15, W // 50), 1)))
+        ver = cv2.morphologyEx(ver, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (1, max(15, H // 80))))
     # вертикальные линии: на листе-продолжении таблица низкая (3 строки) — порог от высоты самой таблицы
     hp = hor.sum(1) / 255
-    ys_all = peaks(hp, W * 0.35)
+    ys_all = peaks(hp, W * th)
     if len(ys_all) < 2: return None
     # 1.9.5: таблица — самый высокий участок между горизонтальными линиями, где ≥6 вертикальных линий.
     # На последнем листе под короткой таблицей идут линии подписей — раньше из-за них лист не читался (терялась строка 301).
     best = None
-    for i0 in range(min(len(ys_all) - 1, 6)):
+    cs = np.vstack([np.zeros((1, W), np.int32), np.cumsum((ver > 0).astype(np.int32), axis=0)])   # суммы по столбцам — быстро для любой пары линий
+    for i0 in range(len(ys_all) - 1):
         for i1 in range(len(ys_all) - 1, i0, -1):
             top0, bot0 = ys_all[i0], ys_all[i1]
             if bot0 - top0 < 40: break
-            vp = ver[top0:bot0 + 1].sum(0) / 255
+            vp = (cs[bot0 + 1] - cs[top0]).astype(np.float64)
             xs = [x for x in peaks(vp, (bot0 - top0) * 0.5) if 12 < x < W - 12]
             # больше вертикальных линий важнее высоты: под таблицей линии подписей «съедают» внутренние колонки
             if len(xs) >= 6 and (best is None or (len(xs), bot0 - top0) > (len(best[2]), best[1] - best[0])): best = (top0, bot0, xs)
     if not best: return None
     top0, bot0, xs = best
     x0, x1 = xs[0], xs[-1]
-    ys = peaks(hor[:, x0:x1].sum(1) / 255, (x1 - x0) * 0.35)
+    ys = peaks(hor[:, x0:x1].sum(1) / 255, (x1 - x0) * (0.35 if th >= 0.3 else 0.3))
     ys = [y for y in ys if top0 - 5 <= y <= bot0 + 5]
+    # нижняя линия «Всего к оплате» часто короче (объединённые ячейки) — край таблицы берём по вертикальным линиям
+    if ys and bot0 > ys[-1] + 15: ys.append(bot0)
+    for y in ys_all:   # строка «Всего к оплате» под таблицей: линия ниже на 1 строку, хотя бы на 20 % ширины
+        if ys and ys[-1] + 15 < y <= ys[-1] + 90 and (hor[max(0, y - 3):y + 4, x0:x1].max(0) > 0).mean() >= 0.2: ys.append(y)
+    if ys and top0 < ys[0] - 15: ys.insert(0, top0)
     if len(ys) < 2: return None
     return {"xs": xs, "ys": ys, "top": ys[0], "bot": ys[-1], "hor": hor, "ver": ver, "W": W}
 
@@ -439,16 +462,7 @@ def main(path):
                 if a_ and b_ and b_ - a_ == 2: it["no"] = a_ + 1
             elif it.get("no") is None and k == len(items) - 1 and k and items[k - 1].get("no"): it["no"] = items[k - 1]["no"] + 1
             elif it.get("no") is None and k == 0 and len(items) > 1 and items[1].get("no") == 2: it["no"] = 1
-        # сквозная нумерация: пропуски и повторы «№ п/п»
-        nos = [it["no"] for it in items if it.get("no")]
         chk = {"rows": len(items), "checked": sum(1 for it in items if it.get("checked")), "warn": sum(1 for it in items if "qty" in it["warn"])}
-        if nos:
-            mx = max(nos); seen = {}
-            for v in nos: seen[v] = seen.get(v, 0) + 1
-            chk["no_max"] = mx
-            chk["missing"] = [v for v in range(1, mx + 1) if v not in seen][:50]
-            chk["dup"] = [v for v, c in seen.items() if c > 1][:50]
-            chk["no_ok"] = not chk["missing"] and not chk["dup"] and mx == len(items)
         # 1.9.5: сверка «Всего к оплате» (стоимость без налога) с суммой строк — если строки потерялись, суммы не сойдутся
         isum = round(sum(it.get("_sum") or 0 for it in items), 2)
         for it in items: it.pop("_sum", None)
@@ -456,6 +470,19 @@ def main(path):
         if chk["totals_found"]:
             chk["total_sum"] = tot["sum"]; chk["items_sum"] = isum
             chk["sum_ok"] = abs(isum - tot["sum"]) <= max(1.0, tot["sum"] * 0.0005)
+        # 1.9.6: сумма строк = «Всего к оплате» — значит, все строки на месте; неразборчивый «№ п/п» нумеруем по порядку
+        if chk.get("sum_ok") and items and [it.get("no") for it in items] != list(range(1, len(items) + 1)):
+            for k, it in enumerate(items): it["no"] = k + 1
+            chk["renumbered"] = True
+        # сквозная нумерация: пропуски и повторы «№ п/п»
+        nos = [it["no"] for it in items if it.get("no")]
+        if nos:
+            mx = max(nos); seen = {}
+            for v in nos: seen[v] = seen.get(v, 0) + 1
+            chk["no_max"] = mx
+            chk["missing"] = [v for v in range(1, mx + 1) if v not in seen][:50]
+            chk["dup"] = [v for v, c in seen.items() if c > 1][:50]
+            chk["no_ok"] = not chk["missing"] and not chk["dup"] and mx == len(items)
         out({"header": h, "items": items, "check": chk, "pages": len(pages), "pages_read": len(dbg), "ms": int((time.time() - t0) * 1000), "debug": dbg})
     except Exception as e:
         out({"error": "Не удалось прочитать УПД: " + str(e)[:200]})

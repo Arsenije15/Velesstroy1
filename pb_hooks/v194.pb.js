@@ -4,43 +4,31 @@
 
 // ---------- Создать личные ссылки участникам темы (руководитель / администратор) ----------
 routerAdd("POST", "/api/vs/topic/links/create", (e) => {
-  const L = require(`${__hooks}/lib.js`), Q = require(`${__hooks}/lib19.js`);
-  const a = L.requireRole(e, Q.BOSS_ROLES);
+  // 1.9.6: ссылку участнику может выдать любой участник темы
+  const L = require(`${__hooks}/lib.js`), Q = require(`${__hooks}/lib19.js`), Z = require(`${__hooks}/lib196.js`);
+  const a = e.auth;
   const b = e.requestInfo().body || {};
   const out = [];
   $app.runInTransaction((tx) => {
     const t = tx.findRecordById("topics", L.str(b.topic));
     if (t.getString("status") === "closed") throw new BadRequestError("Тема в архиве — сначала откройте её снова.");
-    const mem = t.getStringSlice("members");
+    Z.needEdit(L, Q, a, t);
     const ids = (Array.isArray(b.users) ? b.users : []).map(String).slice(0, 200);
     if (!ids.length) throw new BadRequestError("Выберите участников.");
-    ids.forEach((uid) => {
-      if (mem.indexOf(uid) < 0) throw new BadRequestError("Человек не участвует в этой теме.");
-      const u = tx.findRecordById("users", uid);
-      // уже есть действующая ссылка — отдаём её же (повторная отправка не плодит ссылки)
-      let rec = null;
-      try { rec = tx.findFirstRecordByFilter("topic_links", "topic = {:t} && user = {:u} && revoked = false", { t: t.id, u: uid }); } catch (_) {}
-      if (!rec) {
-        rec = new Record(tx.findCollectionByNameOrId("topic_links"));
-        rec.set("token", $security.randomStringWithAlphabet(32, "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"));
-        rec.set("topic", t.id); rec.set("user", uid); rec.set("revoked", false); rec.set("views", 0);
-        if (L.authId(a)) rec.set("created_by", a.id);
-        tx.save(rec);
-        Q.topicLog(L, tx, a, t.id, "«" + t.getString("title") + "»: личная ссылка для " + (u.getString("name") || u.getString("username")));
-      }
-      out.push({ id: rec.id, user: uid, name: u.getString("name") || u.getString("username"), token: rec.getString("token") });
-    });
+    ids.forEach((uid) => out.push(Z.linkFor(L, Q, tx, a, t, uid)));
   });
   return e.json(200, { links: out });
 }, $apis.requireAuth("users"));
 routerAdd("POST", "/api/vs/topic/links/revoke", (e) => {
-  const L = require(`${__hooks}/lib.js`), Q = require(`${__hooks}/lib19.js`);
-  const a = L.requireRole(e, Q.BOSS_ROLES);
+  const L = require(`${__hooks}/lib.js`), Q = require(`${__hooks}/lib19.js`), Z = require(`${__hooks}/lib196.js`);
+  const a = e.auth;
   const b = e.requestInfo().body || {};
   $app.runInTransaction((tx) => {
     const rec = tx.findRecordById("topic_links", L.str(b.link));
+    const t = tx.findRecordById("topics", rec.getString("topic"));
+    Z.needEdit(L, Q, a, t);
     rec.set("revoked", true); tx.save(rec);
-    const t = tx.findRecordById("topics", rec.getString("topic")); let nm = "";
+    let nm = "";
     try { const u = tx.findRecordById("users", rec.getString("user")); nm = u.getString("name") || u.getString("username"); } catch (_) {}
     Q.topicLog(L, tx, a, t.id, "«" + t.getString("title") + "»: личная ссылка отключена — " + nm);
   });
@@ -61,11 +49,12 @@ routerAdd("GET", "/api/vs/pub/topic/{token}", (e) => {
   try { $app.saveNoValidate(k.link); } catch (_) {}
   e.response.header().set("Cache-Control", "no-store");
   return e.json(200, {
-    me: { name: u.getString("name") || u.getString("username") },
+    me: { id: u.id, name: u.getString("name") || u.getString("username") },
+    members: t.getStringSlice("members").map((id) => ({ id: id, name: nm(id) })),   // 1.9.6: для ссылок и подтем на странице участника
     topic: { title: t.getString("title"), description: t.getString("description"), status: t.getString("status"), updated: t.getString("updated") },
     people: t.getStringSlice("members").map(nm),
     subs: subs.map((s) => ({ id: s.id, title: s.getString("title"), description: s.getString("description"), status: s.getString("status"),
-      members: s.getStringSlice("members").map(nm), stages: Q.stagesOf(s).map((x) => ({ uid: x.uid, name: x.name, deadline: x.deadline, done: !!x.done, done_at: x.done_at, done_by: x.done_by })) })),
+      members: s.getStringSlice("members").map(nm), member_ids: s.getStringSlice("members"), stages: Q.stagesOf(s).map((x) => ({ uid: x.uid, name: x.name, deadline: x.deadline, done: !!x.done, done_at: x.done_at, done_by: x.done_by })) })),
     msgs: msgs.map((m) => ({ sub: m.getString("subtopic"), user: m.getString("user_name"), kind: m.getString("kind"), text: m.getString("text"), at: m.getString("created") })),
     now: L.fmt(new Date()),
   });
@@ -93,7 +82,9 @@ routerAdd("GET", "/api/vs/pub/topic/{token}/find", (e) => {
   const W = q.split(/\s+/).filter((w) => w.length >= 2).slice(0, 6);
   if (!W.length) return e.json(200, { oper: [], mpz: [], upd: [] });
   const P2 = {}; W.forEach((w, i) => { P2["w" + i] = w; });
-  const f = W.map((w, i) => "search_lc ~ {:w" + i + "}").join(" && ");
+  // 1.9.6: каждое слово — в любом месте названия; «57x3» и «57х3» одинаковы
+  W.forEach((w, i) => { P2["x" + i] = w.replace(/x/g, "х"); P2["y" + i] = w.replace(/х/g, "x"); });
+  const f = W.map((w, i) => "(search_lc ~ {:w" + i + "} || search_lc ~ {:x" + i + "} || search_lc ~ {:y" + i + "})").join(" && ");
   const take = (c, filt, sort, n) => { try { return $app.findRecordsByFilter(c, filt, sort, n, 0, P2); } catch (_) { return []; } };
   const oper = take("oper_rows", f, "pid", 30).map((x) => ({ pid: x.getString("pid"), name: x.getString("name_proj") || x.getString("name_supp") || x.getString("name_1c"),
     object: [x.getString("object"), x.getString("subobject")].filter(Boolean).join(" / "), code: x.getString("code"), qty: x.getFloat("qty_c") || x.getFloat("qty"),
@@ -101,7 +92,8 @@ routerAdd("GET", "/api/vs/pub/topic/{token}/find", (e) => {
   const mpz = take("mpz_stock", f, "name", 30).map((x) => ({ name: x.getString("name"), code: x.getString("code"), warehouse: x.getString("warehouse"), qty: x.getFloat("qty_end"), unit: x.getString("unit") }));
   const upd = take("upd_docs", "status != 'draft' && " + f, "-created", 10).map((u) => {
     let its = []; try { its = JSON.parse(u.getString("items") || "[]") || []; } catch (_) {}
-    const hit = its.filter((x) => W.every((w) => X.lc(x.name + " " + (x.pid || "") + " " + (x.objcode || "")).indexOf(w) >= 0));
+    const xx = (v) => v.replace(/x/g, "х");
+    const hit = its.filter((x) => W.every((w) => xx(X.lc(x.name + " " + (x.spec_name || "") + " " + (x.pid || "") + " " + (x.objcode || ""))).indexOf(xx(w)) >= 0));
     return { number: u.getString("number"), date: u.getString("date"), supplier: u.getString("supplier"), total: its.length,
       items: (hit.length ? hit : its).slice(0, 15).map((x) => ({ name: x.name, qty: x.qty, unit: x.unit, pid: x.pid || "", objcode: x.objcode || "", stage: x.stage || "" })) };
   });

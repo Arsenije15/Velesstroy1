@@ -119,64 +119,33 @@ routerAdd("GET", "/api/vs/upd/match/{id}", (e) => {
 
 // ---------- Задачи и согласования ----------
 routerAdd("POST", "/api/vs/topic/save", (e) => {
-  const L = require(`${__hooks}/lib.js`), Q = require(`${__hooks}/lib19.js`);
-  const a = L.requireRole(e, Q.BOSS_ROLES);
+  // 1.9.6: новую тему может открыть любой сотрудник; менять — любой участник темы (логика — в lib196.js)
+  const L = require(`${__hooks}/lib.js`), Q = require(`${__hooks}/lib19.js`), Z = require(`${__hooks}/lib196.js`);
+  const a = e.auth; if (!L.isSuper(a) && !a.getBool("active")) throw new ForbiddenError("Учётная запись отключена.");
   const b = e.requestInfo().body || {};
   let out = null;
-  $app.runInTransaction((tx) => {
-    const t = b.id ? tx.findRecordById("topics", L.str(b.id)) : new Record(tx.findCollectionByNameOrId("topics"));
-    const title = L.str(b.title).trim(); if (!title) throw new BadRequestError("Напишите название темы.");
-    const mem = (Array.isArray(b.members) ? b.members : []).map(String);
-    mem.forEach((id) => tx.findRecordById("users", id));
-    const old = b.id ? t.getStringSlice("members") : [];
-    if (b.id) tx.findRecordsByFilter("subtopics", "topic = {:t}", "", 0, 0, { t: t.id }).forEach((s) => s.getStringSlice("members").forEach((m) => { if (mem.indexOf(m) < 0) mem.push(m); }));
-    if (L.authId(a) && mem.indexOf(a.id) < 0) mem.push(a.id);
-    t.set("title", title.slice(0, 300)); t.set("description", L.str(b.description).slice(0, 3000)); t.set("members", mem);
-    if (!b.id) { t.set("status", "open"); if (L.authId(a)) t.set("created_by", a.id); }
-    tx.save(t);
-    Q.topicLog(L, tx, a, t.id, (b.id ? "Тема изменена: «" : "Новая тема: «") + title + "», участников " + mem.length + (b.id && mem.length !== old.length ? " (было " + old.length + ")" : ""));
-    out = { id: t.id };
-  });
+  $app.runInTransaction((tx) => { out = Z.topicSave(L, Q, tx, a, b); });
   return e.json(200, out);
 }, $apis.requireAuth("users"));
 routerAdd("POST", "/api/vs/topic/status", (e) => {
   const L = require(`${__hooks}/lib.js`), Q = require(`${__hooks}/lib19.js`);
-  const a = L.requireRole(e, Q.BOSS_ROLES);
+  const a = e.auth;
   const b = e.requestInfo().body || {};
   $app.runInTransaction((tx) => {
     const t = tx.findRecordById("topics", L.str(b.id)); const close = L.str(b.status) === "closed";
+    // в архив — руководитель или тот, кто открыл тему
+    if (!Q.isBoss(L, a) && t.getString("created_by") !== a.id) throw new ForbiddenError("Закрыть тему может руководитель или тот, кто её открыл.");
     t.set("status", close ? "closed" : "open"); t.set("closed_at", close ? L.fmt(new Date()) : ""); tx.save(t);
     Q.topicLog(L, tx, a, t.id, (close ? "Тема закрыта (в архив): «" : "Тема открыта снова: «") + t.getString("title") + "»");
   });
   return e.json(200, { ok: true });
 }, $apis.requireAuth("users"));
 routerAdd("POST", "/api/vs/sub/save", (e) => {
-  const L = require(`${__hooks}/lib.js`), Q = require(`${__hooks}/lib19.js`);
-  const a = L.requireRole(e, Q.BOSS_ROLES);
+  const L = require(`${__hooks}/lib.js`), Q = require(`${__hooks}/lib19.js`), Z = require(`${__hooks}/lib196.js`);
+  const a = e.auth;
   const b = e.requestInfo().body || {};
   let out = null;
-  $app.runInTransaction((tx) => {
-    const s = b.id ? tx.findRecordById("subtopics", L.str(b.id)) : new Record(tx.findCollectionByNameOrId("subtopics"));
-    const t = tx.findRecordById("topics", b.id ? s.getString("topic") : L.str(b.topic));
-    if (t.getString("status") === "closed") throw new BadRequestError("Тема в архиве — сначала откройте её снова.");
-    const title = L.str(b.title).trim(); if (!title) throw new BadRequestError("Напишите название подтемы.");
-    const mem = (Array.isArray(b.members) ? b.members : []).map(String); mem.forEach((id) => tx.findRecordById("users", id));
-    if (!mem.length) throw new BadRequestError("Выберите участников подтемы.");
-    const old = b.id ? Q.stagesOf(s) : [];
-    const stages = (Array.isArray(b.stages) ? b.stages : []).slice(0, 100).map((x) => {
-      const o = old.find((y) => y.uid && y.uid === x.uid) || {};
-      return { uid: L.str(x.uid) || $security.randomString(8), name: L.str(x.name).trim().slice(0, 300), deadline: L.str(x.deadline).slice(0, 10), done: !!o.done, done_at: o.done_at || "", done_by: o.done_by || "" };
-    }).filter((x) => x.name);
-    s.set("topic", t.id); s.set("title", title.slice(0, 300)); s.set("description", L.str(b.description).slice(0, 3000)); s.set("members", mem); s.set("stages", stages);
-    if (!b.id) { s.set("status", "open"); s.set("sort", Date.now() / 1000); if (L.authId(a)) s.set("created_by", a.id); }
-    tx.save(s);
-    const tm = t.getStringSlice("members"); mem.forEach((m) => { if (tm.indexOf(m) < 0) tm.push(m); }); t.set("members", tm); tx.save(t);
-    const msg = new Record(tx.findCollectionByNameOrId("topic_msgs"));
-    msg.set("topic", t.id); msg.set("subtopic", s.id); msg.set("user", L.authId(a) ? a.id : ""); msg.set("user_name", L.userName(a)); msg.set("kind", "sys");
-    msg.set("text", b.id ? "изменил(а) подтему: этапов " + stages.length + ", участников " + mem.length : "открыл(а) подтему: этапов " + stages.length + ", участников " + mem.length); tx.save(msg);
-    Q.topicLog(L, tx, a, t.id, "«" + t.getString("title") + "» → подтема «" + title + "»" + (b.id ? " изменена" : " открыта"));
-    out = { id: s.id };
-  });
+  $app.runInTransaction((tx) => { out = Z.subSave(L, Q, tx, a, b); });
   return e.json(200, out);
 }, $apis.requireAuth("users"));
 routerAdd("POST", "/api/vs/sub/stage", (e) => {
@@ -195,11 +164,12 @@ routerAdd("POST", "/api/vs/sub/msg", (e) => {
   return e.json(200, { ok: true });
 }, $apis.requireAuth("users"));
 routerAdd("POST", "/api/vs/sub/status", (e) => {
-  const L = require(`${__hooks}/lib.js`), Q = require(`${__hooks}/lib19.js`);
-  const a = L.requireRole(e, Q.BOSS_ROLES);
+  const L = require(`${__hooks}/lib.js`), Q = require(`${__hooks}/lib19.js`), Z = require(`${__hooks}/lib196.js`);
+  const a = e.auth;
   const b = e.requestInfo().body || {};
   $app.runInTransaction((tx) => {
     const s = tx.findRecordById("subtopics", L.str(b.sub)), t = tx.findRecordById("topics", s.getString("topic"));
+    Z.needEdit(L, Q, a, t);
     const close = L.str(b.status) === "closed"; s.set("status", close ? "closed" : "open"); tx.save(s);
     const msg = new Record(tx.findCollectionByNameOrId("topic_msgs"));
     msg.set("topic", t.id); msg.set("subtopic", s.id); msg.set("user", L.authId(a) ? a.id : ""); msg.set("user_name", L.userName(a)); msg.set("kind", "sys"); msg.set("text", close ? "закрыл(а) подтему" : "открыл(а) подтему снова"); tx.save(msg);
@@ -213,6 +183,6 @@ routerAdd("GET", "/api/vs/topic/people/{id}", (e) => {
   const a = e.auth; const t = $app.findRecordById("topics", e.request.pathValue("id"));
   if (!Q.isBoss(L, a) && !Q.isMember(t, a)) throw new ForbiddenError("Вы не участник этой темы.");
   const ids = t.getStringSlice("members"); const out = [];
-  ids.forEach((id) => { try { const u = $app.findRecordById("users", id); out.push({ id: u.id, name: u.getString("name") || u.getString("username"), role: u.getString("role"), company: u.getString("warehouse") }); } catch (_) {} });
+  ids.forEach((id) => { try { const u = $app.findRecordById("users", id); out.push({ id: u.id, name: u.getString("name") || u.getString("username"), role: u.getString("role"), company: u.getString("warehouse"), group: require(`${__hooks}/lib196.js`).groupOf(u) }); } catch (_) {} });
   return e.json(200, { people: out });
 }, $apis.requireAuth("users"));
