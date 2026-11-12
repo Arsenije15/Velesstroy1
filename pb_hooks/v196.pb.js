@@ -22,8 +22,9 @@ routerAdd("POST", "/api/vs/upd/spec", (e) => {
       u.set("items", its);
       const sn = L.str(b.spec_no).slice(0, 40); if (sn && !u.getString("spec")) u.set("spec", sn);
       tx.save(u);
+      r.acts = Z.syncActs(tx, u, its);
       L.log(tx, a, "upd_spec", "upd_docs", u.id, "УПД № " + u.getString("number") + ": спецификация " + L.str(b.file_name).slice(0, 120) + " — сопоставлено " + r.matched + " из " + its.length + ", наименование заменено в " + r.renamed, {});
-      res.push({ id: u.id, number: u.getString("number"), total: its.length, matched: r.matched, renamed: r.renamed, missing: r.missing.slice(0, 30) });
+      res.push({ id: u.id, number: u.getString("number"), acts: r.acts, total: its.length, matched: r.matched, renamed: r.renamed, missing: r.missing.slice(0, 30) });
     });
   });
   return e.json(200, { upds: res, spec_rows: spec.length });

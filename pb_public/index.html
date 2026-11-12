@@ -284,14 +284,14 @@ async function boot(){
   catch(e){if(!S.auth)return;if(e.status)return logout(true);net=false}
   shell();
   if(!net&&await offStart())return;   // 1.9.8: без интернета — заявки, отгрузка и фото груза из памяти телефона
-  try{await load(can.coord()?["users"]:Object.keys(LOAD))}catch(e){toast(e.message,"err")}
+  try{await load(can.coord()||can.linkOnly()?["users"]:Object.keys(LOAD))}catch(e){toast(e.message,"err")}
   rtStart();route();offAfterOnline();
 }
 
 /* ---------- Каркас ---------- */
 const NAV=[["home","Главная","⌂"],["receive","Приёмка","▣"],["requests","Заявки","▤"],["resources","Ресурсы","⚙"],["history","История","☰"],["rules","Инструкции","⚑"],["split","Поставщики","⇄"],["skk","Склад / СКК","✔"],["topics","Задачи и согласования","☑"],["report","Отчёт дня","☰"],["mpz","Остатки МПЗ","▦"],["users","Пользователи","👥"]];
 function shell(){
-  const nav=role()==="coord"?NAV.filter(n=>n[0]==="topics"):can.skkView()?NAV.filter(n=>n[0]==="skk"||n[0]==="topics"):NAV.filter(n=>n[0]!=="users"||can.admin());   // СКК и наблюдатель — только склад; участник согласований — только темы
+  const nav=role()==="coord"?NAV.filter(n=>n[0]==="topics"):can.linkOnly()?NAV.filter(n=>n[0]==="skk"):can.skkView()?NAV.filter(n=>n[0]==="skk"||n[0]==="topics"):NAV.filter(n=>n[0]!=="users"||can.admin());   // СКК и наблюдатель — только склад; участник согласований — только темы
   $("#app").innerHTML=`<header><div class="logo">ВЕЛЕС<b>СТРОЙ</b></div>
   <nav class="top">${nav.map(n=>`<a href="#/${n[0]}" data-n="${n[0]}">${n[1].toUpperCase()}</a>`).join("")}</nav>
   <div class="sp"></div><div class="who">${esc(S.user.name||S.user.username)}<br><span style="opacity:.75">${esc(T.roles[S.user.role]||"")}</span></div>
@@ -303,6 +303,7 @@ function shell(){
 window.addEventListener("hashchange",route);
 function route(){if(!S.user)return;if(S.off)return offRoute();const home=can.coord()?"#/topics":can.skkView()?"#/skk":"#/home";if(!location.hash||location.hash==="#/")location.hash=home;
   if(can.coord()&&!/^#\/(topics|topic)(\/|$)/.test(location.hash)){location.hash=home;return}
+  if(can.linkOnly()&&!/^#\/(skk|upd|updedit|skkact|skkactedit|oper|mpz)(\/|$)/.test(location.hash)){location.hash="#/skk";return}   // 1.9.10: по ссылке — только «Склад / СКК»
   if(can.skkView()&&!/^#\/(skk|upd|updedit|skkact|skkactedit|oper|mpz|topics|topic)(\/|$)/.test(location.hash)){location.hash=home;return}
   S.route=location.hash.slice(2);render(null,true)}
 let lastKey="";
@@ -1536,7 +1537,7 @@ const qtyUnit=(q,u)=>{const n=numQ(q);return ((n==null?String(q==null?"":q).trim
 can.skk=()=>["admin","skk"].includes(role());can.upd=()=>["admin","manager","storekeeper","skk"].includes(role());
 /* ---------- 1.9: роли, оперативка, поставщики, новый приход, «Задачи и согласования» ---------- */
 can.skkView=()=>["skk","skk_view"].includes(role());
-can.coord=()=>role()==="coord";
+can.coord=()=>role()==="coord";can.linkOnly=()=>!!(S.user&&S.user.scope==="skk");can.skkLink=()=>["admin","manager","skk"].includes(role())&&!can.linkOnly();
 can.oper=()=>["admin","manager","storekeeper","skk"].includes(role());
 can.sup=()=>["admin","manager","skk"].includes(role());
 can.boss=()=>["admin","manager"].includes(role());
@@ -1870,11 +1871,31 @@ function skkTabs(){return `<div class="tabs noprint" style="margin-bottom:10px;f
 function bindSkkTabs(){document.querySelectorAll("[data-skt]").forEach(b=>b.onclick=()=>{SKK.tab=b.dataset.skt;if(SKK.tab==="oper")location.hash="#/oper";else if(SKK.tab==="mpz")location.hash="#/mpz";else if(S.route!=="skk")location.hash="#/skk";else vSkk()})}
 async function vSkk(_id,changed){
   if(changed&&$("#skkb"))return;
-  $("#main").innerHTML=`<h1>Склад / СКК</h1>${skkTabs()}<div id="skkb"><div class="card empty">Загрузка…</div></div>`;
+  $("#main").innerHTML=`<div class="row" style="align-items:center"><h1 class="grow">Склад / СКК</h1>${can.skkLink()?`<button class="btn sm acc noprint" id="skkln">🔗 Ссылка на эту страницу</button>`:""}</div>${skkTabs()}<div id="skkb"><div class="card empty">Загрузка…</div></div>`;
   if(SKK.tab==="oper"||SKK.tab==="mpz")SKK.tab="upd";
+  const ln=$("#skkln");if(ln)ln.onclick=()=>act(ln,skkLinkModal);
   bindSkkTabs();$("#main").querySelectorAll("[data-skt]").forEach(b=>b.classList.toggle("on",b.dataset.skt===SKK.tab));
   try{if(SKK.tab==="upd")await skkUpdList();else if(SKK.tab==="in")await skkIn();else if(SKK.tab==="acts")await skkActList();else if(SKK.tab==="sup")await skkSup();else await skkReport()}catch(e){const b=$("#skkb");if(b)b.innerHTML=`<div class="banner red">${esc(e.message)}</div>`}
 }
+// 1.9.10: ссылка на «Склад / СКК» — кому угодно; человек по ссылке видит только эту страницу (УПД, акты, оперативка, МПЗ)
+async function skkLinkModal(){
+  const draw=async()=>{const j=await api("GET","/api/vs/skk/links");const url=t=>location.origin+"/?k="+t+"#/skk";
+    return `<h3>🔗 Ссылка на «Склад / СКК»</h3><div class="muted">Человек открывает ссылку — без пароля и регистрации — и видит <b>только эту страницу</b>. Другие разделы и «Задачи и согласования» ему недоступны.</div>
+     <label class="f" for="skn">Кому (ФИО / организация) *</label><input id="skn" placeholder="например: Иванов И.И., ООО «Технадзор»">
+     <label class="f">Доступ</label><select id="skm"><option value="view">Только просмотр (УПД, акты, отчёт, Excel)</option><option value="work">Работа: загружать УПД, составлять и закрывать акты</option></select>
+     <div class="row" style="margin-top:10px"><button class="btn p grow" id="skc">Создать ссылку</button></div>
+     <h3 style="margin-top:14px">Выданные ссылки (${j.links.length})</h3>${j.links.map(l=>`<div class="card" style="padding:10px;margin-top:6px"><b>${esc(l.name)}</b> <span class="pill ${l.mode==="work"?"b":"gr"}">${l.mode==="work"?"РАБОТА":"ПРОСМОТР"}</span>
+       <div class="muted">выдал ${esc(l.by)} ${dt(l.created)} · открывали ${l.views} раз${l.last_open?" · последний раз "+dt(l.last_open):""}</div>
+       <input readonly value="${esc(url(l.token))}" style="margin-top:6px"><div class="row" style="margin-top:6px;gap:6px"><button class="btn sm" data-skcp="${esc(url(l.token))}">📋 Копировать</button>
+       <a class="btn sm" target="_blank" rel="noopener" href="https://t.me/share/url?url=${encodeURIComponent(url(l.token))}&text=${encodeURIComponent("ВЕЛЕССТРОЙ — Склад / СКК")}">Telegram</a>
+       <a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent("ВЕЛЕССТРОЙ — Склад / СКК: "+url(l.token))}">WhatsApp</a><button class="btn sm" data-skoff="${l.id}">Отключить</button></div></div>`).join("")||'<div class="muted">Пока нет</div>'}
+     <div class="row" style="margin-top:12px"><button class="btn" data-close>Закрыть</button></div>`};
+  const bind=box=>{const re=async()=>{box.querySelector(".box").innerHTML=await draw();bind(box)};
+    $("#skc",box).onclick=e=>act(e.target,async()=>{const r=await api("POST","/api/vs/skk/links/create",{name:$("#skn",box).value,mode:$("#skm",box).value});await re();
+      const u=location.origin+"/?k="+r.token+"#/skk";try{await navigator.clipboard.writeText(u)}catch(_){}},"Ссылка создана и скопирована");
+    box.querySelectorAll("[data-skcp]").forEach(b=>b.onclick=async()=>{try{await navigator.clipboard.writeText(b.dataset.skcp);toast("Скопировано")}catch(_){prompt("Ссылка:",b.dataset.skcp)}});
+    box.querySelectorAll("[data-skoff]").forEach(b=>b.onclick=()=>{if(!confirm("Отключить ссылку? Человек больше не сможет войти."))return;act(b,async()=>{await api("POST","/api/vs/skk/links/off",{id:b.dataset.skoff});await re()},"Ссылка отключена")})};
+  modal(await draw(),bind)}
 async function skkUpdList(){
   const f=["status!='draft'"];{const w_=wfil(SKK.q);if(w_)f.push(w_)}if(SKK.st)f.push(`status="${SKK.st}"`);
   const list=await all("upd_docs",f.join("&&"),"-date,-created");if(S.route!=="skk"||!$("#skkb"))return;
@@ -2007,6 +2028,10 @@ async function vSkkActEdit(id,changed){await xfLoad();
     return {uid:"",upd:u.number,whole:true,material:nm.length?(nm.length<=4?nm.join("; "):nm.slice(0,3).join("; ")+` и ещё ${nm.length-3} наим.`):"",volume:its.length?its.length+" поз.":"",code:oc.length===1?oc[0]:"",issue:ACT_DEF.issue,decision:ACT_DEF.decision}};
   // 1.9.6: если к УПД загружена спецификация — наименование по спецификации поставщика (кол. D) и шифр объекта (кол. B)
   const itemRow=(u,x)=>({uid:"",upd:u.number,material:x.spec_name||x.name,volume:qtyUnit(x.qty,x.unit||x.spec_unit),code:x.objcode||"",issue:ACT_DEF.issue,decision:ACT_DEF.decision});
+  // 1.9.10: спецификацию загрузили после акта — пустой шифр и наименование берём из УПД (спецификации)
+  if(!isNew)st.rows.forEach(row=>{if(row.whole||!row.upd)return;const u=sel.map(U).find(v=>v&&v.number===row.upd);if(!u)return;
+    const it=updItems(u).find(x=>x.name===row.material||x.spec_name===row.material);if(!it)return;
+    if(!row.code&&it.objcode)row.code=it.objcode;if(it.spec_name)row.material=it.spec_name});
   let pickOnOpen=false;
   if(isNew&&sel.length){sel.forEach(uid=>{const u=U(uid);if(!u)return;const its=updItems(u);
     if(!its.length)st.rows.push(wholeRow(u));else if(its.length<=3)its.forEach(x=>st.rows.push(itemRow(u,x)));else pickOnOpen=true})}
@@ -2110,7 +2135,8 @@ function printAct(a){
   const fx=x=>x.fixed?dmy(String(x.fixed_at).slice(0,10))+", "+(x.fix_note||""):"";
   const span=(i,f)=>{const v=f(rows[i]);if(!v)return 1;if(i>0&&f(rows[i-1])===v)return 0;let k=1;while(i+k<rows.length&&f(rows[i+k])===v)k++;return k};
   const cell=(i,f,cls)=>{const k=span(i,f);return k===0?"":`<td${k>1?` rowspan="${k}"`:""}${cls?` class="${cls}"`:""}>${esc(f(rows[i])||"")}</td>`};
-  rows.forEach((x,i)=>{tr+=`<tr><td>${i+1}</td><td>${esc(x.material||"")}</td><td>${esc(x.volume||"")}</td>${cell(i,r=>r.code)}${cell(i,r=>r.issue)}${cell(i,r=>r.decision,"sm")}${cell(i,fx,"sm")}</tr>`});
+  const vol=v=>String(v||"").replace(/^([\d\s.,]+?)\s*(шт|т|компл)$/i,(m,a,b)=>a.trim()+" "+b+".");
+  rows.forEach((x,i)=>{tr+=`<tr><td>${i+1}</td><td>${esc(x.material||"")}</td><td>${esc(vol(x.volume))}</td>${cell(i,r=>r.code)}${cell(i,r=>r.issue)}${cell(i,r=>r.decision,"sm")}${cell(i,fx,"sm")}</tr>`});
   if(!rows.length)tr=`<tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
   // названия колонок можно переименовать в Настройки → Поля форм (строка акта)
   const hd=(k,def)=>{const d=xfB("act_row",k),b=(XB.act_row.find(x=>x[0]===k)||[])[1];return esc(d&&d.label&&d.label!==b?d.label:def)};
@@ -2173,7 +2199,7 @@ async function applySpec(file,upds){const x=await readXlsx(file);let best=null;
   for(const sh of x.sheets){try{const p=parseSpec(await x.rows(sh));if(!best||p.rows.length>best.rows.length)best=p}catch(e){if(!best&&sh===x.sheets[x.sheets.length-1])throw e}}
   if(!best)throw new Error("В файле не найдена спецификация.");
   return api("POST","/api/vs/upd/spec",{upds,rows:best.rows,spec_no:best.spec_no,file_name:file.name})}
-const specMsg=r=>r.upds.map(u=>`УПД ${u.number}: сопоставлено ${u.matched} из ${u.total}${u.renamed?`, наименование по спецификации — ${u.renamed}`:""}${u.missing.length?`, нет в спецификации: строки ${u.missing.join(", ")}`:""}`).join("; ");
+const specMsg=r=>r.upds.map(u=>`УПД ${u.number}: сопоставлено ${u.matched} из ${u.total}${u.renamed?`, наименование по спецификации — ${u.renamed}`:""}${u.missing.length?`, нет в спецификации: строки ${u.missing.join(", ")}`:""}${u.acts?`, шифр и наименование вписаны в акты: ${u.acts}`:""}`).join("; ");
 // 1.9.5: УПД в Excel — лист «Позиции» (как в документе) и «Сводка» (одинаковые наименования сложены)
 const numQ=v=>{const n=parseFloat(String(v==null?"":v).replace(/\s/g,"").replace(",","."));return isNaN(n)?null:n};
 function updExcel(u,its){
@@ -2972,7 +2998,14 @@ function modal(html,bind){closeModal();const m=document.createElement("div");m.c
 function closeModal(){const m=$("#modal");if(m)m.remove()}
 
 /* ---------- Старт ---------- */
-(function(){let s=null;try{s=JSON.parse(localStorage.getItem("vs_auth")||"null")}catch(_){}
+(async function(){
+  // 1.9.10: ссылка на «Склад / СКК» (…/?k=…): вход без пароля, видна только эта страница
+  const k=new URLSearchParams(location.search).get("k");
+  if(k){try{const r=await fetch("/api/vs/pub/skk/"+encodeURIComponent(k),{method:"POST"});const j=await r.json();if(!r.ok)throw new Error(j.message||"Ссылка не работает");
+      S.auth=j.token;S.user=j.record;try{localStorage.setItem("vs_auth",JSON.stringify({t:j.token,u:j.record}))}catch(_){}
+      history.replaceState(null,"","/"+(location.hash&&location.hash!=="#/"?location.hash:"#/skk"));boot();return}
+    catch(e){history.replaceState(null,"","/");document.getElementById("app").innerHTML=`<div class="card" style="max-width:460px;margin:60px auto;text-align:center"><h2>ВЕЛЕССТРОЙ — Склад / СКК</h2><div class="banner red" style="font-size:16px">${esc(e.message)}</div><div class="muted">Попросите у отправителя новую ссылку.</div></div>`;return}}
+  let s=null;try{s=JSON.parse(localStorage.getItem("vs_auth")||"null")}catch(_){}
   if(s&&s.t){S.auth=s.t;S.user=s.u;boot()}else drawLogin()})();
 </script>
 </body>

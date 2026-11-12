@@ -181,4 +181,24 @@ function boardSave(L, tx, b, files) {
   }
   return { id: r.id, clash: clash };
 }
-module.exports = { siteLink, boardOut, boardSave, normName, simN, matchSpec, GROUPS, groupOf, canEdit, needEdit, directory, topicSave, subSave, linkFor, newUser };
+// 1.9.10: спецификация загружена после акта — в строки акта по этому УПД: наименование и шифр объекта из спецификации
+function syncActs(tx, u, its) {
+  const num = u.getString("number"); let n = 0;
+  tx.findRecordsByFilter("skk_acts", "upds ~ {:i}", "", 0, 0, { i: u.id }).forEach((act) => {
+    let rows = []; try { rows = JSON.parse(act.getString("rows") || "[]") || []; } catch (_) {}
+    let ch = 0;
+    rows.forEach((r) => {
+      if (r.upd !== num) return;
+      if (r.whole) { if (!r.code) { const oc = its.map((x) => x.objcode).filter(Boolean).filter((v, i, A) => A.indexOf(v) === i); if (oc.length === 1) { r.code = oc[0]; ch++; } } return; }
+      const m = normName(r.material || "");
+      let it = its.find((x) => normName(x.name || "") === m || (x.spec_name && normName(x.spec_name) === m));
+      if (!it && m) { let best = null; its.forEach((x) => { const v = Math.max(simN(r.material, x.name || ""), x.spec_name ? simN(r.material, x.spec_name) : 0); if (!best || v > best.v) best = { x: x, v: v }; }); if (best && best.v >= 0.85) it = best.x; }
+      if (!it) return;
+      if (it.objcode && r.code !== it.objcode && (!r.code || r.code_auto)) { r.code = it.objcode; r.code_auto = true; ch++; }
+      if (it.spec_name && r.material !== it.spec_name) { r.material = it.spec_name; ch++; }
+    });
+    if (ch) { act.set("rows", rows); tx.saveNoValidate(act); n++; }
+  });
+  return n;
+}
+module.exports = { syncActs, siteLink, boardOut, boardSave, normName, simN, matchSpec, GROUPS, groupOf, canEdit, needEdit, directory, topicSave, subSave, linkFor, newUser };
