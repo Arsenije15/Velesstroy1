@@ -3,6 +3,7 @@
 # Первый запуск: устанавливает всё и печатает пароли. Повторный запуск: обновляет программу, данные сохраняются.
 # Использование:  bash install.sh               — доступ по IP (http://IP)
 #                 bash install.sh sklad.example.ru  — свой домен + бесплатный HTTPS (Let's Encrypt)
+#                 bash install.sh auto           — HTTPS без своего домена (адрес вида 194-67-116-206.sslip.io)
 set -euo pipefail
 PB_VERSION="0.39.10"
 DOMAIN="${1:-}"
@@ -54,6 +55,12 @@ id velesstroy >/dev/null 2>&1 || useradd --system --home "$APP" --shell /usr/sbi
 mkdir -p "$APP/pb_data"; chown -R velesstroy:velesstroy "$APP" 2>/dev/null || true   # служба работает: временные файлы базы (-wal/-shm) могут исчезнуть во время chown — это не ошибка
 chown velesstroy:velesstroy "$APP" "$APP/pb_data" "$APP/pb_data/data.db" 2>/dev/null || true
 
+# 1.9.12: «bash install.sh auto» — бесплатный https-адрес без покупки домена: 194-67-116-206.sslip.io (нужен для работы телефона без интернета)
+if [ "$DOMAIN" = "auto" ]; then
+  IP=$(curl -fs4 --max-time 5 https://ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
+  DOMAIN="$(echo "$IP" | tr '.' '-').sslip.io"
+  say "Адрес с HTTPS: https://$DOMAIN"
+fi
 if [ -n "$DOMAIN" ]; then echo "$DOMAIN" > "$APP/.domain"; elif [ -f "$APP/.domain" ]; then DOMAIN=$(cat "$APP/.domain"); fi
 if [ -n "$DOMAIN" ]; then SERVE="serve $DOMAIN"; else SERVE="serve --http 0.0.0.0:80"; fi
 
@@ -116,5 +123,6 @@ EOF
   cat "$APP/ПАРОЛИ.txt"
 else
   say "ОБНОВЛЕНО — данные сохранены"
+  [ -n "$DOMAIN" ] && echo "Адрес программы: https://$DOMAIN" || echo "Адрес программы: http://<IP>  (для работы телефона без интернета запустите: bash install.sh auto)"
 fi
 systemctl is-active --quiet velesstroy && echo "Служба работает." || { echo "ОШИБКА: служба не запустилась. Журнал:"; journalctl -u velesstroy -n 30 --no-pager; exit 1; }

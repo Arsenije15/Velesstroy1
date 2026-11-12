@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1c2430">
+<meta name="theme-color" content="#1c2430"><link rel="manifest" href="/manifest.json"><link rel="icon" href="/icon.svg"><meta name="apple-mobile-web-app-capable" content="yes">
 <title>ВЕЛЕССТРОЙ — Склад</title>
 <style>
 :root{--ink:#111827;--muted:#5b6472;--line:#d9dee5;--bg:#eef1f4;--card:#fff;--head:#1c2430;--acc:#f2b705;
@@ -291,7 +291,7 @@ async function boot(){
 /* ---------- Каркас ---------- */
 const NAV=[["home","Главная","⌂"],["receive","Приёмка","▣"],["requests","Заявки","▤"],["resources","Ресурсы","⚙"],["history","История","☰"],["rules","Инструкции","⚑"],["split","Поставщики","⇄"],["skk","Склад / СКК","✔"],["topics","Задачи и согласования","☑"],["report","Отчёт дня","☰"],["mpz","Остатки МПЗ","▦"],["users","Пользователи","👥"]];
 function shell(){
-  const nav=role()==="coord"?NAV.filter(n=>n[0]==="topics"):can.linkOnly()?NAV.filter(n=>n[0]==="skk"):can.skkView()?NAV.filter(n=>n[0]==="skk"||n[0]==="topics"):NAV.filter(n=>n[0]!=="users"||can.admin());   // СКК и наблюдатель — только склад; участник согласований — только темы
+  const nav=role()==="coord"?NAV.filter(n=>n[0]==="topics"):can.linkOnly()?NAV.filter(n=>n[0]==="skk").map(n=>[n[0],skkTitle(),n[2]]):can.skkView()?NAV.filter(n=>n[0]==="skk"||n[0]==="topics"):NAV.filter(n=>n[0]!=="users"||can.admin());   // СКК и наблюдатель — только склад; участник согласований — только темы
   $("#app").innerHTML=`<header><div class="logo">ВЕЛЕС<b>СТРОЙ</b></div>
   <nav class="top">${nav.map(n=>`<a href="#/${n[0]}" data-n="${n[0]}">${n[1].toUpperCase()}</a>`).join("")}</nav>
   <div class="sp"></div><div class="who">${esc(S.user.name||S.user.username)}<br><span style="opacity:.75">${esc(T.roles[S.user.role]||"")}</span></div>
@@ -303,7 +303,7 @@ function shell(){
 window.addEventListener("hashchange",route);
 function route(){if(!S.user)return;if(S.off)return offRoute();const home=can.coord()?"#/topics":can.skkView()?"#/skk":"#/home";if(!location.hash||location.hash==="#/")location.hash=home;
   if(can.coord()&&!/^#\/(topics|topic)(\/|$)/.test(location.hash)){location.hash=home;return}
-  if(can.linkOnly()&&!/^#\/(skk|upd|updedit|skkact|skkactedit|oper|mpz)(\/|$)/.test(location.hash)){location.hash="#/skk";return}   // 1.9.10: по ссылке — только «Склад / СКК»
+  if(can.linkOnly()&&!(can.sklad()?/^#\/(skk|upd|oper|mpz)(\/|$)/:/^#\/(skk|upd|updedit|skkact|skkactedit|oper|mpz)(\/|$)/).test(location.hash)){location.hash="#/skk";return}   // 1.9.10: по ссылке — только «Склад / СКК»
   if(can.skkView()&&!/^#\/(skk|upd|updedit|skkact|skkactedit|oper|mpz|topics|topic)(\/|$)/.test(location.hash)){location.hash=home;return}
   S.route=location.hash.slice(2);render(null,true)}
 let lastKey="";
@@ -407,7 +407,9 @@ function vReceive(){
   const sup=[...new Set((S.data.rules||[]).map(r=>r.supplier).concat((S.data.receipts||[]).map(r=>r.supplier)).filter(Boolean))];
   $("#main").innerHTML=`<h1>Приёмка материалов</h1>
   ${can.write()?`<div class="card"><h2 style="margin-top:0">Новая приёмка</h2>
-  <form id="nf"><label class="f">Номер УПД *</label><input id="nu" inputmode="text" required placeholder="например 12345" autocomplete="off">
+  <form id="nf"><label class="f">Номер УПД *</label><div class="row" style="gap:8px;flex-wrap:nowrap"><input id="nu" inputmode="text" required placeholder="например 12345" autocomplete="off" style="flex:1">
+   <label class="btn acc" style="white-space:nowrap">📄 УПД<input type="file" id="nfu" accept="image/*,application/pdf" multiple hidden></label><label class="btn acc" style="white-space:nowrap">📷 Фото груза<input type="file" id="nfc" accept="image/*" capture="environment" multiple hidden></label></div>
+   <div id="nfp" class="row" style="gap:6px;margin-top:6px"></div>
   <label class="f">Поставщик</label><input id="ns" data-sug="supplier" data-chips placeholder="ООО …" autocomplete="off">
   <label class="f">Грузоотправитель (если отличается)</label><input id="nd" data-sug="sender" autocomplete="off">
   <label class="f">Транспорт / госномер</label><input id="nv" data-sug="vehicle" data-chips autocomplete="off">
@@ -416,10 +418,17 @@ function vReceive(){
   <div style="height:12px"></div><button class="btn p big" id="nb">ПРОВЕРИТЬ УПД</button></form></div>`:`<div class="banner gray">Роль «Просмотр»: создание приёмок недоступно</div>`}
   <h2>Открытые приёмки</h2><div class="card list">${openReceipts()}</div>`;
   sugAttach($("#main"));
+  // 1.9.12: фото / PDF УПД и фото груза — сразу при создании приёмки
+  const NF={upd:[],cargo:[]};const nfp=()=>{const b=$("#nfp");if(b)b.innerHTML=[["upd","📄"],["cargo","📷"]].map(([k,ic])=>NF[k].map((f,i)=>`<span class="pill gr" style="gap:4px">${ic} ${esc(f.name.slice(0,22))} <a href="#" data-nfx="${k}:${i}" aria-label="Убрать">✕</a></span>`).join("")).join("");
+    document.querySelectorAll("[data-nfx]").forEach(a=>a.onclick=ev=>{ev.preventDefault();const [k,i]=a.dataset.nfx.split(":");NF[k].splice(+i,1);nfp()})};
+  [["#nfu","upd"],["#nfc","cargo"]].forEach(([id,k])=>{const el=$(id);if(el)el.onchange=()=>{NF[k].push(...el.files);el.value="";nfp()}});
   const f=$("#nf");if(f)f.onsubmit=e=>{e.preventDefault();act($("#nb"),async()=>{
     const j=await api("POST","/api/vs/upd/check",{upd:$("#nu").value,supplier:$("#ns").value,sender:$("#nd").value,vehicle:$("#nv").value});
     if(j.existing)toast("По этому УПД уже есть открытая приёмка — открываю её");
     if(j.warning)toast(j.warning,"err");
+    let n=0;for(const [k,kind] of [["upd","document"],["cargo","material"]])for(const file of NF[k]){const fd=new FormData();fd.append("receipt",j.receipt);fd.append("kind",kind);fd.append("uploaded_by",S.user.id);fd.append("file",await shrink(file));
+      try{await api("POST","/api/collections/attachments/records",fd,true);n++}catch(er){toast("Файл «"+file.name+"» не загрузился: "+er.message,"err")}}
+    if(n)toast("Прикреплено файлов: "+n,"ok");
     await load(["receipts"]);location.hash="#/receipt/"+j.receipt})};
   // подсказка по журналу актов: при вводе УПД и поставщика
   let hT=null,hSeq=0;const hint=()=>{clearTimeout(hT);hT=setTimeout(async()=>{const u=$("#nu"),sp=$("#ns"),box=$("#actHint");if(!u||!box)return;
@@ -650,7 +659,7 @@ function bindRqTabs(){document.querySelectorAll("[data-rs]").forEach(t=>t.onclic
 async function vRequests(){
   if(RQ.status==="archive")return vArchive();
   const W=can.write();
-  $("#main").innerHTML=`<h1>Заявки на выдачу ТМЦ</h1>
+  $("#main").innerHTML=`<h1>Заявки на выдачу ТМЦ</h1>${offCanUse()&&location.protocol!=="https:"&&!/^(localhost|127\.)/.test(location.hostname)?`<div class="muted noprint" style="margin:-4px 0 8px">📴 Работа без интернета на телефоне доступна только по адресу https — попросите администратора включить (bash install.sh auto).</div>`:""}
   ${W?`<div class="row noprint" style="margin-bottom:14px"><button class="btn acc big grow" id="rqNew" style="width:auto">＋ НОВАЯ ЗАЯВКА</button><button class="btn big grow" id="rqShip" style="width:auto">🚚 Отгрузка из нескольких заявок</button></div>`:""}
   ${rqTabs()}
   <div class="card noprint"><div class="row">
@@ -695,7 +704,14 @@ const lcq=s=>String(s||"").toLowerCase().replace(/ё/g,"е").replace(/["\\]/g,""
 const qWords=q=>lcq(q).replace(/[{}'`]/g," ").split(/\s+/).filter(Boolean).slice(0,8);
 const xv=w=>[...new Set([w,w.replace(/x/g,"х"),w.replace(/х/g,"x")])];
 const wfil=(q,fld="search_lc")=>qWords(q).map(w=>"("+xv(w).map(v=>`${fld}~"${v}"`).join("||")+")").join("&&");
-const wmatch=(q,t)=>{const T=lcq(t).replace(/x/g,"х");return qWords(q).every(w=>T.includes(w.replace(/x/g,"х")))};
+// 1.9.12: число в запросе — только целым числом: «50» находит «5,5х50», «50 мм», но не «150», «5.50», «2050»
+const numW=w=>/^\d+([.,]\d+)?$/.test(w);
+const wHit=(T,w)=>{w=w.replace(/x/g,"х").replace(/(\d),(?=\d)/g,"$1.");if(!numW(w))return T.includes(w);const n=w;let i=-1;
+  while((i=T.indexOf(n,i+1))>=0){const a=T[i-1],b=T[i+n.length],c=T[i+n.length+1];if((a===undefined||!/[\d.]/.test(a))&&(b===undefined||!(/\d/.test(b)||(b==="."&&c&&/\d/.test(c)))))return true}return false};
+const wmatch=(q,t)=>{const T=lcq(t).replace(/x/g,"х").replace(/(\d),(?=\d)/g,"$1.");return qWords(q).every(w=>wHit(T,w))};
+// поиск по видимым полям строки оперативки / МПЗ (а не по служебным колонкам файла)
+const operText=x=>[x.pid,x.object,x.subobject,x.code,x.name_proj,x.name_supp,x.name_1c,x.supplier,x.torg,x.gost,x.stage].join(" ");
+const mpzText=x=>[x.name,x.code,x.warehouse,x.quality].join(" ");
 async function rqFilter(){const f=[];const qq=s=>s.replace(/["\\]/g,"");
   if(RQ.status==="debt")f.push(`status="closed"&&signed_all=false`);else if(RQ.status==="uchet")f.push(`status="closed"&&uchet_status="in_uchet"`);else if(RQ.status!=="all")f.push(`status="${RQ.status}"`);
   if(RQ.q)f.push("("+wfil(RQ.q)+")");
@@ -1460,8 +1476,8 @@ const whShort=w=>String(w||"").replace(/^Геленджик Марина[.\s]*/,
 function mpzFilter(){const f=[];{const w_=wfil(MPZ.q);if(w_)f.push(w_)}if(MPZ.wh)f.push(`warehouse="${MPZ.wh.replace(/"/g,"")}"`);if(MPZ.ql)f.push(`quality="${MPZ.ql.replace(/"/g,"")}"`);return f.join("&&")}
 async function vMpz(_id,changed){if(changed&&$("#mpzl"))return; // обновления журнала по сети не сбрасывают поиск
   const W=can.write();let m={n:0,warehouses:[],qualities:[]};try{m=await api("GET","/api/vs/mpz/meta")}catch(_){}
-  if(S.route!=="mpz")return;const inSkk=can.skkView()||SKK.tab==="mpz";
-  $("#main").innerHTML=`${inSkk?`<h1>Склад / СКК</h1>${skkTabs()}`:`<h1>Остатки МПЗ</h1>`}<div class="card noprint">
+  if(S.route!=="mpz")return;const inSkk=can.skkView()||can.linkOnly()||SKK.tab==="mpz";
+  $("#main").innerHTML=`${inSkk?`<h1>${skkTitle()}</h1>${skkTabs()}`:`<h1>Остатки МПЗ</h1>`}<div class="card noprint">
    <div class="muted" id="mpzinfo">${m.n?`Ведомость: <b>${esc(m.period||"—")}</b> · строк ${m.n} · стоимость ${fmtMoney(m.sum)} ₽ · файл «${esc(m.source)}», загружен ${dt(m.at)}`:"Остатки ещё не загружены."}</div>
    <div class="row" style="margin-top:8px"><input id="mpzq" placeholder="🔎 Название или код (можно несколько слов: «сетка 4вр»)" value="${esc(MPZ.q)}" style="flex:1;min-width:200px"><button class="btn p sm" id="mpzb">Найти</button></div>
    <div class="row" style="margin-top:8px"><select id="mpzw" style="flex:1;min-width:180px;width:auto"><option value="">Все склады</option>${m.warehouses.map(w=>`<option value="${esc(w.v)}" ${MPZ.wh===w.v?"selected":""}>${esc(whShort(w.v))} (${w.n})</option>`).join("")}</select>
@@ -1479,7 +1495,8 @@ async function vMpz(_id,changed){if(changed&&$("#mpzl"))return; // обновл�
 const fmtMoney=v=>(Math.round(+v||0)).toLocaleString("ru-RU");
 async function mpzList(){
   const seq=MPZ.seq=(MPZ.seq||0)+1; // ответ на старый запрос не должен затереть новый
-  try{const flt=mpzFilter();const j=await api("GET","/api/collections/mpz_stock/records?"+new URLSearchParams({page:MPZ.page,perPage:50,sort:"name,warehouse",filter:flt,skipTotal:false}));
+  try{const flt=mpzFilter();const j=await api("GET","/api/collections/mpz_stock/records?"+new URLSearchParams({page:MPZ.q?1:MPZ.page,perPage:MPZ.q?500:50,sort:"name,warehouse",filter:flt,skipTotal:false}));
+    if(MPZ.q){j.items=j.items.filter(x=>wmatch(MPZ.q,mpzText(x)));j.totalItems=j.items.length;j.totalPages=1;j.page=1}   // 1.9.12: число — целым числом
     if(seq!==MPZ.seq||S.route!=="mpz"||!$("#mpzl"))return;
     $("#mpzl").innerHTML=`<div class="muted" style="margin:6px 0">Найдено строк: ${j.totalItems}</div>`+(j.items.length?`<div class="card"><div class="tw"><table id="mpzt"><tr><th>Номенклатура</th><th>Код</th><th>Склад</th><th>Качество</th><th>Остаток</th><th>Стоимость, ₽</th></tr>
      ${j.items.map(x=>`<tr><td>${esc(x.name)}${x.qty_in||x.qty_out?`<div class="muted">приход ${fmtQ(x.qty_in)} · расход ${fmtQ(x.qty_out)}</div>`:""}</td><td style="white-space:nowrap">${esc(x.code)}</td><td>${esc(whShort(x.warehouse))}</td>
@@ -1511,7 +1528,7 @@ async function importMpz(file,onProgress){
   return {total:res.total,period:p.period};
 }
 async function mpzExcel(){
-  const flt=mpzFilter();const items=await all("mpz_stock",flt,"name,warehouse");if(!items.length)throw new Error("Нечего выгружать.");
+  const flt=mpzFilter();const items=(await all("mpz_stock",flt,"name,warehouse")).filter(x=>!MPZ.q||wmatch(MPZ.q,mpzText(x)));if(!items.length)throw new Error("Нечего выгружать.");
   const m=await api("GET","/api/vs/mpz/meta");const QS={r:XS.sR,g:XS.sG,y:XS.sY,b:XS.sB,gr:XS.sGr};
   const rows=[[{v:"ОСТАТКИ МПЗ — "+(m.period||""),s:XS.title}],[{v:"Отбор: "+([MPZ.q&&"«"+MPZ.q+"»",MPZ.wh&&whShort(MPZ.wh),MPZ.ql].filter(Boolean).join(", ")||"все")+" · строк "+items.length+" · выгружено "+new Date().toLocaleString("ru-RU"),s:XS.sub}],[],
     ["Номенклатура","Код","Склад","Счёт","Качество","Ед.","Нач. остаток","Приход","Расход","Кон. остаток","Стоимость, ₽"].map(v=>({v,s:XS.head}))];
@@ -1539,7 +1556,7 @@ const qtyUnit=(q,u)=>{const n=numQ(q);return ((n==null?String(q==null?"":q).trim
 can.skk=()=>["admin","skk"].includes(role());can.upd=()=>["admin","manager","storekeeper","skk"].includes(role());
 /* ---------- 1.9: роли, оперативка, поставщики, новый приход, «Задачи и согласования» ---------- */
 can.skkView=()=>["skk","skk_view"].includes(role());
-can.coord=()=>role()==="coord";can.linkOnly=()=>!!(S.user&&S.user.scope==="skk");can.skkLink=()=>["admin","manager","skk"].includes(role())&&!can.linkOnly();
+can.coord=()=>role()==="coord";can.linkOnly=()=>!!(S.user&&S.user.scope);can.sklad=()=>!!(S.user&&S.user.scope==="sklad");can.skkLink=()=>["admin","manager","skk","storekeeper"].includes(role())&&!can.linkOnly();
 can.oper=()=>["admin","manager","storekeeper","skk"].includes(role());
 can.sup=()=>["admin","manager","skk"].includes(role());
 can.boss=()=>["admin","manager"].includes(role());
@@ -1601,7 +1618,7 @@ async function vOper(_id,changed){
   if(changed&&$("#opl"))return;
   let m={sources:[],stages:[]};try{m=await api("GET","/api/vs/oper/meta")}catch(_){}
   if(S.route!=="oper")return;SKK.tab="oper";
-  $("#main").innerHTML=`<h1>Склад / СКК</h1>${skkTabs()}<div class="card noprint">
+  $("#main").innerHTML=`<h1>${skkTitle()}</h1>${skkTabs()}<div class="card noprint">
    <div class="muted">${m.sources.length?m.sources.map(s=>`📄 «${esc(s.source)}» — ${s.n} строк, ${dt(s.last)}${can.boss()?` <a href="#" data-opdel="${esc(s.source)}">удалить</a>`:""}`).join("<br>"):"Оперативка ещё не загружена."}</div>
    <div class="row" style="margin-top:8px"><input id="opq" placeholder="🔎 PID, шифр, материал, поставщик, № УПД" value="${esc(OPER.q)}" style="flex:1;min-width:200px"><button class="btn p sm" id="opb">Найти</button></div>
    <div class="row" style="margin-top:8px"><select id="opst" style="flex:1;min-width:180px;width:auto"><option value="">Любая стадия поставки</option>${m.stages.map(s=>`<option value="${esc(s.v)}" ${OPER.st===s.v?"selected":""}>${esc(s.v||"— без стадии")} (${s.n})</option>`).join("")}</select>
@@ -1616,11 +1633,12 @@ async function vOper(_id,changed){
   operList();
 }
 async function operList(){const my=++OPER.seq;const f=operFilter();
-  const j=await api("GET",`/api/collections/oper_rows/records?perPage=200&sort=pid,line_no&skipTotal=false${f?"&filter="+encodeURIComponent(f):""}`);
+  const j=await api("GET",`/api/collections/oper_rows/records?perPage=${OPER.q?500:200}&sort=pid,line_no&skipTotal=false${f?"&filter="+encodeURIComponent(f):""}`);
   if(my!==OPER.seq||!$("#opl"))return;
+  if(OPER.q){const raw=j.items.length;j.items=j.items.filter(x=>wmatch(OPER.q,operText(x)));j.totalItems=j.totalItems>raw?j.items.length+(j.totalItems-raw):j.items.length}
   $("#opl").innerHTML=j.items.length?`<div class="card"><div class="muted" style="margin-bottom:6px">Найдено ${j.totalItems}${j.totalItems>j.items.length?` — показаны первые ${j.items.length}, уточните поиск`:""}</div>${operTable(j.items)}</div>`:`<div class="card empty">${OPER.q||OPER.st?"Ничего не найдено":"Нет строк"}</div>`}
 async function operExcel(){
-  const items=await all("oper_rows",operFilter(),"pid,line_no");if(!items.length)throw new Error("Нечего выгружать.");
+  const items=(await all("oper_rows",operFilter(),"pid,line_no")).filter(x=>!OPER.q||wmatch(OPER.q,operText(x)));if(!items.length)throw new Error("Нечего выгружать.");
   const rows=[[{v:"ОПЕРАТИВКА — ОТБОР",s:XS.title}],[{v:"Отбор: "+([OPER.q&&"«"+OPER.q+"»",OPER.st].filter(Boolean).join(", ")||"все")+" · строк "+items.length+" · выгружено "+new Date().toLocaleString("ru-RU"),s:XS.sub}],[],
     ["PID","Объект","Подобъект","Шифр","Наименование (проект)","Наименование поставщика","Ед.","Кол-во","Поставлено","Поставщик","Стадия поставки","ТОРГ / УПД","Договор / спецификация"].map(v=>({v,s:XS.head}))];
   const SC={g:XS.sG,y:XS.sY,r:XS.sR,b:XS.sB,gr:XS.sGr};
@@ -1717,9 +1735,10 @@ function hubBody(){if(!HUB.data)return `<div class="muted">Загрузка…</
     ${updPhotoBlock(u.id,d.ph,d.ft,false)}</div>`}).join("")+more}
 async function hubLoad(){const my=++HUB.seq;const W=lcq(HUB.q).split(/\s+/).filter(Boolean).slice(0,6);const L=(c,f,sort,n)=>api("GET",`/api/collections/${c}/records?perPage=${n}&sort=${sort}${f?"&filter="+encodeURIComponent(f):""}`).catch(()=>({items:[],totalItems:0}));
   const sf=wfil(W.join(" "));
-  const [op,mp,inn,fl]=await Promise.all([W.length?L("oper_rows",sf,"pid,line_no",40):null,W.length?L("mpz_stock",sf,"name,warehouse",40):null,L("upd_docs",["status!='draft'"].concat(W.length?["("+wfil(W.join(" "))+")"]:[]).join("&&"),"-created",15),W.length&&!can.coord()?L("supplier_files",sf,"-is_upd,-mtime",40):null]);
+  const [op,mp,inn,fl]=await Promise.all([W.length?L("oper_rows",sf,"pid,line_no",300):null,W.length?L("mpz_stock",sf,"name,warehouse",300):null,L("upd_docs",["status!='draft'"].concat(W.length?["("+wfil(W.join(" "))+")"]:[]).join("&&"),"-created",15),W.length&&!can.coord()?L("supplier_files",sf,"-is_upd,-mtime",40):null]);
   const ph=inn.items.length?await all("upd_photos",inn.items.map(u=>`upd="${u.id}"`).join("||"),"created").catch(()=>[]):[];const ft=ph.length?await fileToken():"";
   if(my!==HUB.seq)return;
+  const tight=(j,fx)=>{if(!j)return;const raw=j.items.length;j.items=j.items.filter(x=>wmatch(W.join(" "),fx(x)));j.totalItems=j.items.length+Math.max(0,j.totalItems-raw);j.items=j.items.slice(0,40)};tight(op,operText);tight(mp,mpzText);
   HUB.data={oper:op&&{total:op.totalItems,items:op.items},mpz:mp&&{total:mp.totalItems,items:mp.items},in:{total:inn.totalItems,items:inn.items,ph,ft},files:fl&&{total:fl.totalItems,items:fl.items}};
   if(W.length&&HUB.tab!=="in"&&HUB.data[HUB.tab]&&!HUB.data[HUB.tab].total){const best=["in","oper","mpz","files"].find(k=>HUB.data[k]&&HUB.data[k].total);if(best)HUB.tab=best}
   hubPaint()}
@@ -1790,9 +1809,10 @@ async function subEdit(t,s,people){const dir=await loadDir();await xfLoad();
 async function topicSearch(){const my=++TOP.seq;const q=lcq(TOP.q);const box=$("#tps");if(!box)return;
   if(q.length<2){TOP.res="";box.innerHTML="";return}box.innerHTML=`<div class="muted">Ищу…</div>`;
   const W=q.split(/\s+/).filter(Boolean).slice(0,6);
-  const [mp,op]=await Promise.all([api("GET",`/api/collections/mpz_stock/records?perPage=30&sort=name&filter=${encodeURIComponent(qWords(W.join(" ")).map(w=>"("+xv(w).map(v=>`name~"${v}"||code~"${v}"`).join("||")+")").join("&&"))}`).catch(()=>({items:[],totalItems:0})),
-    api("GET",`/api/collections/oper_rows/records?perPage=30&sort=pid&filter=${encodeURIComponent(wfil(W.join(" ")))}`).catch(()=>({items:[],totalItems:0}))]);
+  const [mp,op]=await Promise.all([api("GET",`/api/collections/mpz_stock/records?perPage=200&sort=name&filter=${encodeURIComponent(qWords(W.join(" ")).map(w=>"("+xv(w).map(v=>`name~"${v}"||code~"${v}"`).join("||")+")").join("&&"))}`).catch(()=>({items:[],totalItems:0})),
+    api("GET",`/api/collections/oper_rows/records?perPage=200&sort=pid&filter=${encodeURIComponent(wfil(W.join(" ")))}`).catch(()=>({items:[],totalItems:0}))]);
   if(my!==TOP.seq||!$("#tps"))return;
+  [[op,operText],[mp,mpzText]].forEach(([j,fx])=>{const raw=j.items.length;j.items=j.items.filter(x=>wmatch(W.join(" "),fx(x)));j.totalItems=j.items.length+Math.max(0,j.totalItems-raw);j.items=j.items.slice(0,30)});
   const opRow=x=>`<div style="padding:6px 0;border-bottom:1px dashed var(--line)"><b>${esc(x.pid)}</b> · ${esc(x.name_proj||x.name_supp||x.name_1c)} <span class="muted">— ${fmtQ(x.qty_c||x.qty)} ${esc(x.unit_c||x.unit)}</span>
     <div class="muted">${esc([x.code,x.subobject].filter(Boolean).join(" · "))}</div><div>${esc(x.supplier)} ${stagePill(x.stage)}${x.torg?` <span class="muted">УПД/ТОРГ ${esc(x.torg)}</span>`:""}</div></div>`;
   TOP.res=`<div style="max-height:60vh;overflow:auto"><h3 style="margin-top:10px">Оперативка — ${op.totalItems}${op.totalItems>op.items.length?` <span class="muted">(первые ${op.items.length})</span>`:""}</h3>${op.items.length?op.items.map(opRow).join(""):`<div class="muted">ничего</div>`}
@@ -1869,31 +1889,39 @@ function updLine(list,supplier){
   const by={};list.forEach(u=>(by[u.date]=by[u.date]||[]).push(u.number));
   return Object.keys(by).sort().map(d=>"УПД "+by[d].join(", ")+(d?" от "+dmy(d):"")).join("; ")+(supplier?" "+supplier:"");
 }
-function skkTabs(){return `<div class="tabs noprint" style="margin-bottom:10px;flex-wrap:wrap">${[["upd","УПД"],["in","Новый приход"],["acts","Акты СКК"],["oper","Оперативка"],["mpz","МПЗ"],["sup","Поставщики"],["rep","Отчёт"]].map(t=>`<button class="${SKK.tab===t[0]?"on":""}" data-skt="${t[0]}">${t[1]}</button>`).join("")}</div>`}
+// 1.9.12: по ссылке «Склад» — только новый приход, оперативка, МПЗ и журнал актов несоответствия
+const SKK_T=()=>can.sklad()?[["in","Новый приход"],["oper","Оперативка"],["mpz","МПЗ"],["jact","Журнал актов"]]:[["upd","УПД"],["in","Новый приход"],["acts","Акты СКК"],["oper","Оперативка"],["mpz","МПЗ"],["jact","Журнал актов"],["sup","Поставщики"],["rep","Отчёт"]];
+const skkTitle=()=>can.sklad()?"Склад":"Склад / СКК";
+function skkTabs(){return `<div class="tabs noprint" style="margin-bottom:10px;flex-wrap:wrap">${SKK_T().map(t=>`<button class="${SKK.tab===t[0]?"on":""}" data-skt="${t[0]}">${t[1]}</button>`).join("")}</div>`}
 function bindSkkTabs(){document.querySelectorAll("[data-skt]").forEach(b=>b.onclick=()=>{SKK.tab=b.dataset.skt;if(SKK.tab==="oper")location.hash="#/oper";else if(SKK.tab==="mpz")location.hash="#/mpz";else if(S.route!=="skk")location.hash="#/skk";else vSkk()})}
 async function vSkk(_id,changed){
   if(changed&&$("#skkb"))return;
-  $("#main").innerHTML=`<div class="row" style="align-items:center"><h1 class="grow">Склад / СКК</h1>${can.skkLink()?`<button class="btn sm acc noprint" id="skkln">🔗 Ссылка на эту страницу</button>`:""}</div>${skkTabs()}<div id="skkb"><div class="card empty">Загрузка…</div></div>`;
-  if(SKK.tab==="oper"||SKK.tab==="mpz")SKK.tab="upd";
+  if(SKK.tab==="oper"||SKK.tab==="mpz"||!SKK_T().some(t=>t[0]===SKK.tab))SKK.tab=can.sklad()?"in":"upd";
+  $("#main").innerHTML=`<div class="row" style="align-items:center"><h1 class="grow">${skkTitle()}</h1>${can.skkLink()?`<button class="btn sm acc noprint" id="skkln">🔗 Ссылка на эту страницу</button>`:""}</div>${skkTabs()}<div id="skkb"><div class="card empty">Загрузка…</div></div>`;
   const ln=$("#skkln");if(ln)ln.onclick=()=>act(ln,skkLinkModal);
   bindSkkTabs();$("#main").querySelectorAll("[data-skt]").forEach(b=>b.classList.toggle("on",b.dataset.skt===SKK.tab));
-  try{if(SKK.tab==="upd")await skkUpdList();else if(SKK.tab==="in")await skkIn();else if(SKK.tab==="acts")await skkActList();else if(SKK.tab==="sup")await skkSup();else await skkReport()}catch(e){const b=$("#skkb");if(b)b.innerHTML=`<div class="banner red">${esc(e.message)}</div>`}
+  try{if(SKK.tab==="upd")await skkUpdList();else if(SKK.tab==="in")await skkIn();else if(SKK.tab==="acts")await skkActList();else if(SKK.tab==="sup")await skkSup();else if(SKK.tab==="jact")await vActs($("#skkb"));else await skkReport()}catch(e){const b=$("#skkb");if(b)b.innerHTML=`<div class="banner red">${esc(e.message)}</div>`}
 }
 // 1.9.10: ссылка на «Склад / СКК» — кому угодно; человек по ссылке видит только эту страницу (УПД, акты, оперативка, МПЗ)
 async function skkLinkModal(){
+  // 1.9.12: две ссылки — «Склад / СКК» (УПД, акты СКК) и «Склад» (новый приход, оперативка, МПЗ, журнал актов); друг другу не мешают
+  const SC=[["skk","Склад / СКК — УПД, акты СКК, оперативка, МПЗ",["admin","manager","skk"]],["sklad","Склад — новый приход (УПД, фото груза), оперативка, МПЗ, журнал актов",["admin","manager","storekeeper"]]].filter(x=>x[2].includes(role()));
+  const SCN={skk:"СКК",sklad:"СКЛАД"};
   const draw=async()=>{const j=await api("GET","/api/vs/skk/links");const url=t=>location.origin+"/?k="+t+"#/skk";
-    return `<h3>🔗 Ссылка на «Склад / СКК»</h3><div class="muted">Человек открывает ссылку — без пароля и регистрации — и видит <b>только эту страницу</b>. Другие разделы и «Задачи и согласования» ему недоступны.</div>
+    return `<h3>🔗 Ссылка на страницу</h3><div class="muted">Человек открывает ссылку — без пароля и регистрации — и видит <b>только выбранную страницу</b>. Остальные разделы ему недоступны, на работу программы он не влияет.</div>
+     ${location.protocol!=="https:"&&!/^(localhost|127\.)/.test(location.hostname)?`<div class="banner yellow" style="margin-top:6px;font-size:14px">Программа открыта по http — без интернета на телефоне работать не будет. Нужен адрес https (на сервере: bash install.sh auto).</div>`:""}
+     <label class="f" for="sks">Страница</label><select id="sks">${SC.map(x=>`<option value="${x[0]}">${esc(x[1])}</option>`).join("")}</select>
      <label class="f" for="skn">Кому (ФИО / организация) *</label><input id="skn" placeholder="например: Иванов И.И., ООО «Технадзор»">
-     <label class="f">Доступ</label><select id="skm"><option value="view">Только просмотр (УПД, акты, отчёт, Excel)</option><option value="work">Работа: загружать УПД, составлять и закрывать акты</option></select>
+     <label class="f">Доступ</label><select id="skm"><option value="view">Только просмотр и поиск, Excel</option><option value="work">Работа: загружать УПД и фото, вести записи</option></select>
      <div class="row" style="margin-top:10px"><button class="btn p grow" id="skc">Создать ссылку</button></div>
-     <h3 style="margin-top:14px">Выданные ссылки (${j.links.length})</h3>${j.links.map(l=>`<div class="card" style="padding:10px;margin-top:6px"><b>${esc(l.name)}</b> <span class="pill ${l.mode==="work"?"b":"gr"}">${l.mode==="work"?"РАБОТА":"ПРОСМОТР"}</span>
+     <h3 style="margin-top:14px">Выданные ссылки (${j.links.length})</h3>${j.links.map(l=>`<div class="card" style="padding:10px;margin-top:6px"><b>${esc(l.name)}</b> <span class="pill y">${SCN[l.scope]||"СКК"}</span> <span class="pill ${l.mode==="work"?"b":"gr"}">${l.mode==="work"?"РАБОТА":"ПРОСМОТР"}</span>
        <div class="muted">выдал ${esc(l.by)} ${dt(l.created)} · открывали ${l.views} раз${l.last_open?" · последний раз "+dt(l.last_open):""}</div>
        <input readonly value="${esc(url(l.token))}" style="margin-top:6px"><div class="row" style="margin-top:6px;gap:6px"><button class="btn sm" data-skcp="${esc(url(l.token))}">📋 Копировать</button>
-       <a class="btn sm" target="_blank" rel="noopener" href="https://t.me/share/url?url=${encodeURIComponent(url(l.token))}&text=${encodeURIComponent("ВЕЛЕССТРОЙ — Склад / СКК")}">Telegram</a>
+       <a class="btn sm" target="_blank" rel="noopener" href="https://t.me/share/url?url=${encodeURIComponent(url(l.token))}&text=${encodeURIComponent("ВЕЛЕССТРОЙ — "+(l.scope==="sklad"?"Склад":"Склад / СКК"))}">Telegram</a>
        <a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent("ВЕЛЕССТРОЙ — Склад / СКК: "+url(l.token))}">WhatsApp</a><button class="btn sm" data-skoff="${l.id}">Отключить</button></div></div>`).join("")||'<div class="muted">Пока нет</div>'}
      <div class="row" style="margin-top:12px"><button class="btn" data-close>Закрыть</button></div>`};
   const bind=box=>{const re=async()=>{box.querySelector(".box").innerHTML=await draw();bind(box)};
-    $("#skc",box).onclick=e=>act(e.target,async()=>{const r=await api("POST","/api/vs/skk/links/create",{name:$("#skn",box).value,mode:$("#skm",box).value});await re();
+    $("#skc",box).onclick=e=>act(e.target,async()=>{const r=await api("POST","/api/vs/skk/links/create",{name:$("#skn",box).value,mode:$("#skm",box).value,scope:$("#sks",box).value});await re();
       const u=location.origin+"/?k="+r.token+"#/skk";try{await navigator.clipboard.writeText(u)}catch(_){}},"Ссылка создана и скопирована");
     box.querySelectorAll("[data-skcp]").forEach(b=>b.onclick=async()=>{try{await navigator.clipboard.writeText(b.dataset.skcp);toast("Скопировано")}catch(_){prompt("Ссылка:",b.dataset.skcp)}});
     box.querySelectorAll("[data-skoff]").forEach(b=>b.onclick=()=>{if(!confirm("Отключить ссылку? Человек больше не сможет войти."))return;act(b,async()=>{await api("POST","/api/vs/skk/links/off",{id:b.dataset.skoff});await re()},"Ссылка отключена")})};
