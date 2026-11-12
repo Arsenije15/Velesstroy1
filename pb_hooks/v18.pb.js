@@ -144,7 +144,7 @@ routerAdd("POST", "/api/vs/skk/act/save", (e) => {
     ["rep_osk", "rep_sklad", "rep_omts"].forEach((k) => act.set(k, L.str(b[k]).slice(0, 300)));
     act.set("upds", upds); act.set("supplier", sup.slice(0, 300)); act.set("supplier_key", X.supplierKey(sup));
     act.set("upd_line", L.str(b.upd_line).slice(0, 1000)); act.set("rows", rows);
-    act.set("conclusion", L.str(b.conclusion).slice(0, 3000)); act.set("verdict", L.str(b.verdict).slice(0, 1000));
+    act.set("conclusion", L.str(b.conclusion).slice(0, 3000)); act.set("appendix", L.str(b.appendix).slice(0, 2000)); act.set("verdict", L.str(b.verdict).slice(0, 1000));
     const wasClosed = act.getString("status") === "closed";
     act.set("status", allFixed ? "closed" : "open"); act.set("closed_at", allFixed ? (wasClosed ? act.getString("closed_at") : now) : "");
     if (!b.id) act.set("created_by", a.id);

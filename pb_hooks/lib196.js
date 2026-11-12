@@ -31,7 +31,7 @@ function matchSpec(items, spec, used) {
     if (!pick) { missing.push(k + 1); return; }
     used[pick.i] = 1; last = pick.i; matched++;
     if (normName(pick.name) !== nk) renamed++;
-    it.spec_name = pick.name; it.spec_no = pick.no; if (pick.objcode) it.objcode = pick.objcode;
+    it.spec_name = pick.name; it.spec_no = pick.no; if (pick.unit) it.spec_unit = pick.unit; if (pick.objcode) it.objcode = pick.objcode;
   });
   return { matched: matched, renamed: renamed, missing: missing };
 }
