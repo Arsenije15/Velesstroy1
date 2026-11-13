@@ -174,18 +174,24 @@ routerAdd("POST", "/api/vs/skk/act/fix", (e) => {
   $app.runInTransaction((tx) => {
     const act = tx.findRecordById("skk_acts", L.str(b.act));
     let rows = []; try { rows = JSON.parse(act.getString("rows") || "[]") || []; } catch (_) {}
-    const x = rows.find((r) => r.uid === L.str(b.uid));
-    if (!x) throw new BadRequestError("Строка акта не найдена.");
+    // 1.9.13: несколько строк сразу (uids) — одна запись «как устранено» для всех
+    const ids = Array.isArray(b.uids) && b.uids.length ? b.uids.map((v) => L.str(v)).slice(0, 2000) : [L.str(b.uid)];
+    const xs = rows.filter((r) => ids.indexOf(r.uid) >= 0);
+    if (!xs.length || xs.length !== ids.length) throw new BadRequestError("Строка акта не найдена.");
     const fixed = !!b.fixed;
-    if (fixed && !L.str(b.note).trim() && !x.fix_note) throw new BadRequestError("Напишите, как устранено (причина закрытия).");
-    x.fixed = fixed; x.fix_note = L.str(b.note).trim() || x.fix_note || "";
-    x.fixed_at = fixed ? (L.str(b.date) ? L.str(b.date) + " 12:00:00.000Z" : L.fmt(new Date())) : ""; x.fixed_by = fixed ? L.userName(a) : "";
+    if (fixed && !L.str(b.note).trim() && xs.some((x) => !x.fix_note)) throw new BadRequestError("Напишите, как устранено (причина закрытия).");
+    xs.forEach((x) => {
+      x.fixed = fixed; x.fix_note = L.str(b.note).trim() || x.fix_note || "";
+      x.fixed_at = fixed ? (L.str(b.date) ? L.str(b.date) + " 12:00:00.000Z" : L.fmt(new Date())) : ""; x.fixed_by = fixed ? L.userName(a) : "";
+    });
+    if (fixed) X.remember(tx, "skk_fix", L.str(b.note).trim());
+    const x = xs[0];
     const allFixed = rows.every((r) => r.fixed);
-    act.set("rows", rows); act.set("status", allFixed ? "closed" : "open"); act.set("closed_at", allFixed ? L.fmt(new Date()) : "");
+    act.set("rows", rows); act.set("status", allFixed ? "closed" : "open"); act.set("closed_at", allFixed ? (act.getString("closed_at") || L.fmt(new Date())) : "");
     tx.save(act);
     act.getStringSlice("upds").forEach((id) => { try { const u = tx.findRecordById("upd_docs", id); u.set("status", allFixed ? "ok" : "act"); tx.saveNoValidate(u); } catch (_) {} });
     K.syncActs(L, X, tx, act, L.userName(a));
-    L.log(tx, a, "skk_act_fix", "skk_acts", act.id, "Акт СКК № " + act.getString("number") + ": «" + String(x.material).slice(0, 80) + "» — " + (fixed ? "устранено: " + x.fix_note : "снова не устранено") +
+    L.log(tx, a, "skk_act_fix", "skk_acts", act.id, "Акт СКК № " + act.getString("number") + ": «" + String(x.material).slice(0, 80) + "»" + (xs.length > 1 ? " и ещё " + (xs.length - 1) + " поз." : "") + " — " + (fixed ? "устранено: " + x.fix_note : "снова не устранено") +
       (allFixed ? ". Все замечания устранены — акт закрыт" : ""), {});
     out = { status: act.getString("status") };
   });

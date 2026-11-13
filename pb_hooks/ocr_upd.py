@@ -83,6 +83,27 @@ def rotate(img, deg):
             270: cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)}.get(deg, img)
 
 # ---------- текст ----------
+# 1.9.13: PDF с текстовым слоем (Диадок, СБИС, 1С) — слова берём из PDF, без распознавания: точно и быстро
+PDFW = None
+def pdf_words(path, pi, W, H):
+    try:
+        x = subprocess.run(["pdftotext", "-bbox", "-f", str(pi), "-l", str(pi), path, "-"], capture_output=True, timeout=60).stdout.decode("utf-8", "ignore")
+    except Exception: return None
+    m = re.search(r'<page width="([\d.]+)" height="([\d.]+)"', x)
+    if not m: return None
+    pw, ph = float(m.group(1)), float(m.group(2)); sx, sy = W / pw, H / ph
+    import html
+    ws = []
+    for a, b, c, d, t in re.findall(r'<word xMin="([\d.]+)" yMin="([\d.]+)" xMax="([\d.]+)" yMax="([\d.]+)">(.*?)</word>', x):
+        a, b, c, d = float(a) * sx, float(b) * sy, float(c) * sx, float(d) * sy
+        ws.append((a, b, c - a, d - b, html.unescape(t), 99))
+    cyr = sum(1 for w in ws if re.search(r"[А-Яа-я]{3,}", w[4]))
+    return ws if cyr >= 15 else None
+
+def ctext(clean, a, b, x0, x1, zoom=1, psm=7, extra=None):
+    if PDFW is not None: return join_words(words_in(PDFW, x0, x1, a, b))
+    return tess(cell_img(clean, a, b, x0, x1, zoom), psm, extra)
+
 def lc(s): return (s or "").lower().replace("ё", "е")
 def words(s): return re.findall(r"[A-Za-zА-Яа-яЁё]{3,}", s or "")
 def quality(s):
@@ -122,6 +143,12 @@ def fix_name(s):
     s = re.sub(r"(?<![A-Za-zА-Яа-я])cr\.(?=\s*\d)", "ст.", s)   # «cr. 20» (латиница на фото) → «ст. 20»
     s = re.sub(r"\s+([,.;:)])", r"\1", s)
     s = re.sub(r"([(])\s+", r"\1", s)
+    # 1.9.13: марки кабеля на скане: «Кабenb» → «Кабель», «nnHr(A)-HF» → «ППнг(А)-HF», «КВВГЭнкА)» → «КВВГЭнг(А)», «-НЕ» → «-HF»
+    s = re.sub(r"\b[KК][aа][бb6][eе][лnл][ьbЬ]\b", "Кабель", s)
+    s = re.sub(r"\b[nпП][nпП][HНн][rгГ](?=\(?[AА]\))", "ППнг", s)
+    s = re.sub(r"(?<=[ВГПКЭ])н[гГкКr]?\(?[AА]\)", "нг(А)", s)
+    s = re.sub(r"(?<=нг\(А\)-)(?:НЕ|HE|НF)\b", "HF", s)
+    s = re.sub(r"(?<=нг\(А\))\s*-\s+(?=(?:LS|HF|FRLS|FRHF|LSLTx|SLTx)\b)", "-", s)
     s = re.sub(r"\s{2,}", " ", s)
     if s.count("(") > s.count(")") and re.search(r"[\\|\]1l]$", s): s = s[:-1] + ")"   # «(нерж.сталь\» → «(нерж.сталь)»
     return s.strip(" |_:;—-")
@@ -140,6 +167,11 @@ def clean_org(v):
     v = re.sub(r"(^|\s)[0OО]{3}(?=\s|[\"«“„])", r"\1ООО", v or "")
     v = v.replace("“", "\"").replace("”", "\"").replace("„", "\"").replace("«", "\"").replace("»", "\"").replace("''", "\"")
     v = re.sub(r"\s+", " ", v).strip(" .,:;|_-")
+    # 1.9.13: «"Общество с ограниченной ответственностью "Электротехнологии""» → ООО "Электротехнологии"
+    for full, short in (("публичное акционерное общество", "ПАО"), ("закрытое акционерное общество", "ЗАО"), ("открытое акционерное общество", "ОАО"),
+                        ("акционерное общество", "АО"), ("общество с ограниченной ответственностью", "ООО")):
+        v = re.sub(full, short, v, flags=re.I)
+    v = re.sub(r'^"(ООО|АО|ПАО|ЗАО|ОАО)\s+', r"\1 ", v)
     m = re.match(r"(.*?\"[^\"]{2,80}\")", v)
     v = m.group(1) if m else v[:120]
     # 1.9.6: название в кавычках прочитано латиницей («KPENTOHH») — это русские буквы-двойники
@@ -256,7 +288,7 @@ def map_header(clean, xs, bands):
     numrow = None
     for i, (a, b) in enumerate(bands[:12]):
         if b - a > 90 or b - a < 15: continue
-        txt = [tess(cell_img(clean, a, b, xs[j], xs[j + 1], 2), 7) if xs[j + 1] - xs[j] > 10 else "" for j in range(len(xs) - 1)]
+        txt = [ctext(clean, a, b, xs[j], xs[j + 1], 2, 7) if xs[j + 1] - xs[j] > 10 else "" for j in range(len(xs) - 1)]
         hits = sum(1 for x in txt if x.strip() in NUMROW or x.strip() in ("1", "2", "6", "7", "8", "9", "10", "11", "1б", "1b", "10а"))
         if hits >= 6: numrow = (i, [x.strip() for x in txt]); break
     if numrow is None: return None, None
@@ -266,6 +298,7 @@ def map_header(clean, xs, bands):
     heads = []
     for j in range(len(xs) - 1):
         c = clean[a + 3:b - 3, xs[j] + 3:xs[j + 1] - 3]
+        if PDFW is not None: heads.append(lc(join_words(words_in(PDFW, xs[j], xs[j + 1], a, b)))); continue
         heads.append(lc(tess(c, 6)) if c.size and c.shape[1] > 12 else "")
     col = {}
     for j, x in enumerate(numrow[1]):
@@ -295,6 +328,8 @@ def join_words(ws):
         else: lines.append([cy, [w]])
     out = []
     for _, L in lines:
+        if PDFW is not None and out and out[-1].endswith("-") and L:   # перенос «КВВГЭнг(А)-» / «LS 4х2.5» — без пробела
+            L.sort(key=lambda w: w[0]); out[-1] += " ".join(w[4] for w in L); continue
         L.sort(key=lambda w: w[0]); s = ""
         for i, w in enumerate(L):
             if i:
@@ -306,6 +341,7 @@ def join_words(ws):
     return " ".join(out)
 
 def strip_words(clean, x0, x1, y0, y1, extra=None, psm=6, zoom=1):
+    if PDFW is not None: return words_in(PDFW, x0 + 2, x1 - 2, y0, y1)
     c = clean[y0:y1, x0 + 4:x1 - 3]
     if not c.size: return []
     if zoom > 1: c = cv2.resize(c, None, fx=zoom, fy=zoom, interpolation=cv2.INTER_CUBIC)
@@ -355,17 +391,21 @@ def table_rows(g, tb, tpl):
     for (a, b) in data:
         T = {k: join_words(words_in(v, -1e9, 1e9, a, b)) for k, v in W.items()}
         name = fix_name(T.get("name", ""))
-        if re.search(r"всего|к\s*оплат|итого", lc(name)) or re.search(r"всего\s*к\s*оплат", lc(T.get("name", ""))):
+        rowall = lc(join_words(words_in(PDFW, xs[0], xs[-1], a, b))) if PDFW is not None else lc(" ".join(T.values()))
+        if re.search(r"всего|к\s*оплат|итого", lc(name)) or re.search(r"всего\s*к\s*оплат", lc(T.get("name", ""))) or re.search(r"всего\s*к\s*оплат", rowall):
             totals = {"sum": money(T.get("sum"))}; break
+        # 1.9.13: подписи под таблицей («Руководитель … уполномоченное лицо», «Основания передачи (сдачи)») — не товар
+        if T.get("qty", "").strip() == "" and re.search(r"руководител|уполномоч|индивидуальн|предпринимат|основани[ея]\s+передачи|\(сдачи\)|получени[яе]|главный\s+бухгалтер|подпись|ф\.?\s*и\.?\s*о", lc(name)): continue
+        if items and re.search(r"руководител|уполномоч|индивидуальн|\(сдачи\)", lc(name)) and not re.search(r"\d", T.get("price", "") + T.get("sum", "")): continue
         if re.search(r"наименование\s+товара|описание\s+выполн|работ,\s*услуг", lc(name)): continue   # шапка таблицы на следующих листах
         qraw = T.get("qty", ""); q = num(qraw)
         no = re.sub(r"\D", "", T.get("no", ""))
         if (q is None or not name) and b - a > 14:
             # строка плохо прочиталась целиком — повторяем по ячейке крупнее
             if q is None:
-                qraw = tess(cell_img(clean, a, b, xs[col["qty"]], xs[col["qty"] + 1], 2), 7, DIG); q = num(qraw)
+                qraw = ctext(clean, a, b, xs[col["qty"]], xs[col["qty"] + 1], 2, 7, DIG); q = num(qraw)
             if not name:
-                name = fix_name(tess(cell_img(clean, a, b, xs[col["name"]], xs[col["name"] + 1], 2), 6))
+                name = fix_name(ctext(clean, a, b, xs[col["name"]], xs[col["name"] + 1], 2, 6))
         if not name and q is None: continue
         if len(words(name)) < 1: continue   # строка номеров колонок «А 1 1а 1б 2 …»
         price, ssum = money(T.get("price")), money(T.get("sum"))
@@ -383,7 +423,7 @@ def table_rows(g, tb, tpl):
                 if alt and abs(alt - round(alt)) < 0.002 and abs(price * round(alt) - ssum) <= max(0.05, ssum * 0.002):
                     it["qty_ocr"] = q; it["qty"] = float(round(alt)); warn.append("qty_fixed")
                 else:
-                    q2 = num(tess(cell_img(clean, a, b, xs[col["qty"]], xs[col["qty"] + 1], 3), 7, DIG))
+                    q2 = num(ctext(clean, a, b, xs[col["qty"]], xs[col["qty"] + 1], 3, 7, DIG))
                     if q2 is not None and abs(price * q2 - ssum) <= max(0.05, ssum * 0.002): it["qty_ocr"] = q; it["qty"] = q2
                     else: warn.append("qty")
             else: it["checked"] = True
@@ -417,8 +457,25 @@ def main(path):
                 p = pre + ".png"
             img = cv2.imread(p)
             if img is None: continue
+            global PDFW
+            PDFW = None
             if max(img.shape[:2]) < 2400:
                 k = 3000 / max(img.shape[:2]); img = cv2.resize(img, None, fx=k, fy=k, interpolation=cv2.INTER_CUBIC)
+            if is_pdf: PDFW = pdf_words(path, pi, img.shape[1], img.shape[0])
+            if PDFW is not None:   # текст в PDF есть — без поворотов и распознавания
+                g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY); tb = find_table(g); rot, skew = 0, 0
+                if pi == 1 or not re.search(r"фактур|передаточн", text_all, re.I):
+                    text_all += "\n" + subprocess.run(["pdftotext", "-layout", "-f", str(pi), "-l", str(pi), path, "-"], capture_output=True, timeout=60).stdout.decode("utf-8", "ignore")
+                tr = table_rows(g, tb, tpl)
+                if tr:
+                    if tr.get("tpl"): tpl = tr["tpl"]
+                    for it in tr["items"]: it["page"] = pi; it["text"] = True; items.append(it)
+                    if tr.get("totals"): tot = tr["totals"]
+                dbg.append({"page": pi, "text": True, "cols": tr and tr.get("cols"), "n": tr and len(tr["items"])})
+                try: os.remove(p)
+                except Exception: pass
+                if tot: break
+                continue
             img, skew = deskew(img)
             # поворот: для листов PDF берём поворот предыдущего листа, если таблица находится
             im = None
