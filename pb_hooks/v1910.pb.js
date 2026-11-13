@@ -87,7 +87,7 @@ routerUse((e) => {
     // 1.9.15: «Склад: заявки» — ресурсы склада (как в программе), поиск (оперативка, МПЗ, журнал актов) и свои заявки (с проверкой на акт)
     const p = e.request.url.path;
     let okp = true;
-    if (p.indexOf("/api/vs/") === 0) okp = /^\/api\/vs\/(request\/(create|update|note|ocr|file_delete)|acts\/match|reserve|reservation\/action|resource\/status|actcheck|oper|mpz|fields|pub)(\/|$)/.test(p);
+    if (p.indexOf("/api/vs/") === 0) okp = /^\/api\/vs\/(request\/(create|update|note|ocr|file_delete)|acts\/match|pickhist|reserve|reservation\/action|resource\/status|actcheck|oper|mpz|fields|pub)(\/|$)/.test(p);
     else if (p.indexOf("/api/collections/") === 0) okp = /^\/api\/collections\/(users|requests|request_items|request_files|request_notes|request_shipments|request_ocr|resources|reservations|oper_rows|mpz_stock|acts|suggestions|form_fields|field_files)\//.test(p);
     if (!okp) throw new ForbiddenError("По этой ссылке доступны только «Ресурсы склада», «Поиск» и «Мои заявки».");
   }

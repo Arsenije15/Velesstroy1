@@ -63,6 +63,7 @@ input[type=checkbox]{width:28px;height:28px;min-height:0;flex:none;accent-color:
 .btn.o{background:var(--o);color:#fff;border-color:var(--o)}
 .sugpop{background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);overflow:auto;z-index:100000}.sugpop .sgi{padding:9px 12px;font-size:15px;white-space:normal;cursor:pointer;border-bottom:1px solid #f0f1f3;line-height:1.3}.sugpop .sgi:hover,.sugpop .sgi.on{background:#eef4ff}
 .ntfn{position:absolute;top:-6px;right:-6px;background:#dc2626;color:#fff;border-radius:999px;font-size:11px;font-weight:800;min-width:18px;height:18px;line-height:18px;padding:0 4px;text-align:center}
+.pickl{display:inline-block;margin-top:4px;padding:4px 8px;border-radius:8px;background:#ecfdf5;color:#065f46;font-size:14px}.phb{margin-top:4px;padding:6px 8px;border-radius:8px;background:#eff6ff;color:#1e3a8a;font-size:14px}
 .ackb{margin-top:4px;padding:6px 8px;border-radius:8px;background:#fef2f2;color:#991b1b;font-weight:600;font-size:14px}.ackok{margin-top:4px;color:#15803d;font-size:13px}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.chip{border:1px solid var(--line);background:#f6f7f9;border-radius:999px;padding:6px 12px;font-size:14px;cursor:pointer;color:var(--ink);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .steps{display:flex;flex-direction:column;gap:2px;margin-top:8px}.step{display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px dashed var(--line)}.step.done .t{color:var(--g);font-weight:700}
@@ -728,6 +729,15 @@ async function actCheck(names){const need=[...new Set(names.filter(n=>n&&!(n in 
   if(need.length){try{const j=await api("POST","/api/vs/actcheck",{names:need});need.forEach((n,i)=>ACK[n]=j.results[i]||[])}catch(_){need.forEach(n=>ACK[n]=[])}}
   return names.map(n=>ACK[n]||[])}
 const actBadge=h=>h&&h.length?`<div class="ackb">⚠ Есть акт: ${h.map(x=>`<b>№ ${esc(x.no)}</b> от ${dmy(x.date)}${x.supplier?" ("+esc(x.supplier)+")":""} — ${esc(x.status)}${x.reason?": "+esc(String(x.reason).slice(0,80)):""}`).join("; ")}</div>`:`<div class="ackok">✔ Актов на этот материал нет</div>`;
+// 1.9.16: где брали / куда выгружали такой материал раньше — у позиции заявки и при вводе новой заявки
+const PHK={};const PHN=new Set();
+async function pickHist(names,req){const need=[...new Set(names.filter(n=>n&&!(n in PHK)))];
+  if(need.length){try{const j=await api("POST","/api/vs/pickhist",{names:need,request:req||""});need.forEach((n,i)=>PHK[n]=j.results[i]||{})}catch(_){need.forEach(n=>PHK[n]={})}}
+  return names.map(n=>PHK[n]||{})}
+const pickBadge=h=>!h||(!h.pick&&!h.unload)?"":`<div class="phb">${h.pick?`🕘 В прошлый раз брали: <b>${esc(h.pick.place||"—")}</b>${h.pick.tool?`, чем: <b>${esc(h.pick.tool)}</b>`:""} <span class="muted">(заявка № ${esc(h.pick.number)}, ${dt(h.pick.at).slice(0,10)})</span>`:""}${h.pick&&h.unload?"<br>":""}${h.unload?`📦 Выгружали: <b>${esc(h.unload.place)}</b> <span class="muted">(УПД № ${esc(h.unload.number)}, ${esc(h.unload.supplier||"")})</span>`:""}</div>`;
+async function pickHistFill(items,rid){if(!document.querySelector("[data-phn]"))return;const res=await pickHist(items.map(i=>i.material),rid);let n=0;
+  items.forEach((it,i)=>{const el=document.querySelector(`[data-phn="${it.id}"]`);const h=res[i];if(el&&h&&(h.pick||h.unload)){el.innerHTML=pickBadge(h);n++}});
+  if(n&&!PHN.has(rid)&&items.some(i=>!i.pick_place)){PHN.add(rid);toast(`📍 По ${n} поз. есть место из прошлых заявок / прихода — смотрите у позиции`,"ok")}}
 async function actCheckFill(items){const els=[...document.querySelectorAll("[data-acn]")];if(!els.length)return;
   const res=await actCheck(items.map(i=>i.material));items.forEach((it,i)=>{const el=document.querySelector(`[data-acn="${it.id}"]`);if(el)el.innerHTML=actBadge(res[i])})}
 // 1.9.15: «Невыданное по заявкам» — остаток при закрытии заявки; выдаётся потом без заявки. Сгруппировано по объекту, поиск, Excel.
@@ -905,7 +915,7 @@ async function requestForm(ed){await sugFresh(["object","recipient","material","
       ['[data-k="supplier"]','[data-k="supply_doc"]'].forEach(q=>{const el=rw.querySelector(q);el.addEventListener("input",go);el.addEventListener("change",go)});
       // 1.9.15: есть ли акт на этот материал — сразу при вводе наименования
       const mi=rw.querySelector('[data-k="material"]'),mh=rw.querySelector("[data-mhint]");let mt=null,ms=0;
-      const mgo=()=>{clearTimeout(mt);mt=setTimeout(async()=>{const n=mi.value.trim();if(n.length<4){mh.innerHTML="";return}const my=++ms;const [h]=await actCheck([n]);if(my===ms)mh.innerHTML=actBadge(h)},700)};
+      const mgo=()=>{clearTimeout(mt);mt=setTimeout(async()=>{const n=mi.value.trim();if(n.length<4){mh.innerHTML="";return}const my=++ms;const [[h],[p]]=await Promise.all([actCheck([n]),pickHist([n])]);if(my===ms)mh.innerHTML=actBadge(h)+pickBadge(p)},700)};
       mi.addEventListener("input",mgo);mi.addEventListener("change",mgo);if(mi.value.trim())mgo()});
     bindDel();bindHint();sugAttach(box);
     // ---- Заполнение со скана ----
@@ -1006,7 +1016,9 @@ async function vRequest(id,changedCols){
    <div class="top"><div style="min-width:0"><div class="muted">Позиция ${i+1}${it.rd?" · РД "+esc(it.rd):""}</div><div class="name">${esc(it.material)}</div>
     <div class="muted">${it.supplier?"Поставщик: "+esc(it.supplier):"Поставщик не указан"}${it.supply_doc?" · "+esc(it.supply_doc):""}</div>
     ${it.project_name&&it.project_name!==it.material?`<div class="muted">Проектное: ${esc(it.project_name)}</div>`:""}${it.name1c&&it.name1c!==it.material?`<div class="muted">В 1С: ${esc(it.name1c)}</div>`:""}${it.objcode?`<div class="muted">Объект/код: ${esc(it.objcode)}</div>`:""}${it.stock_note?`<div class="muted">Наличие: ${esc(it.stock_note)}</div>`:""}
-    ${xfLine("request_item",it.extra)?`<div class="muted">${xfLine("request_item",it.extra)}</div>`:""}${acts.length?`<div style="color:var(--v);font-weight:700;margin-top:4px">⚠ Неустранённый акт № ${acts.map(a=>esc(a.act_no)).filter((v,k,a)=>a.indexOf(v)===k).join(", ")} — служебная записка</div>`:""}<div data-acn="${it.id}"></div></div><span class="pill ${st[1]}">${st[0]}</span></div>
+    ${xfLine("request_item",it.extra)?`<div class="muted">${xfLine("request_item",it.extra)}</div>`:""}${acts.length?`<div style="color:var(--v);font-weight:700;margin-top:4px">⚠ Неустранённый акт № ${acts.map(a=>esc(a.act_no)).filter((v,k,a)=>a.indexOf(v)===k).join(", ")} — служебная записка</div>`:""}<div data-acn="${it.id}"></div>
+    ${it.pick_place||it.pick_tool?`<div class="pickl">📍 Взяли: <b>${esc(it.pick_place||"—")}</b>${it.pick_tool?` · чем: <b>${esc(it.pick_tool)}</b>`:""} <span class="muted">(${esc(it.pick_by_name||"")}, ${dt(it.pick_at)})</span></div>`:""}
+    <div data-phn="${it.id}"></div>${WS&&!can.zay()?`<button class="btn sm noprint" data-pick="${it.id}" style="margin-top:4px">📍 ${it.pick_place||it.pick_tool?"Изменить, откуда и чем":"Откуда взяли и чем"}</button>`:""}</div><span class="pill ${st[1]}">${st[0]}</span></div>
    <div class="row" style="margin-top:10px;align-items:flex-end">
     <div class="grow"><label class="f">Заказано</label><div style="min-height:48px;padding:10px 12px;border:1px dashed var(--line);border-radius:8px;background:var(--bg);font-weight:800">${fmtQ(it.qty_ordered)} ${esc(it.unit)}</div></div>
     <div class="grow"><label class="f">Выдано${it.unit?", "+esc(it.unit):""}</label>${W?`<input id="iq_${it.id}" data-iq="${it.id}" inputmode="decimal" value="${fmtQ(it.qty_issued)}" style="font-weight:800">`
@@ -1050,7 +1062,14 @@ async function vRequest(id,changedCols){
     sugFresh(["sign_"+key]).then(()=>modal(`<h3>${esc(d[1])}</h3><label class="f">Кто подписал (ФИО)</label><input id="sgw" placeholder="например: Вернер В.А." data-sug="sign_${key}" data-prefill data-chips>
      <div class="row" style="margin-top:14px"><button class="btn g grow" id="mok">ОТМЕТИТЬ ПОДПИСЬ</button><button class="btn" data-close>Отмена</button></div>`,
     box=>{sugAttach(box);$("#mok",box).onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/request/sign",{request:id,key,value:true,who:$("#sgw",box).value});closeModal();await refresh()},"Подпись отмечена")}))});
-  bindShip(id,refresh);actCheckFill(items);
+  bindShip(id,refresh);actCheckFill(items);pickHistFill(items,id);
+  document.querySelectorAll("[data-pick]").forEach(b=>b.onclick=()=>{const it=items.find(x=>x.id===b.dataset.pick);const h=(PHK[it.material]||{}).pick||{},u=(PHK[it.material]||{}).unload||{};
+    sugFresh(["pick_place","pick_tool","unload_place"]).then(()=>modal(`<h3>📍 Откуда взяли и чем</h3><div><b>${esc(it.material)}</b></div>
+     ${h.place||u.place?`<div class="muted" style="margin-top:4px">${h.place?`В прошлый раз: ${esc(h.place)}${h.tool?", "+esc(h.tool):""} (заявка № ${esc(h.number)})`:""}${u.place?`${h.place?"<br>":""}Выгружали: ${esc(u.place)} (УПД № ${esc(u.number)})`:""}</div>`:""}
+     <label class="f" for="pkp">Откуда взяли (место на складе / площадка)</label><input id="pkp" data-sug="pick_place" value="${esc(it.pick_place||h.place||u.place||"")}" placeholder="например: площадка №3, ряд Б">
+     <label class="f" for="pkt">Чем (техника)</label><input id="pkt" data-sug="pick_tool" value="${esc(it.pick_tool||h.tool||"")}" placeholder="например: КМУ 949, погрузчик">
+     <div class="row" style="margin-top:14px"><button class="btn p grow" id="mok">СОХРАНИТЬ</button><button class="btn" data-close>Отмена</button></div>`,mb=>{sugAttach(mb);
+     $("#mok",mb).onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/request/pick",{item:it.id,place:$("#pkp",mb).value.trim(),tool:$("#pkt",mb).value.trim()});closeModal();await refresh()},"Сохранено")}))});
   const rfp=$("#rfp");if(rfp)rfp.onchange=()=>act(null,async()=>{await uploadReqFiles(id,rfp.files,$("#rfk").value);await refresh()},"Фото загружено");
   const sn=$("#shNew");if(sn)sn.onclick=()=>shipmentForm(id,refresh);
   $("#rqxl").onclick=e=>act(e.target,()=>exportRequest(r,items,ships));
@@ -1830,10 +1849,21 @@ async function skkIn(){
      return `<div class="card" data-pri="${u.id}"><div class="row" style="justify-content:space-between"><a href="#/upd/${u.id}"><b>УПД № ${esc(u.number)}</b></a><span class="muted">${u.date?dmy(u.date):"принят "+dt(u.created)}</span></div>
       <div><b>${esc(u.supplier)}</b> <span class="pill ${UST[u.status][1]}">${UST[u.status][0]}</span> ${its.length?`<span class="pill ${linked===its.length?"g":linked?"y":"gr"}">с оперативкой ${linked} из ${its.length}</span>`:""}</div>
       ${its.length?`<div class="tw" style="margin-top:6px"><table><tr><th>Материал</th><th>Кол-во</th><th>PID</th><th>Объект / шифр</th><th>Стадия поставки</th></tr>${its.map(x=>`<tr><td>${esc(x.name)}</td><td class="r" style="white-space:nowrap">${fmtQ(x.qty)} ${esc(x.unit)}</td><td><b>${esc(x.pid||"")}</b></td><td>${esc(x.object||"")}${x.objcode?`<div><b>${esc(x.objcode)}</b></div>`:""}</td><td>${stagePill(x.stage)}</td></tr>`).join("")}</table></div>`:`<div class="muted" style="margin-top:4px">Позиции не внесены — смотрите фото УПД.</div>`}
+      <div class="row" style="margin-top:6px;align-items:center;gap:8px">${u.unload_place?`<span class="pickl">📍 Место выгрузки: <b>${esc(u.unload_place)}</b> <span class="muted">(${esc(u.unload_by_name||"")}, ${dt(u.unload_at)})</span></span>`:`<span class="muted">📍 Место выгрузки не указано</span><span data-unh="${u.id}"></span>`}
+       ${W?`<button class="btn sm" data-unl="${u.id}">📍 ${u.unload_place?"Изменить":"Указать"} место выгрузки</button>`:""}</div>
       ${updPhotoBlock(u.id,pp,ft,W)}${W&&its.length?`<div class="row" style="margin-top:6px"><button class="btn sm" data-pmatch="${u.id}">⇄ Сопоставить с оперативкой</button></div>`:""}</div>`}).join(""):`<div class="card empty">${PRI.q?"Ничего не найдено":"Прихода пока нет — загрузите УПД на вкладке «УПД»"}</div>`}`;
   const go=()=>{PRI.q=$("#priq").value.trim();skkIn()};$("#prigo").onclick=go;$("#priq").onkeydown=e=>{if(e.key==="Enter")go()};
   bindUpdPhotos($("#skkb"),skkIn);
   document.querySelectorAll("[data-pmatch]").forEach(b=>b.onclick=()=>act(b,()=>updMatch(b.dataset.pmatch)));
+  // 1.9.16: место выгрузки прихода (+ подсказка, куда раньше выгружали такой материал)
+  const noPl=j.items.filter(u=>!u.unload_place&&updItems(u).length);
+  if(noPl.length)pickHist(noPl.flatMap(u=>updItems(u).map(x=>x.spec_name||x.name))).then(()=>noPl.forEach(u=>{const el=document.querySelector(`[data-unh="${u.id}"]`);if(!el)return;
+    const pl=updItems(u).map(x=>(PHK[x.spec_name||x.name]||{}).unload).filter(x=>x&&x.upd!==u.id);if(pl.length)el.innerHTML=`<span class="phb" style="display:inline-block">раньше такой материал выгружали: <b>${esc(pl[0].place)}</b> (УПД № ${esc(pl[0].number)})</span>`}));
+  document.querySelectorAll("[data-unl]").forEach(b=>b.onclick=()=>{const u=j.items.find(x=>x.id===b.dataset.unl);
+    sugFresh(["unload_place"]).then(()=>modal(`<h3>📍 Место выгрузки</h3><div class="muted">УПД № ${esc(u.number)} · ${esc(u.supplier)}</div>
+     <label class="f" for="ulp">Где выгрузили</label><input id="ulp" data-sug="unload_place" value="${esc(u.unload_place||"")}" placeholder="например: площадка №2 у КПП, ангар 1">
+     <div class="row" style="margin-top:14px"><button class="btn p grow" id="mok">СОХРАНИТЬ</button><button class="btn" data-close>Отмена</button></div>`,mb=>{sugAttach(mb);
+     $("#mok",mb).onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/upd/unload",{upd:u.id,place:$("#ulp",mb).value.trim()});closeModal();Object.keys(PHK).forEach(k=>delete PHK[k]);await skkIn()},"Место выгрузки сохранено")}))});
 }
 // 1.9.1: фото к приходу — «Фото УПД» (листы документа) и «Фото груза»
 function updPhotoBlock(uid,ph,ft,W){const g=k=>ph.filter(p=>p.upd===uid&&((p.kind||"cargo")===k));
