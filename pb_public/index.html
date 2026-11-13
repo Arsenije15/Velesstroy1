@@ -62,6 +62,7 @@ input[type=checkbox]{width:28px;height:28px;min-height:0;flex:none;accent-color:
 .ovrbox{border:2px solid var(--o);background:var(--obg)}.ovrbox h2{color:var(--o)}tr.ovr td{background:var(--obg)}.res.st-over{border-left-color:var(--o)}
 .btn.o{background:var(--o);color:#fff;border-color:var(--o)}
 .sugpop{background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);overflow:auto;z-index:100000}.sugpop .sgi{padding:9px 12px;font-size:15px;white-space:normal;cursor:pointer;border-bottom:1px solid #f0f1f3;line-height:1.3}.sugpop .sgi:hover,.sugpop .sgi.on{background:#eef4ff}
+.ntfn{position:absolute;top:-6px;right:-6px;background:#dc2626;color:#fff;border-radius:999px;font-size:11px;font-weight:800;min-width:18px;height:18px;line-height:18px;padding:0 4px;text-align:center}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.chip{border:1px solid var(--line);background:#f6f7f9;border-radius:999px;padding:6px 12px;font-size:14px;cursor:pointer;color:var(--ink);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .steps{display:flex;flex-direction:column;gap:2px;margin-top:8px}.step{display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px dashed var(--line)}.step.done .t{color:var(--g);font-weight:700}
 .line{display:flex;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}.line.mine{font-weight:700}
@@ -272,6 +273,27 @@ function actClosedNote(ev){try{const d=JSON.parse(ev.data),a=d.record;if(!a||!S.
   if(!t||ACTN.has(k))return;ACTN.add(k);if(a.created_by===S.user.id&&d.action==="create")return;
   toast((k[0]==="n"?"📋 ":"✔ ")+t,"ok");
   try{if(window.Notification&&Notification.permission==="granted")new Notification("ВЕЛЕССТРОЙ — "+(k[0]==="n"?"новый акт":"акт закрыт"),{body:t,tag:k})}catch(_){}}catch(_){}}
+// 1.9.14: поле уведомлений в программе — 🔔 в шапке: новые и закрытые акты СКК за 14 дней, непрочитанные — цифрой
+const NTF={items:[],t:null};
+const ntfOk=()=>S.user&&!can.sklad()&&!can.coord();
+const ntfKey=()=>"vs_ntf_seen_"+(S.user&&S.user.id);
+const ntfSeen=()=>{try{return localStorage.getItem(ntfKey())||""}catch(_){return ""}};
+async function ntfLoad(){if(!ntfOk())return;
+  const d14=new Date(Date.now()-14*86400000).toISOString().replace("T"," ");
+  let L=[];try{L=await all("skk_acts",`created>="${d14}"||closed_at>="${d14}"`,"-created")}catch(_){return}
+  const ev=[];L.forEach(a=>{if(a.created>=d14)ev.push({t:a.created,kind:"new",a});if(a.status==="closed"&&a.closed_at&&a.closed_at>=d14)ev.push({t:a.closed_at,kind:"closed",a})});
+  NTF.items=ev.sort((x,y)=>String(y.t).localeCompare(String(x.t))).slice(0,60);
+  if(!ntfSeen()&&NTF.items[0])try{localStorage.setItem(ntfKey(),NTF.items[0].t)}catch(_){}   // первый вход на этом устройстве — старое не сыпем
+  ntfPaint()}
+function ntfPaint(){const n=$("#ntfn");if(!n)return;const s=ntfSeen();const k=NTF.items.filter(e=>e.t>s&&!(e.kind==="new"&&e.a.created_by===S.user.id)).length;n.hidden=!k;n.textContent=k>99?"99+":k}
+function ntfOpen(){const s=ntfSeen();
+  modal(`<h3>🔔 Уведомления — акты СКК</h3><div class="muted">Новые и закрытые акты за 14 дней.</div>
+   <div style="max-height:60vh;overflow:auto;margin-top:8px">${NTF.items.map(e=>{const a=e.a,nw=e.t>s;const rows=actRows(a);
+     return `<a class="it" href="#/skkact/${a.id}" style="display:block;padding:10px;border-left:4px solid ${e.kind==="new"?"var(--r)":"var(--g)"};margin-bottom:6px;background:${nw?"#eef4ff":"#fff"};border-radius:8px;text-decoration:none;color:inherit">
+      <div><b>${e.kind==="new"?"📋 Новый акт":"✔ Акт закрыт"} № ${esc(a.number)}</b>${nw?' <span class="pill b">НОВОЕ</span>':""} <span class="muted">${dt(e.t)}</span></div>
+      <div class="muted">${esc(a.supplier||"")} · ${e.kind==="new"?"замечаний: "+rows.length+" · составил "+esc(uname(a.created_by)):"в работе "+actDays(a)+" дн."}</div></a>`}).join("")||'<div class="muted">Уведомлений нет</div>'}</div>
+   <div class="row" style="margin-top:10px"><button class="btn grow" data-close>Закрыть</button></div>`,box=>box.querySelectorAll("a[href]").forEach(x=>x.addEventListener("click",()=>setTimeout(closeModal,0))));
+  try{if(NTF.items[0])localStorage.setItem(ntfKey(),NTF.items[0].t)}catch(_){}ntfPaint()}
 function rtStart(){
   if(es)es.close();S.rt="wait";paintNet();
   es=new EventSource("/api/realtime");
@@ -280,7 +302,7 @@ function rtStart(){
       await api("POST","/api/realtime",{clientId:id,subscriptions:["resources","reservations","receipts","approvals","rules","checklist_templates","users","checklist_items","attachments","activity_log","requests","request_items","request_shipments","request_files","suggestions","request_notes","topics","subtopics","topic_msgs","upd_docs","upd_photos","skk_acts"]});
       S.rt="on";paintNet();flushAll()}catch(e){S.rt="wait";paintNet()}});
   ["resources","reservations","receipts","approvals","rules","checklist_templates","users","checklist_items","attachments","activity_log","requests","request_items","request_shipments","request_files","suggestions","request_notes","topics","subtopics","topic_msgs","upd_docs","upd_photos","skk_acts"].forEach(c=>es.addEventListener(c,()=>changed(c)));
-  es.addEventListener("skk_acts",ev=>actClosedNote(ev));   // 1.9.13: уведомление о закрытом акте
+  es.addEventListener("skk_acts",ev=>{actClosedNote(ev);clearTimeout(NTF.t);NTF.t=setTimeout(ntfLoad,800)});   // 1.9.13: уведомление о закрытом акте
   es.onerror=()=>{S.rt="wait";paintNet();if(es.readyState===2){clearTimeout(esRetry);esRetry=setTimeout(rtStart,4000)}};
 }
 async function flushAll(){(can.coord()?["users"]:Object.keys(LOAD)).forEach(c=>pend.add(c));pend.add("checklist_items");pend.add("attachments");pend.add("activity_log");pend.add("request_items");pend.add("request_files");clearTimeout(pendT);pendT=setTimeout(flush,50)}
@@ -319,10 +341,11 @@ function shell(){
   $("#app").innerHTML=`<header><div class="logo">ВЕЛЕС<b>СТРОЙ</b></div>
   <nav class="top">${nav.map(n=>`<a href="#/${n[0]}" data-n="${n[0]}">${n[1].toUpperCase()}</a>`).join("")}</nav>
   <div class="sp"></div><div class="who">${esc(S.user.name||S.user.username)}<br><span style="opacity:.75">${esc(T.roles[S.user.role]||"")}</span></div>
-  <span class="net wait" id="net"></span><button class="btn sm" id="lo" style="background:transparent;color:#fff;border-color:#475569">Выход</button></header>
+  ${ntfOk()?`<button class="btn sm" id="ntfb" title="Уведомления об актах СКК" style="background:transparent;color:#fff;border-color:#475569;position:relative">🔔<span id="ntfn" class="ntfn" hidden></span></button>`:""}<span class="net wait" id="net"></span><button class="btn sm" id="lo" style="background:transparent;color:#fff;border-color:#475569">Выход</button></header>
   <main id="main"></main>
   <nav class="bottom">${nav.slice(0,6).map(n=>`<a href="#/${n[0]}" data-n="${n[0]}"><i>${n[2]}</i>${n[1]}</a>`).join("")}</nav>`;
   $("#lo").onclick=()=>{if(confirm("Выйти из системы?"))logout()};
+  {const nb=$("#ntfb");if(nb){nb.onclick=ntfOpen;setTimeout(ntfLoad,1500)}}
 }
 window.addEventListener("hashchange",route);
 function route(){if(!S.user)return;if(S.off)return offRoute();const home=can.coord()?"#/topics":can.skkView()?"#/skk":"#/home";if(!location.hash||location.hash==="#/")location.hash=home;
@@ -2920,11 +2943,12 @@ async function offStart(){if(!offCanUse())return false;OFF.data=await offGet("da
   if(!/^#\/(requests|request)(\/|$)/.test(location.hash))location.hash="#/requests";offRoute();offWatch();return true}
 // связь появилась — отправляем очередь и возвращаемся в обычный режим
 function offWatch(){if(OFF.w)return;OFF.w=setInterval(offTry,20000);window.addEventListener("online",offTry)}
-async function offTry(){if(OFF.syncing)return;try{await fetch("/api/health",{cache:"no-store"})}catch(_){return}
+async function offTry(){if(OFF.syncing)return;if(!S.off&&!OFF.box.length)return;   // 1.9.14: связь есть и очередь пуста — ничего не делаем (раньше раз в 20 с перерисовывалась страница и сбрасывались несохранённые формы)
+  try{await fetch("/api/health",{cache:"no-store"})}catch(_){return}const was=S.off,n0=OFF.box.length;
   if(S.off){S.off=false;$("#netbar").textContent="НЕТ СВЯЗИ С СЕРВЕРОМ — данные на экране могут быть неактуальны";setOnline(true);
     try{const j=await api("POST","/api/collections/users/auth-refresh");S.auth=j.token;S.user=j.record}catch(e){if(e.status)return logout(true)}
     try{await load(Object.keys(LOAD))}catch(_){}rtStart()}
-  await offFlush();route()}
+  await offFlush();if(was)route();else if(OFF.box.length!==n0)render(["shipments","requests","request_shipments"])}
 function offAfterOnline(){offLoadBox().then(()=>{if(OFF.box.length)offFlush()});offWatch();setTimeout(()=>offSnap(true),3000)}
 const offId=()=>"m"+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
 async function offFlush(){if(OFF.syncing||!OFF.box.length)return;OFF.syncing=true;let sent=0;
