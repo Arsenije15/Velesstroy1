@@ -129,6 +129,21 @@ routerAdd("POST", "/api/vs/request/status", (e) => {
       if (L.authId(a)) r.set("closed_by", a.id);
       r.set("close_comment", comment);
       text = "Заявка № " + r.getString("number") + " закрыта" + (short.length ? " (выдано не полностью: " + short.length + " поз.)" : " (выдано полностью)");
+      // 1.9.15: невыданный остаток — в отдельный спиcок «Невыданное по заявкам», выдать потом без заявки
+      if (b.leftover && short.length) {
+        const pick = Array.isArray(b.leftover_items) && b.leftover_items.length ? b.leftover_items.map((x) => L.str(x)) : short.map((x) => x.id);
+        const col = tx.findCollectionByNameOrId("leftovers"); let n = 0;
+        short.filter((it) => pick.indexOf(it.id) >= 0).forEach((it) => {
+          const q = Math.round((it.getFloat("qty_ordered") - it.getFloat("qty_issued")) * 1000) / 1000; if (!(q > 0)) return;
+          const v = new Record(col);
+          v.set("request", r.id); v.set("item", it.id); v.set("number", r.getString("number")); v.set("object", r.getString("object")); v.set("recipient", r.getString("recipient"));
+          v.set("material", it.getString("material")); v.set("unit", it.getString("unit")); v.set("qty", q); v.set("issued", 0); v.set("status", "open"); v.set("log", []);
+          v.set("search_lc", [r.getString("number"), r.getString("object"), r.getString("recipient"), it.getString("material")].join(" ").toLowerCase().replace(/ё/g, "е").slice(0, 3000));
+          if (L.authId(a)) v.set("created_by", a.id);
+          tx.save(v); n++;
+        });
+        if (n) text += "; невыданное (" + n + " поз.) — в списке «Невыданное по заявкам»";
+      }
     } else if (act === "reopen") {
       if (st !== "closed") throw new BadRequestError("Открыть повторно можно только закрытую заявку.");
       if (!comment) throw new BadRequestError("Укажите причину повторного открытия.");

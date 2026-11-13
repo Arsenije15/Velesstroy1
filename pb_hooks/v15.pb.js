@@ -119,6 +119,11 @@ routerAdd("POST", "/api/vs/request/note", (e) => {
   const text = L.str(b.text).slice(0, 3000);
   let out = null;
   $app.runInTransaction((tx) => {
+    if (L.str(b.note) && b.remind_at !== undefined) {   // 1.9.15: изменить / снять напоминание
+      const n = tx.findRecordById("request_notes", L.str(b.note));
+      n.set("remind_at", L.str(b.remind_at) ? new Date(L.str(b.remind_at)).toISOString().replace("T", " ") : ""); tx.save(n);
+      out = { note: n.id }; return;
+    }
     if (L.str(b.note)) {
       const n = tx.findRecordById("request_notes", L.str(b.note));
       const r = tx.findRecordById("requests", n.getString("request"));
@@ -135,6 +140,7 @@ routerAdd("POST", "/api/vs/request/note", (e) => {
     n.set("request", r.id); n.set("text", text); n.set("done", false);
     if (L.authId(a)) n.set("created_by", a.id);
     n.set("author_name", L.userName(a));
+    if (L.str(b.remind_at)) { const d = new Date(L.str(b.remind_at)); if (isNaN(d.getTime())) throw new BadRequestError("Неверная дата напоминания."); n.set("remind_at", d.toISOString().replace("T", " ")); }
     tx.save(n);
     L.log(tx, a, "request_note", "requests", r.id, "Заявка № " + r.getString("number") + ": заметка — «" + text.slice(0, 150) + "»", {});
     out = { note: n.id };

@@ -232,10 +232,14 @@ def peaks(proj, minlen, gap=8):
     return [int(np.mean(p)) for p in grp]
 
 def find_table(g):
-    for th in (0.35, 0.2):   # 1.9.6: скан с бледными/рваными линиями (УПД № 925) — второй проход с мягким порогом
+    # 1.9.6: скан с бледными/рваными линиями (УПД № 925) — второй проход с мягким порогом
+    # 1.9.15: если первый проход нашёл только шапку таблицы (≤3 линии) — берём проход, где строк больше (УТ-4433, лист повёрнут)
+    best = None
+    for th in (0.35, 0.2):
         t = _find_table(g, th)
-        if t: return t
-    return None
+        if t and len(t["ys"]) >= 4: return t
+        if t and (best is None or len(t["ys"]) > len(best["ys"])): best = t
+    return best
 
 def _find_table(g, th):
     hor, ver = masks(g)
@@ -495,6 +499,8 @@ def main(path):
                     if len(KEYW.findall(txt)) >= 2: break
                 _, rot, im = best
             rot_prev = rot
+            if rot in (90, 270):   # 1.9.15: лист был положен боком — наклон меряем уже после поворота (иначе линии таблицы «рвутся»)
+                im, sk2 = deskew(im); skew = sk2 or skew
             g = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
             if not is_pdf: g = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(g)
             tb = find_table(g)
