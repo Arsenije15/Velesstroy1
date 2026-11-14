@@ -37,6 +37,8 @@ if command -v apt-get >/dev/null; then
   fi
   # 1.9.18: запись АОСР в файл Общего журнала работ (.xlsx)
   python3 -c "import openpyxl" 2>/dev/null || DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends python3-openpyxl >/dev/null 2>&1 || true
+  # 1.9.19: картинки (логотип) на листе «АКТ» в журнале актов сохраняются только с Pillow
+  python3 -c "import PIL" 2>/dev/null || DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends python3-pil >/dev/null 2>&1 || true
   python3 -c "import openpyxl" 2>/dev/null && echo "Журнал работ (.xlsx): OK" || echo "Журнал работ (.xlsx): НЕТ openpyxl — пришлите снимок этого экрана"
 fi
 
