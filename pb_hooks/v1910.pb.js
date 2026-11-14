@@ -73,8 +73,8 @@ routerUse((e) => {
   if (sc === "skk") {
     const p = e.request.url.path;
     let okp = true;
-    if (p.indexOf("/api/vs/") === 0) okp = /^\/api\/vs\/(upd|skk|oper|mpz|suppliers|fields|sfiles|pub)(\/|$)/.test(p);
-    else if (p.indexOf("/api/collections/") === 0) okp = /^\/api\/collections\/(users|upd_docs|skk_acts|suppliers|supplier_splits|supplier_files|oper_rows|mpz_stock|upd_photos|suggestions|form_fields|field_files|acts)\//.test(p);
+    if (p.indexOf("/api/vs/") === 0) okp = /^\/api\/vs\/(upd|skk|oper|mpz|suppliers|fields|sfiles|pub|aosr)(\/|$)/.test(p);
+    else if (p.indexOf("/api/collections/") === 0) okp = /^\/api\/collections\/(users|upd_docs|skk_acts|suppliers|supplier_splits|supplier_files|oper_rows|mpz_stock|upd_photos|suggestions|form_fields|field_files|acts|aosr)\//.test(p);
     if (!okp) throw new ForbiddenError("По этой ссылке доступна только страница «Склад / СКК».");
   } else if (sc === "sklad") {
     // 1.9.12: «Склад» — новый приход (УПД + фото груза), оперативка, МПЗ, журнал актов; ссылки на СКК и акты СКК закрыты

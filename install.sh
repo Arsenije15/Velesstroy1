@@ -35,6 +35,9 @@ if command -v apt-get >/dev/null; then
     echo "Пробую доустановить…"; DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-rus tesseract-ocr-osd poppler-utils python3-opencv python3-numpy 2>&1 | tail -3
     python3 -c "import cv2, numpy" 2>/dev/null && command -v tesseract >/dev/null && echo "Распознавание: OK" || echo "Распознавание: всё ещё НЕТ — пришлите снимок этого экрана"
   fi
+  # 1.9.18: запись АОСР в файл Общего журнала работ (.xlsx)
+  python3 -c "import openpyxl" 2>/dev/null || DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends python3-openpyxl >/dev/null 2>&1 || true
+  python3 -c "import openpyxl" 2>/dev/null && echo "Журнал работ (.xlsx): OK" || echo "Журнал работ (.xlsx): НЕТ openpyxl — пришлите снимок этого экрана"
 fi
 
 FIRST=0; [ -f "$APP/pocketbase" ] || FIRST=1

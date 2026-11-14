@@ -23,12 +23,17 @@ button.p{background:var(--acc);border-color:var(--acc);color:#14181f;font-weight
 .empty{text-align:center;color:var(--mut);padding:30px 0}
 .bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);padding:10px 16px calc(10px + env(safe-area-inset-bottom));display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
 .bar button{min-height:42px;font-size:14px}
+.rm{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;background:var(--ybg);color:var(--y);font-weight:700}.rm.due{background:#fee2e2;color:var(--r)}
+.it .al{min-height:36px;padding:4px 8px;border:0;background:transparent;font-size:19px}
+#alarm{position:fixed;left:12px;right:12px;top:70px;max-width:620px;margin:0 auto;background:#b91c1c;color:#fff;border-radius:14px;padding:14px;z-index:10;box-shadow:0 8px 30px rgba(0,0,0,.35)}#alarm button{min-height:42px;margin:8px 6px 0 0}
 #toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#14181f;color:#fff;padding:10px 16px;border-radius:10px;opacity:0;transition:.2s;pointer-events:none;z-index:9}
 </style></head><body>
 <header><div class="t"><b>📝 Заметки</b><small id="net"></small></div><small>Хранятся только в этом телефоне · работают без интернета</small></header>
 <main>
   <div id="ban"></div>
   <div class="add"><textarea id="tx" placeholder="Новая заметка или задача…" rows="2"></textarea><button class="p" id="ad" aria-label="Добавить">＋</button></div>
+  <div class="add" style="align-items:center"><span style="font-size:22px">⏰</span><input id="rmi" type="datetime-local" aria-label="Напомнить (дата и время)" style="flex:1"><button id="rmx" type="button" title="Без напоминания" style="min-height:44px">✕</button></div>
+  <div style="font-size:13px;color:var(--mut);margin:-4px 0 10px">Напоминание: звук и уведомление в назначенное время. Работает, пока страница «Заметки» открыта (вкладка может быть в фоне).</div>
   <input id="q" placeholder="🔎 Поиск" autocomplete="off" style="margin-bottom:6px">
   <div class="tabs" id="tabs"></div>
   <div id="ls"></div>
@@ -53,14 +58,24 @@ function draw(){
   const v=L.filter(x=>(F==="all"||(F==="done")===!!x.done)&&(!q||x.text.toLowerCase().includes(q)))
     .sort((a,b)=>F==="done"?(b.done_at||"").localeCompare(a.done_at||""):(a.done-b.done)||(b.at||"").localeCompare(a.at||""));
   document.getElementById("ls").innerHTML=v.map(x=>`<div class="it ${x.done?"done":""}"><input type="checkbox" data-c="${x.id}" ${x.done?"checked":""} aria-label="Сделано">
-    <div style="flex:1;min-width:0"><div class="tx" data-e="${x.id}">${esc(x.text)}</div><div class="m">${fmt(x.at)}${x.done?` · <span class="done-m">✔ сделано ${fmt(x.done_at)}</span>`:""}</div></div>
-    <button class="x" data-d="${x.id}" aria-label="Удалить">✕</button></div>`).join("")||`<div class="empty">${q?"Ничего не найдено":F==="active"?"Всё сделано 👍":"Пусто"}</div>`;
+    <div style="flex:1;min-width:0"><div class="tx" data-e="${x.id}">${esc(x.text)}</div><div class="m">${fmt(x.at)}${x.remind&&!x.done?` <span class="rm${new Date(x.remind)<=new Date()?" due":""}">⏰ ${fmt(x.remind)}</span>`:""}${x.done?` · <span class="done-m">✔ сделано ${fmt(x.done_at)}</span>`:""}</div></div>
+    ${x.done?"":`<button class="al" data-a="${x.id}" title="Напоминание" aria-label="Напоминание">⏰</button>`}<button class="x" data-d="${x.id}" aria-label="Удалить">✕</button></div>`).join("")||`<div class="empty">${q?"Ничего не найдено":F==="active"?"Всё сделано 👍":"Пусто"}</div>`;
   document.querySelectorAll("[data-c]").forEach(c=>c.onchange=()=>{const x=L.find(y=>y.id===c.dataset.c);x.done=c.checked;x.done_at=c.checked?now():"";save(L);setTimeout(draw,c.checked?250:0)});
   document.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>{const x=L.find(y=>y.id===b.dataset.d);if(!confirm("Удалить заметку?\n\n"+x.text.slice(0,80)))return;L=L.filter(y=>y!==x);save(L);draw()});
+  document.querySelectorAll("[data-a]").forEach(b=>b.onclick=()=>{const x=L.find(y=>y.id===b.dataset.a);const cur=x.remind?toLocal(x.remind):toLocal(new Date(Date.now()+3600e3).toISOString());
+    const t=prompt("Напомнить (дата и время, ДД.ММ.ГГГГ ЧЧ:ММ). Пусто — без напоминания:",cur.replace(/^(\d{4})-(\d{2})-(\d{2})T/,"$3.$2.$1 "));if(t===null)return;
+    if(!t.trim()){x.remind="";x.fired=false;save(L);draw();return toast("Напоминание убрано")}
+    const m=t.trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})\s+(\d{1,2})[:.](\d{2})$/);if(!m)return toast("Формат: 15.11.2026 09:30");
+    const y=m[3].length===2?"20"+m[3]:m[3];const d=new Date(+y,+m[2]-1,+m[1],+m[4],+m[5]);if(isNaN(d))return toast("Неверная дата");
+    x.remind=d.toISOString();x.fired=false;save(L);askPerm();draw();toast("⏰ Напомню "+fmt(x.remind))});
   document.querySelectorAll("[data-e]").forEach(d=>d.onclick=()=>{const x=L.find(y=>y.id===d.dataset.e);const t=prompt("Изменить заметку:",x.text);if(t===null)return;if(!t.trim())return;x.text=t.trim();x.edited=now();save(L);draw()});
 }
+const toLocal=iso=>{const d=new Date(iso);return new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,16)};
+function askPerm(){try{if("Notification" in window&&Notification.permission==="default")Notification.requestPermission()}catch(_){}}
 function add(){const el=document.getElementById("tx");const t=el.value.trim();if(!t)return el.focus();
-  L.unshift({id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),text:t,at:now(),done:false,done_at:""});save(L);el.value="";if(F==="done")F="active";draw();el.focus()}
+  const ri=document.getElementById("rmi");const rv=ri.value?new Date(ri.value):null;if(rv&&isNaN(rv))return toast("Неверная дата напоминания");
+  L.unshift({id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),text:t,at:now(),done:false,done_at:"",remind:rv?rv.toISOString():"",fired:false});save(L);el.value="";
+  if(rv){ri.value="";askPerm();toast("⏰ Напомню "+fmt(rv.toISOString()))}if(F==="done")F="active";draw();el.focus()}
 document.getElementById("ad").onclick=add;
 document.getElementById("tx").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();add()}};
 document.getElementById("q").oninput=e=>{Q=e.target.value.trim();draw()};
@@ -74,12 +89,30 @@ document.getElementById("ex").onclick=()=>{const b=new Blob([JSON.stringify({app
 document.getElementById("imb").onclick=()=>document.getElementById("im").click();
 document.getElementById("im").onchange=async e=>{const f=e.target.files[0];e.target.value="";if(!f)return;
   try{const j=JSON.parse(await f.text());const items=Array.isArray(j)?j:j.items;if(!Array.isArray(items))throw 0;
-    const ids=new Set(L.map(x=>x.id));let n=0;items.forEach(x=>{if(x&&x.id&&x.text&&!ids.has(x.id)){L.push({id:x.id,text:String(x.text),at:x.at||now(),done:!!x.done,done_at:x.done_at||""});n++}});
+    const ids=new Set(L.map(x=>x.id));let n=0;items.forEach(x=>{if(x&&x.id&&x.text&&!ids.has(x.id)){L.push({id:x.id,text:String(x.text),at:x.at||now(),done:!!x.done,done_at:x.done_at||"",remind:x.remind||"",fired:!!x.fired});n++}});
     save(L);draw();toast("Добавлено из копии: "+n)}catch(_){toast("Это не файл копии заметок")}};
 function net(){document.getElementById("net").textContent=navigator.onLine?"":"● без сети"}
 addEventListener("online",net);addEventListener("offline",net);net();
 // без https телефон не даёт «запомнить» страницу — предупреждаем
 if("serviceWorker" in navigator&&window.isSecureContext){navigator.serviceWorker.register("/zametki/sw.js",{scope:"/zametki/"}).catch(()=>{})}
 else document.getElementById("ban").innerHTML=`<div class="ban">Заметки сохраняются в телефоне. Открываться <b>без интернета</b> страница начнёт после перехода на защищённый адрес (https).</div>`;
-draw();
+document.getElementById("rmx").onclick=()=>{document.getElementById("rmi").value=""};
+// ---------- будильник: звук + уведомление; «Сделано» / «Отложить на 10 мин» ----------
+let AC=null;
+function beep(){try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();const t0=AC.currentTime;
+  [0,.35,.7,1.4,1.75,2.1].forEach(s=>{const o=AC.createOscillator(),g=AC.createGain();o.type="square";o.frequency.value=880;g.gain.setValueAtTime(.0001,t0+s);g.gain.exponentialRampToValueAtTime(.3,t0+s+.02);g.gain.exponentialRampToValueAtTime(.0001,t0+s+.25);o.connect(g);g.connect(AC.destination);o.start(t0+s);o.stop(t0+s+.3)})}catch(_){}}
+addEventListener("pointerdown",()=>{try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();if(AC.state==="suspended")AC.resume()}catch(_){}},{once:true});
+function ring(x){beep();try{navigator.vibrate&&navigator.vibrate([400,200,400,200,400])}catch(_){}
+  try{if("Notification" in window&&Notification.permission==="granted"){const o={body:x.text.slice(0,200),tag:"zm-"+x.id,requireInteraction:true,icon:"/zametki/icon.svg"};
+    if(navigator.serviceWorker&&navigator.serviceWorker.controller)navigator.serviceWorker.ready.then(r=>r.showNotification("⏰ Заметки",o)).catch(()=>new Notification("⏰ Заметки",o));else new Notification("⏰ Заметки",o)}}catch(_){}
+  let a=document.getElementById("alarm");if(!a){a=document.createElement("div");a.id="alarm";document.body.appendChild(a)}
+  a.innerHTML=`<b>⏰ Напоминание</b><div style="white-space:pre-wrap;margin-top:6px;font-size:18px">${esc(x.text)}</div><div><button id="ald">✔ Сделано</button><button id="als">Отложить на 10 мин</button><button id="alc">Закрыть</button></div>`;
+  const cur=()=>{L=load();return L.find(y=>y.id===x.id)};   // список мог обновиться (другая вкладка, проверка каждые 15 с)
+  document.getElementById("ald").onclick=()=>{const y=cur();if(y){y.done=true;y.done_at=now();save(L)}a.remove();draw()};
+  document.getElementById("als").onclick=()=>{const y=cur();if(y){y.remind=new Date(Date.now()+6e5).toISOString();y.fired=false;save(L)}a.remove();draw();toast("Напомню через 10 минут")};
+  document.getElementById("alc").onclick=()=>a.remove()}
+function tick(){L=load();const due=L.filter(x=>x.remind&&!x.done&&!x.fired&&new Date(x.remind)<=new Date());
+  if(due.length){due.forEach(x=>x.fired=true);save(L);draw();ring(due[0])}}
+setInterval(tick,15000);addEventListener("focus",tick);
+draw();setTimeout(tick,800);
 </script></body></html>

@@ -208,7 +208,7 @@ function sugAttach(root){(root||document).querySelectorAll("[data-sug]").forEach
   let dl=document.getElementById(id);if(!dl){dl=document.createElement("datalist");dl.id=id;document.body.appendChild(dl)}
   if(dl.dataset.v!==String(vals.length)+(vals[0]||"")){dl.innerHTML=vals.slice(0,400).map(v=>`<option value="${esc(v)}">`).join("");dl.dataset.v=String(vals.length)+(vals[0]||"")}
   // 1.9.13: подсказки — своим списком во всю ширину поля, длинный текст виден целиком (браузерный список обрезает)
-  inp.removeAttribute("list");inp.setAttribute("autocomplete","off");if(!inp.dataset.sp){inp.dataset.sp="1";inp.addEventListener("focus",()=>sugPop(inp));inp.addEventListener("input",()=>sugPop(inp));inp.addEventListener("blur",()=>setTimeout(sugHide,180));inp.addEventListener("keydown",e=>sugKey(inp,e))}
+  inp.removeAttribute("list");inp.setAttribute("autocomplete","off");if(!inp.dataset.sp){inp.dataset.sp="1";inp.addEventListener("focus",()=>sugPop(inp));inp.addEventListener("input",()=>sugPop(inp));inp.addEventListener("blur",()=>setTimeout(()=>{if(SUGP&&SUGP._inp===inp)sugHide()},180));inp.addEventListener("keydown",e=>sugKey(inp,e))}
   if(inp.hasAttribute("data-prefill")&&!inp.value&&vals[0]&&!inp.dataset.pf){inp.value=vals[0];inp.dataset.pf="1"}
   if(inp.hasAttribute("data-chips")&&!(inp.nextElementSibling&&inp.nextElementSibling.classList.contains("chips"))){const top=vals.slice(0,4);if(!top.length)return;
     const c=document.createElement("div");c.className="chips noprint";c.innerHTML=top.map(v=>`<button type="button" class="chip" title="${esc(v)}">${esc(v.length>38?v.slice(0,38)+"…":v)}</button>`).join("");
@@ -220,7 +220,7 @@ function sugPop(inp){if(inp._skip){inp._skip=0;return}const f=inp.dataset.sug;co
   const r=inp.getBoundingClientRect();SUGP=document.createElement("div");SUGP.className="sugpop";SUGP.style.cssText=`position:fixed;left:${r.left}px;top:${r.bottom+2}px;width:${Math.max(r.width,260)}px;max-height:${Math.max(160,innerHeight-r.bottom-12)}px`;
   SUGP.innerHTML=vals.map((v,i)=>`<div class="sgi" data-i="${i}">${esc(v)}</div>`).join("");
   SUGP.querySelectorAll(".sgi").forEach(d=>d.onmousedown=e=>{e.preventDefault();inp.value=vals[+d.dataset.i];sugHide();inp._skip=1;inp.dispatchEvent(new Event("input",{bubbles:true}));inp.dispatchEvent(new Event("change",{bubbles:true}))});
-  document.body.appendChild(SUGP);SUGP._v=vals;SUGP._k=-1}
+  document.body.appendChild(SUGP);SUGP._v=vals;SUGP._k=-1;SUGP._inp=inp}
 function sugKey(inp,e){if(!SUGP)return;const n=SUGP._v.length;
   if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();SUGP._k=(SUGP._k+(e.key==="ArrowDown"?1:n-1))%n;SUGP.querySelectorAll(".sgi").forEach((d,i)=>d.classList.toggle("on",i===SUGP._k))}
   else if(e.key==="Enter"&&SUGP._k>=0){e.preventDefault();inp.value=SUGP._v[SUGP._k];sugHide();inp._skip=1;inp.dispatchEvent(new Event("input",{bubbles:true}));inp.dispatchEvent(new Event("change",{bubbles:true}))}else if(e.key==="Escape")sugHide()}
@@ -1923,6 +1923,102 @@ function hubBind(){const go=()=>{HUB.q=$("#hubq").value.trim();HUB.data=null;hub
   $("#hubb").onclick=go;$("#hubq").onkeydown=e=>{if(e.key==="Enter")go()};const x=$("#hubx");if(x)x.onclick=()=>{$("#hubq").value="";go()};
   document.querySelectorAll("[data-hubt]").forEach(b=>b.onclick=()=>{HUB.tab=b.dataset.hubt;hubPaint()});
   if(HUB.tab==="files"&&HUB.data&&HUB.data.files)sfBind(HUB.data.files)}
+/* ----- 1.9.18: АОСР → Общий журнал работ (Раздел 3 — строка на каждый день работ, Раздел 6 — строка на акт) ----- */
+can.aosr=()=>["admin","manager","skk"].includes(role())&&(!S.user.scope||S.user.scope==="skk");
+const AOS={q:"",only:false,sel:new Set(),busy:{}};
+const AOSR_REPS=[["1.2С","Представитель застройщика (техзаказчика) по вопросам строительного контроля"],["1.3С","Представитель лица, осуществляющего строительство"],
+  ["1.4С","Представитель лица, осуществляющего строительство, по вопросам строительного контроля"],["1.5С","Представитель лица, осуществляющего подготовку проектной документации"],
+  ["1.6С","Иные представители (СКК)"],["1.7С","Представитель лица, выполнившего работы"]];
+const aosDays=a=>{const s=a.d_start||a.date,e=a.d_end&&a.d_end>=s?a.d_end:s;if(!s)return [];const out=[];let d=new Date(s+"T12:00:00Z");const E=new Date(e+"T12:00:00Z");
+  for(let i=0;d<=E&&i<367;i++){out.push(d.toISOString().slice(0,10));d=new Date(d.getTime()+864e5)}return out};
+const aosHead=a=>`${a.kind||"АОСР"} №${String(a.number||"").replace(/\.$/,"")}`;
+const aosR6=a=>[aosHead(a)+".\n"+(a.work_full||""),(a.date?dmy(a.date)+"г.":"")+"\n"+(a.reps||[]).filter(Boolean).join("\n")];
+const aosR3=a=>[((a.code||"")+"\n"+(a.work_short||"")).trim(),a.performer||""];
+async function skkAosr(){const b=$("#skkb");if(!b)return;
+  const L=await all("aosr","","-date,-created").catch(()=>[]);if(SKK.tab!=="aosr"||!$("#skkb"))return;
+  const W=can.aosr(),q=AOS.q;
+  const list=L.filter(a=>(!AOS.only||!a.journal_at||a.status==="draft")&&(!q||wmatch(q,[a.kind,a.number,dmy(a.date),a.code,a.work_full,a.work_short,(a.reps||[]).join(" ")].join(" "))));
+  [...AOS.sel].forEach(id=>{if(!L.some(a=>a.id===id&&a.status==="ok"))AOS.sel.delete(id)});
+  b.innerHTML=`<div class="card"><div class="muted" style="margin-bottom:8px">Загрузите АОСР (PDF, скан или фото) — программа прочитает акт; проверьте поля и сохраните. Потом «Дописать в журнал»: выбранные акты встанут в ваш файл Общего журнала работ по датам — Раздел 6 (строка на акт) и Раздел 3 (строка на каждый день работ), № п/п пересчитаются.</div>
+   ${W?`<div class="row" style="gap:6px;flex-wrap:wrap"><label class="btn acc">⬆ АОСР (PDF / фото)<input type="file" id="aosf" accept="application/pdf,image/*" multiple hidden></label><button class="btn" id="aosm">＋ Вручную</button>
+    <label class="btn p" title="Выбранные акты дописать в ваш файл журнала">📗 Дописать в мой журнал (.xlsx)<input type="file" id="aosj" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden></label>
+    <button class="btn" id="aosx">⬇ Строки для журнала (Excel)</button></div><div class="muted" id="aosp" style="margin-top:6px">${esc(AOS.msg||"")}</div>`:""}</div>
+   <div class="card"><div class="row" style="gap:6px;flex-wrap:wrap;align-items:center"><input id="aosq" class="grow" placeholder="🔎 № акта, шифр, работы, фамилия…" value="${esc(q)}">
+    <label class="row" style="gap:6px"><input type="checkbox" id="aoso" ${AOS.only?"checked":""} style="width:20px;height:20px">только не внесённые в журнал</label></div>
+   ${list.length?`<div class="tw" style="margin-top:8px"><table><tr><th><input type="checkbox" id="aosall" title="Выбрать все" style="width:20px;height:20px"></th><th>Акт</th><th>Работы (Раздел 3)</th><th>Даты работ</th><th>В журнале</th><th></th></tr>
+    ${list.map(a=>{const d=aosDays(a),dr=a.status==="draft",busy=AOS.busy[a.id];return `<tr data-aos="${a.id}"${dr?' style="background:var(--ybg)"':""}><td>${dr?"":`<input type="checkbox" data-asel="${a.id}" ${AOS.sel.has(a.id)?"checked":""} style="width:20px;height:20px">`}</td>
+     <td style="white-space:nowrap"><b>${esc(dr&&!a.number?"Черновик":aosHead(a))}</b><div class="muted">${a.date?dmy(a.date):dt(a.created)}</div>${dr?`<span class="pill y">${busy?"ЧИТАЕТСЯ…":"ПРОВЕРИТЬ"}</span>`:""}</td>
+     <td>${a.code?`<b>${esc(a.code)}</b><br>`:""}${esc(a.work_short||"")}</td><td style="white-space:nowrap">${d.length?dmy(d[0])+(d.length>1?" – "+dmy(d[d.length-1]):""):"—"}<div class="muted">${d.length?d.length+" "+(d.length===1?"строка":d.length<5?"строки":"строк"):""}</div></td>
+     <td>${a.journal_at?`<span class="pill g">ВНЕСЁН</span><div class="muted">${dt(a.journal_at)}</div>`:dr?"":`<span class="pill gr">НЕТ</span>`}</td>
+     <td style="white-space:nowrap">${W&&!busy?`<button class="btn sm" data-aed="${a.id}">${dr?"Проверить":"✎"}</button> <button class="btn sm" data-adel="${a.id}" aria-label="Удалить">✕</button>`:""}</td></tr>`}).join("")}</table></div>
+    <div class="muted" style="margin-top:6px" id="aoss">Выбрано: ${AOS.sel.size}</div>`:`<div class="empty">${L.length?"Ничего не найдено":"Актов пока нет — загрузите первый АОСР"}</div>`}</div>`;
+  const re=()=>skkAosr();
+  $("#aosq").oninput=e=>{clearTimeout(AOS.t);AOS.t=setTimeout(()=>{AOS.q=e.target.value.trim();re().then(()=>{const i=$("#aosq");if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}})},400)};
+  $("#aoso").onchange=e=>{AOS.only=e.target.checked;re()};
+  const ss=()=>{const x=$("#aoss");if(x)x.textContent="Выбрано: "+AOS.sel.size};
+  b.querySelectorAll("[data-asel]").forEach(c=>c.onchange=()=>{c.checked?AOS.sel.add(c.dataset.asel):AOS.sel.delete(c.dataset.asel);ss()});
+  const al=$("#aosall");if(al)al.onchange=()=>{b.querySelectorAll("[data-asel]").forEach(c=>{c.checked=al.checked;al.checked?AOS.sel.add(c.dataset.asel):AOS.sel.delete(c.dataset.asel)});ss()};
+  b.querySelectorAll("[data-aed]").forEach(x=>x.onclick=()=>act(x,()=>aosEdit(L.find(a=>a.id===x.dataset.aed))));
+  b.querySelectorAll("[data-adel]").forEach(x=>x.onclick=()=>{const a=L.find(y=>y.id===x.dataset.adel);if(!confirm("Удалить "+(a.number?aosHead(a):"черновик")+"?"))return;act(x,async()=>{await api("POST","/api/vs/aosr/delete",{id:a.id});AOS.sel.delete(a.id);re()},"Удалено")});
+  if(!W)return;
+  $("#aosm").onclick=()=>aosEdit(null);
+  $("#aosf").onchange=e=>{const fs=[...e.target.files];e.target.value="";if(fs.length)aosUpload(fs)};
+  const pick=()=>{const ids=L.filter(a=>AOS.sel.has(a.id)&&a.status==="ok");if(!ids.length)throw new Error("Отметьте галочкой акты для журнала.");return ids};
+  $("#aosx").onclick=e=>act(e.target,async()=>aosExcel(pick()));
+  $("#aosj").onchange=e=>{const f=e.target.files[0];e.target.value="";if(!f)return;act(null,async()=>{const A=pick();const p=$("#aosp");if(p)p.textContent="Записываю в журнал…";
+    const b64=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(",").pop());r.onerror=()=>no(new Error("Файл не читается"));r.readAsDataURL(f)});
+    const j=await api("POST","/api/vs/aosr/journal",{ids:A.map(a=>a.id),b64});
+    const bin=atob(j.b64),u8=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
+    saveBlob(new Blob([u8],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),f.name.replace(/\.xlsx$/i,"")+"_дополнен.xlsx");
+    const msg=`Раздел 6: добавлено ${j.r6_added}${j.r6_skip?`, уже были ${j.r6_skip}`:""} · Раздел 3: добавлено ${j.r3_added} строк${j.r3_skip?`, уже были ${j.r3_skip}`:""}`;
+    AOS.msg="✔ "+msg+". Файл «"+f.name.replace(/\.xlsx$/i,"")+"_дополнен.xlsx» сохранён — откройте его и проверьте.";if(p)p.textContent=AOS.msg;toast(msg,"ok");re()}).catch(()=>{const p=$("#aosp");if(p)p.textContent=""})}}
+async function aosUpload(files){const p=()=>$("#aosp");const say=t=>{const x=p();if(x)x.textContent=t};let first=null;
+  for(let i=0;i<files.length;i++){let f=files[i];const nm=(files.length>1?`(${i+1} из ${files.length}) `:"")+(f.name||"фото");
+    try{if(!/pdf/i.test(f.type)&&!/\.pdf$/i.test(f.name||""))f=await shrinkImg(f,3200);
+      if(f.size>30*1024*1024)throw new Error("файл больше 30 МБ");
+      say("Загружаю "+nm+"…");const fd=new FormData();fd.append("status","draft");fd.append("uploaded_by",S.user.id);fd.append("file",f);
+      const rec=await api("POST","/api/collections/aosr/records",fd,true);AOS.busy[rec.id]=1;if(SKK.tab==="aosr")skkAosr();
+      await api("POST","/api/vs/aosr/ocr",{id:rec.id});const t0=Date.now();
+      for(;;){await new Promise(r=>setTimeout(r,2500));const st=await api("GET","/api/vs/aosr/ocr_status/"+rec.id);
+        say(`Читаю ${nm}${st.pages?` — лист ${st.page} из ${st.pages}`:""}… ${Math.round((Date.now()-t0)/1000)} с`);
+        if(st.status==="done")break;if(st.status!=="running"){toast((st.message||"Чтение не запустилось")+" — заполните акт вручную.","err");break}if(Date.now()-t0>480000)break}
+      delete AOS.busy[rec.id];if(!first)first=rec.id}
+    catch(e){toast(nm+": "+e.message,"err")}}
+  say(files.length>1?"Готово. Проверьте каждый черновик (жёлтые строки) и сохраните.":"");
+  if(SKK.tab==="aosr")await skkAosr();
+  if(first){const a=await api("GET","/api/collections/aosr/records/"+first).catch(()=>null);if(a)aosEdit(a)}}
+async function aosEdit(a){await sugFresh(["aosr_rep","aosr_kind","aosr_perf"]);
+  const o=a&&a.status==="draft"&&a.ocr&&typeof a.ocr==="object"?a.ocr:{};const g=k=>a&&a.status==="ok"?a[k]:(o[k]||(a&&a[k])||"");
+  const reps=a&&a.status==="ok"?(a.reps||[]):(o.reps||[]);
+  let fl="";if(a&&a.file){const ft=await fileToken();fl=`<a class="btn sm" target="_blank" rel="noopener" href="/api/files/aosr/${a.id}/${encodeURIComponent(a.file)}?token=${ft}">📄 Открыть файл акта</a>`}
+  const D=k=>{const v=g(k);return /^\d{4}-\d{2}-\d{2}$/.test(v)?v:""};
+  modal(`<h3>${a&&a.status==="ok"?"Изменить акт":"Проверьте акт"} ${fl}</h3>${a&&a.status==="draft"&&!o.number?`<div class="banner orange">Акт прочитать не удалось — заполните поля вручную.</div>`:a&&a.status==="draft"?`<div class="muted">Поля заполнены с документа${o.mode==="ocr"?" (скан — проверьте буквы и цифры)":""}. Исправьте, если нужно.</div>`:""}
+   <div class="g2x"><div><label class="f">Вид акта (1В)</label><input id="aek" data-sug="aosr_kind" value="${esc(g("kind")||"АОСР")}"></div><div><label class="f">№ акта (2В)</label><input id="aen" value="${esc(g("number"))}"></div></div>
+   <div class="g2x"><div><label class="f">Дата акта (1.1С)</label><input id="aed" type="date" value="${D("date")}"></div><div></div></div>
+   <label class="f">п. 1 — работы полностью (3В) <span class="muted">→ Раздел 6, графа 2</span></label><textarea id="aew" rows="4">${esc(g("work_full"))}</textarea>
+   <div class="g2x"><div><label class="f">Шифр проекта (3,1-В7)</label><input id="aec" value="${esc(g("code"))}"></div><div></div></div>
+   <label class="f">Работы для Раздела 3 (3,2-В7) <span class="muted">— без названия объекта</span></label><textarea id="aes" rows="3">${esc(g("work_short"))}</textarea>
+   <div class="g2x"><div><label class="f">п. 5 — начало работ</label><input id="ae1" type="date" value="${D("d_start")}"></div><div><label class="f">окончание работ</label><input id="ae2" type="date" value="${D("d_end")}"></div></div>
+   <label class="f" style="margin-top:10px"><b>Подписавшие акт</b> <span class="muted">— порядок как в Разделе 6 вашего журнала</span></label>
+   ${AOSR_REPS.map((r,i)=>`<label class="f">${r[0]} · ${r[1]}</label><input data-rep="${i}" data-sug="aosr_rep" value="${esc(reps[i]||"")}">`).join("")}
+   <label class="f">Раздел 3, графа 4 — представитель лица, осуществляющего строительство</label><input id="aep" data-sug="aosr_perf" value="${esc(g("performer")||reps[5]||"")}">
+   <div class="card" id="aepv" style="margin-top:10px;background:var(--bg)"></div>
+   <div class="row" style="margin-top:12px"><button class="btn p grow" id="mok">СОХРАНИТЬ</button><button class="btn" data-close>Отмена</button></div>`,box=>{sugAttach(box);
+    const read=()=>({id:a?a.id:"",kind:$("#aek",box).value,number:$("#aen",box).value,date:$("#aed",box).value,work_full:$("#aew",box).value,code:$("#aec",box).value,work_short:$("#aes",box).value,
+      d_start:$("#ae1",box).value,d_end:$("#ae2",box).value,reps:[...box.querySelectorAll("[data-rep]")].map(x=>x.value),performer:$("#aep",box).value});
+    const pv=()=>{const v=read(),d=aosDays(v),r6=aosR6(v),r3=aosR3(v);$("#aepv",box).innerHTML=`<b>Так будет в журнале</b>
+      <div class="muted" style="margin-top:6px">Раздел 6 — 1 строка</div><div class="tw"><table><tr><td style="white-space:pre-wrap;width:55%">${esc(r6[0])}</td><td style="white-space:pre-wrap">${esc(r6[1])}</td></tr></table></div>
+      <div class="muted" style="margin-top:6px">Раздел 3 — ${d.length} ${d.length===1?"строка":d.length<5?"строки":"строк"}${d.length>1?" (на каждый день)":""}</div><div class="tw"><table>${d.slice(0,10).map(x=>`<tr><td style="white-space:nowrap">${dmy(x)}</td><td style="white-space:pre-wrap">${esc(r3[0])}</td><td>${esc(r3[1])}</td></tr>`).join("")}${d.length>10?`<tr><td colspan="3" class="muted">… ещё ${d.length-10}</td></tr>`:""}</table></div>`};
+    box.querySelectorAll("input,textarea").forEach(x=>x.addEventListener("input",pv));pv();
+    const r7=box.querySelector('[data-rep="5"]'),pf=$("#aep",box);let pfT=pf.value===r7.value;r7.addEventListener("input",()=>{if(pfT){pf.value=r7.value;pv()}});pf.addEventListener("input",()=>{pfT=false});
+    $("#mok",box).onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/aosr/save",read());closeModal();if(SKK.tab==="aosr")skkAosr()},"Акт сохранён")})}
+function aosExcel(A){A=A.slice().sort((x,y)=>String(x.date).localeCompare(String(y.date)));const T=XS.txt;
+  const r6=[[{v:"РАЗДЕЛ 6 — Перечень исполнительной документации",s:XS.title}],[],["№№ п/п","Наименование исполнительной документации","Дата подписания акта, должности, фамилии, инициалы лиц, подписавших акты"].map(v=>({v,s:XS.head}))];
+  A.forEach((a,i)=>{const x=aosR6(a);r6.push([{v:i+1,s:XS.num},{v:x[0],s:T},{v:x[1],s:T}])});
+  const r3=[[{v:"РАЗДЕЛ 3 — Сведения о выполнении работ",s:XS.title}],[],["№№ п/п","Дата выполнения работ","Наименование работ","Должность, фамилия, инициалы представителя лица, осуществляющего строительство"].map(v=>({v,s:XS.head}))];
+  const R3=[];A.forEach(a=>{const x=aosR3(a);aosDays(a).forEach(d=>R3.push([d,x[0],x[1]]))});R3.sort((p,q)=>p[0].localeCompare(q[0]));
+  R3.forEach((x,i)=>r3.push([{v:i+1,s:XS.num},{v:dmy(x[0]),s:T},{v:x[1],s:T},{v:x[2],s:T}]));
+  saveBlob(xlsxBlob([{name:"Раздел 3",cols:[7,13,80,34],rows:r3,merges:["A1:D1"],freeze:3},{name:"Раздел 6",cols:[7,70,60],rows:r6,merges:["A1:C1"],freeze:3}]),"Zhurnal_rabot_AOSR_"+new Date().toISOString().slice(0,10)+".xlsx")}
 /* ----- 1.9.17: общий поиск 🔎 по всему (заявки, отгрузки, УПД, акты, приёмка, оперативка, МПЗ, невыданное, ресурсы) ----- */
 const FND={q:"",seq:0,tab:"all",res:null};
 const fndOk=()=>!!S.user&&!can.coord()&&!can.linkOnly();
@@ -1933,7 +2029,8 @@ function hlq(t,q){t=String(t==null?"":t);const W=qWords(q).filter(w=>w.length>1|
   if(!W.length)return esc(t);const re=new RegExp("("+W.join("|")+")","gi");return t.split(re).map((x,i)=>i%2?`<mark>${esc(x)}</mark>`:esc(x)).join("")}
 const FSEC=[["req","Заявки"],["ship","Отгрузки"],["upd","УПД / приход"],["skk","Акты СКК"],["jact","Журнал актов"],["rcp","Приёмка"],["oper","Оперативка"],["mpz","Остатки МПЗ"],["lft","Невыданное"],["res","Ресурсы"]];
 async function fndRun(){const my=++FND.seq;const q=FND.q;const W=qWords(q);if(!W.length){FND.res=null;return fndPaint()}
-  const L=(c,f,sort,n,ex)=>api("GET",`/api/collections/${c}/records?perPage=${n}&sort=${sort}&filter=${encodeURIComponent(f)}${ex?"&expand="+ex:""}`).then(j=>j.items).catch(()=>[]);
+  const FAIL=[];const L=(c,f,sort,n,ex)=>{const u=`/api/collections/${c}/records?perPage=${n}&sort=${sort}&filter=${encodeURIComponent(f)}${ex?"&expand="+ex:""}`;
+    return api("GET",u).catch(e=>e.status===403?{items:[]}:new Promise(r=>setTimeout(r,700)).then(()=>api("GET",u))).then(j=>j.items).catch(()=>{FAIL.push(c);return []})};   // 1.9.18: сбой — ещё раз
   const sf=wfil(q),m=t=>wmatch(q,t);
   const [its,rqs,upd,sk,ja,rc,op,mp,lf,shv]=await Promise.all([
     L("request_items",wfilF(q,["search_lc","request.search_lc"]),"-created",300,"request"),L("requests",sf,"-created",100),
@@ -1956,6 +2053,7 @@ async function fndRun(){const my=++FND.seq;const q=FND.q;const W=qWords(q);if(!W
   const res=(S.data.resources||[]).filter(x=>m([x.name,x.inv_number,x.warehouse,x.unavailable_reason].join(" ")));
   FND.res={req:[...RQ.values()],ship:[...SH.values()],upd:upd.filter(u=>m(u.search_lc)),skk:sk.filter(a=>m(a.search_lc)),jact:ja.filter(a=>m(a.search_lc)),rcp:rc.filter(x=>m(x.search_lc)),
     oper:op.filter(x=>m(operText(x))),mpz:mp.filter(x=>m(mpzText(x))),lft:lf.filter(x=>m(x.search_lc)),res};
+  FND.fail=FAIL.length;
   if(FND.tab!=="all"&&!(FND.res[FND.tab]||[]).length)FND.tab="all";
   fndPaint()}
 function fndSec(k,list,q,lim){const n=list.length,L=list.slice(0,lim),h=s=>hlq(s,q);
@@ -1983,7 +2081,7 @@ function fndPaint(){const b=$("#fndr");if(!b)return;const R=FND.res,q=FND.q;
   if(!R){b.innerHTML=`<div class="card muted">Ищу…</div>`;return}
   const ks=FSEC.map(s=>s[0]).filter(k=>R[k].length),tot=ks.reduce((a,k)=>a+R[k].length,0);
   if(!tot){b.innerHTML=`<div class="card empty">Ничего не найдено по «${esc(q)}». Проверьте слова или уберите лишнее.</div>`;return}
-  b.innerHTML=`<div class="tabs" style="margin-bottom:10px;flex-wrap:wrap"><button class="${FND.tab==="all"?"on":""}" data-ftab="all">Всё — ${tot}</button>${ks.map(k=>`<button class="${FND.tab===k?"on":""}" data-ftab="${k}">${FSEC.find(s=>s[0]===k)[1]} — ${R[k].length}</button>`).join("")}</div>
+  b.innerHTML=`${FND.fail?`<div class="banner orange" style="margin-bottom:8px">Часть разделов не ответила — нажмите «НАЙТИ» ещё раз.</div>`:""}<div class="tabs" style="margin-bottom:10px;flex-wrap:wrap"><button class="${FND.tab==="all"?"on":""}" data-ftab="all">Всё — ${tot}</button>${ks.map(k=>`<button class="${FND.tab===k?"on":""}" data-ftab="${k}">${FSEC.find(s=>s[0]===k)[1]} — ${R[k].length}</button>`).join("")}</div>
    ${(FND.tab==="all"?ks:[FND.tab]).map(k=>fndSec(k,R[k],q,FND.tab==="all"?5:100)).join("")}`;
   b.querySelectorAll("[data-ftab]").forEach(x=>x.onclick=()=>{FND.tab=x.dataset.ftab;fndPaint();window.scrollTo(0,0)});
   b.querySelectorAll("[data-fmore]").forEach(x=>x.onclick=e=>{e.preventDefault();FND.tab=x.dataset.fmore;fndPaint();window.scrollTo(0,0)});
@@ -1997,8 +2095,8 @@ async function vFind(id,changed){if(!fndOk())return vHome();if(changed&&$("#fndq
    <button class="btn p" id="fndb">НАЙТИ</button>${FND.q?`<button class="btn" id="fndx" aria-label="Очистить">✕</button>`:""}</div>
    <div class="muted" style="margin-top:6px">Ищет сразу в заявках, отгрузках, УПД, актах, приёмке, оперативке, остатках МПЗ, невыданном и ресурсах. Число ищется целым: «50» найдёт «50 мм», но не «150».</div></div><div id="fndr"></div>`;
   const inp=$("#fndq");let t=0;
-  const go=()=>{const v=inp.value.trim();if(v===FND.q&&FND.res)return;FND.q=v;FND.res=null;FND.tab="all";history.replaceState(null,"","#/find"+(v?"/"+encodeURIComponent(v):""));S.route="find"+(v?"/"+encodeURIComponent(v):"");fndPaint();fndRun()};
-  inp.oninput=()=>{clearTimeout(t);t=setTimeout(go,450)};inp.onkeydown=e=>{if(e.key==="Enter"){clearTimeout(t);go()}};$("#fndb").onclick=go;
+  const go=(force)=>{const v=inp.value.trim();if(v===FND.q&&FND.res&&force!==true)return;FND.q=v;FND.res=null;FND.tab="all";history.replaceState(null,"","#/find"+(v?"/"+encodeURIComponent(v):""));S.route="find"+(v?"/"+encodeURIComponent(v):"");fndPaint();fndRun()};
+  inp.oninput=()=>{clearTimeout(t);t=setTimeout(go,450)};inp.onkeydown=e=>{if(e.key==="Enter"){clearTimeout(t);go(true)}};$("#fndb").onclick=()=>go(true);
   const x=$("#fndx");if(x)x.onclick=()=>{inp.value="";go();inp.focus()};
   fndPaint();if(FND.q&&!FND.res)fndRun();if(!FND.q)inp.focus()}
 /* ----- «Задачи и согласования» ----- */
@@ -2146,7 +2244,7 @@ function updLine(list,supplier){
   return Object.keys(by).sort().map(d=>"УПД "+by[d].join(", ")+(d?" от "+dmy(d):"")).join("; ")+(supplier?" "+supplier:"");
 }
 // 1.9.12: по ссылке «Склад» — только новый приход, оперативка, МПЗ и журнал актов несоответствия
-const SKK_T=()=>can.zay()?[["jact","Журнал актов"],["oper","Оперативка"],["mpz","МПЗ"]]:can.sklad()?[["in","Новый приход"],["oper","Оперативка"],["mpz","МПЗ"],["jact","Журнал актов"]]:[["upd","УПД"],["in","Новый приход"],["acts","Акты СКК"],["oper","Оперативка"],["mpz","МПЗ"],["jact","Журнал актов"],["sup","Поставщики"],["rep","Отчёт"]];
+const SKK_T=()=>can.zay()?[["jact","Журнал актов"],["oper","Оперативка"],["mpz","МПЗ"]]:can.sklad()?[["in","Новый приход"],["oper","Оперативка"],["mpz","МПЗ"],["jact","Журнал актов"]]:[["upd","УПД"],["in","Новый приход"],["acts","Акты СКК"],["oper","Оперативка"],["mpz","МПЗ"],["jact","Журнал актов"]].concat(can.aosr()?[["aosr","Журнал работ (АОСР)"]]:[]).concat([["sup","Поставщики"],["rep","Отчёт"]]);
 const skkTitle=()=>can.zay()?"Поиск":can.sklad()?"Склад":"Склад / СКК";
 function skkTabs(){return `<div class="tabs noprint" style="margin-bottom:10px;flex-wrap:wrap">${SKK_T().map(t=>`<button class="${SKK.tab===t[0]?"on":""}" data-skt="${t[0]}">${t[1]}</button>`).join("")}</div>`}
 function bindSkkTabs(){document.querySelectorAll("[data-skt]").forEach(b=>b.onclick=()=>{SKK.tab=b.dataset.skt;if(SKK.tab==="oper")location.hash="#/oper";else if(SKK.tab==="mpz")location.hash="#/mpz";else if(S.route!=="skk")location.hash="#/skk";else vSkk()})}
@@ -2156,7 +2254,7 @@ async function vSkk(_id,changed){
   $("#main").innerHTML=`<div class="row" style="align-items:center"><h1 class="grow">${skkTitle()}</h1>${can.skkLink()?`<button class="btn sm acc noprint" id="skkln">🔗 Ссылка на эту страницу</button>`:""}</div>${skkTabs()}<div id="skkb"><div class="card empty">Загрузка…</div></div>`;
   const ln=$("#skkln");if(ln)ln.onclick=()=>act(ln,skkLinkModal);
   bindSkkTabs();$("#main").querySelectorAll("[data-skt]").forEach(b=>b.classList.toggle("on",b.dataset.skt===SKK.tab));
-  try{if(SKK.tab==="upd")await skkUpdList();else if(SKK.tab==="in")await skkIn();else if(SKK.tab==="acts")await skkActList();else if(SKK.tab==="sup")await skkSup();else if(SKK.tab==="jact")await vActs($("#skkb"));else await skkReport()}catch(e){const b=$("#skkb");if(b)b.innerHTML=`<div class="banner red">${esc(e.message)}</div>`}
+  try{if(SKK.tab==="upd")await skkUpdList();else if(SKK.tab==="in")await skkIn();else if(SKK.tab==="acts")await skkActList();else if(SKK.tab==="sup")await skkSup();else if(SKK.tab==="jact")await vActs($("#skkb"));else if(SKK.tab==="aosr")await skkAosr();else await skkReport()}catch(e){const b=$("#skkb");if(b)b.innerHTML=`<div class="banner red">${esc(e.message)}</div>`}
 }
 // 1.9.10: ссылка на «Склад / СКК» — кому угодно; человек по ссылке видит только эту страницу (УПД, акты, оперативка, МПЗ)
 async function skkLinkModal(pre){

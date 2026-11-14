@@ -10,3 +10,6 @@ self.addEventListener("fetch", (e) => {
   e.respondWith(fetch(e.request).then((r) => { const cp = r.clone(); caches.open(C).then((c) => c.put(e.request, cp)); return r; })
     .catch(() => caches.match(e.request).then((r) => r || caches.match("/zametki/index.html"))));
 });
+// 1.9.18: нажатие на уведомление-напоминание открывает «Заметки»
+self.addEventListener("notificationclick", (e) => { e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((cs) => { const c = cs.find((x) => x.url.includes("/zametki/")); return c ? c.focus() : self.clients.openWindow("/zametki/"); })); });
