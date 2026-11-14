@@ -138,7 +138,6 @@ td.r{text-align:right;font-variant-numeric:tabular-nums}
 <div class="netbar" id="netbar">НЕТ СВЯЗИ С СЕРВЕРОМ — данные на экране могут быть неактуальны</div>
 <div id="app"></div>
 <div id="toast"></div>
-<script src="img/mysli.js"></script>
 <script>
 "use strict";
 /* ВЕЛЕССТРОЙ — клиент. Без внешних библиотек и CDN: работает в России без VPN, грузится только с вашего сервера. */
@@ -302,6 +301,8 @@ async function ntfLoad(){if(!ntfOk())return;
   try{const N=await all("request_notes",`created_by="${S.user.id}"&&done=false&&remind_at!=""&&remind_at<="${nowS}"`,"-remind_at");
     N.forEach(n=>ev.push({t:n.remind_at,kind:"note",n}));
     const due=N.filter(n=>!NTF.seenNote.has(n.id));due.forEach(n=>{NTF.seenNote.add(n.id);if(NTF.loaded&&Date.now()-new Date(String(n.remind_at).replace(" ","T")).getTime()<600000){toast("⏰ "+n.text,"ok");try{if(window.Notification&&Notification.permission==="granted")new Notification("ВЕЛЕССТРОЙ — напоминание",{body:n.text,tag:"n"+n.id})}catch(_){}}})}catch(_){}
+  // 1.9.21: сообщения / цитаты от администратора
+  try{const B=await all("broadcasts",`created>="${d14}"`,"-created");const had=!!BC.last;BC.last=B[0]||null;if(!had&&BC.last&&S.route==="home"&&!$(".mysl"))setTimeout(vHome,0);B.forEach(b=>{if(b.author!==S.user.id)ev.push({t:b.created,kind:"bc",b})})}catch(_){}
   // 1.9.19: бэкап на компьютер — раз в неделю (администратор)
   if(can.admin()&&!S.user.scope){const l=bkLast();if(!l||Date.now()-l>7*864e5){   // время события — когда бэкап стал нужен (не «сейчас»): прочитанное не всплывает снова
     let since=l?l+7*864e5:0;if(!since){try{since=+localStorage.getItem("vs_bk_due")||0;if(!since){since=Date.now();localStorage.setItem("vs_bk_due",String(since))}}catch(_){since=Date.now()}}
@@ -311,26 +312,27 @@ async function ntfLoad(){if(!ntfOk())return;
   if(!ntfSeen()&&NTF.items[0])try{localStorage.setItem(ntfKey(),NTF.items.find(e=>e.kind!=="note"&&e.kind!=="req7")?NTF.items.find(e=>e.kind!=="note"&&e.kind!=="req7").t:"0")}catch(_){}   // первый вход — старые акты не сыпем; напоминания и долгие заявки — показываем
   ntfPaint()}
 function ntfPaint(){const n=$("#ntfn");if(!n)return;const s=ntfSeen();const k=NTF.items.filter(e=>e.t>s&&!(e.kind==="new"&&e.a.created_by===S.user.id)).length;n.hidden=!k;n.textContent=k>99?"99+":k}
-const ntfTitle=e=>({new:"📋 Новый акт № "+(e.a&&e.a.number),closed:"✔ Акт закрыт № "+(e.a&&e.a.number),req7:"⏳ Заявка № "+(e.r&&e.r.number)+" открыта больше 7 дней",note:"⏰ Напоминание",bk:"💾 Пора сделать бэкап на компьютер"})[e.kind];
-const ntfHref=e=>e.kind==="bk"?"#/backup":e.a?"#/skkact/"+e.a.id:e.r?"#/request/"+e.r.id:e.n?"#/request/"+e.n.request:"#/";
+const ntfTitle=e=>({new:"📋 Новый акт № "+(e.a&&e.a.number),closed:"✔ Акт закрыт № "+(e.a&&e.a.number),req7:"⏳ Заявка № "+(e.r&&e.r.number)+" открыта больше 7 дней",note:"⏰ Напоминание",bk:"💾 Пора сделать бэкап на компьютер",bc:"💬 "+(e.b?e.b.text:"")})[e.kind];
+const ntfHref=e=>e.kind==="bc"?"#/home":e.kind==="bk"?"#/backup":e.a?"#/skkact/"+e.a.id:e.r?"#/request/"+e.r.id:e.n?"#/request/"+e.n.request:"#/";
 const ntfSub=e=>{if(e.a){const rows=actRows(e.a);return esc(e.a.supplier||"")+" · "+(e.kind==="new"?"замечаний: "+rows.length+" · составил "+esc(uname(e.a.created_by)):"в работе "+actDays(e.a)+" дн.")}
   if(e.r){const d=Math.floor((Date.now()-new Date(String(e.r.created).replace(" ","T")).getTime())/86400000);return esc(e.r.object||"")+" · ввели "+dt(e.r.created)+" · открыта "+d+" дн."}
-  if(e.n)return esc(e.n.text);if(e.kind==="bk"){const l=bkLast();return l?"последний — "+dt(new Date(l).toISOString())+" ("+Math.floor((Date.now()-l)/864e5)+" дн. назад)":"бэкапа на этом компьютере ещё не было"}return ""};
+  if(e.b)return "от "+esc(e.b.author_name||"")+" · "+dt(e.b.created);if(e.n)return esc(e.n.text);if(e.kind==="bk"){const l=bkLast();return l?"последний — "+dt(new Date(l).toISOString())+" ("+Math.floor((Date.now()-l)/864e5)+" дн. назад)":"бэкапа на этом компьютере ещё не было"}return ""};
 function ntfOpen(){const s=ntfSeen();
-  modal(`<h3>🔔 Уведомления</h3><div class="muted">Акты СКК за 14 дней, ваши заявки открытые больше 7 дней, напоминания из заметок.</div>
+  modal(`<h3>🔔 Уведомления</h3><div class="muted">Сообщения, акты СКК за 14 дней, ваши заявки открытые больше 7 дней, напоминания из заметок.</div>
    <div style="max-height:60vh;overflow:auto;margin-top:8px">${NTF.items.map(e=>{const nw=e.t>s;
-     return `<a class="it" href="${ntfHref(e)}" style="display:block;padding:10px;border-left:4px solid ${{new:"var(--r)",closed:"var(--g)",req7:"var(--o)",note:"var(--b)",bk:"var(--v)"}[e.kind]};margin-bottom:6px;background:${nw?"#eef4ff":"#fff"};border-radius:8px;text-decoration:none;color:inherit">
+     return `<a class="it" href="${ntfHref(e)}" style="display:block;padding:10px;border-left:4px solid ${{new:"var(--r)",closed:"var(--g)",req7:"var(--o)",note:"var(--b)",bk:"var(--v)",bc:"var(--acc,#f59e0b)"}[e.kind]};margin-bottom:6px;background:${nw?"#eef4ff":"#fff"};border-radius:8px;text-decoration:none;color:inherit">
       <div><b>${esc(ntfTitle(e))}</b>${nw?' <span class="pill b">НОВОЕ</span>':""} <span class="muted">${dt(e.t)}</span></div><div class="muted">${ntfSub(e)}</div></a>`}).join("")||'<div class="muted">Уведомлений нет</div>'}</div>
-   <div class="row" style="margin-top:10px"><button class="btn grow" data-close>Закрыть</button></div>`,box=>box.querySelectorAll("a[href]").forEach(x=>x.addEventListener("click",()=>setTimeout(closeModal,0))));
+   <div class="row" style="margin-top:10px;gap:6px">${can.admin()&&!S.user.scope?`<a class="btn" href="#/bc" data-bclink>📣 Сообщение всем</a>`:""}<button class="btn grow" data-close>Закрыть</button></div>`,box=>box.querySelectorAll("a[href]").forEach(x=>x.addEventListener("click",()=>setTimeout(closeModal,0))));
   try{if(NTF.items[0])localStorage.setItem(ntfKey(),NTF.items[0].t)}catch(_){}ntfPaint()}
 function rtStart(){
   if(es)es.close();S.rt="wait";paintNet();
   es=new EventSource("/api/realtime");
   es.addEventListener("PB_CONNECT",async ev=>{
     try{const id=JSON.parse(ev.data).clientId;
-      await api("POST","/api/realtime",{clientId:id,subscriptions:["resources","reservations","receipts","approvals","rules","checklist_templates","users","checklist_items","attachments","activity_log","requests","request_items","request_shipments","request_files","suggestions","request_notes","topics","subtopics","topic_msgs","upd_docs","upd_photos","skk_acts"]});
+      await api("POST","/api/realtime",{clientId:id,subscriptions:["resources","reservations","receipts","approvals","rules","checklist_templates","users","checklist_items","attachments","activity_log","requests","request_items","request_shipments","request_files","suggestions","request_notes","topics","subtopics","topic_msgs","upd_docs","upd_photos","skk_acts","broadcasts"]});
       S.rt="on";paintNet();flushAll()}catch(e){S.rt="wait";paintNet()}});
   ["resources","reservations","receipts","approvals","rules","checklist_templates","users","checklist_items","attachments","activity_log","requests","request_items","request_shipments","request_files","suggestions","request_notes","topics","subtopics","topic_msgs","upd_docs","upd_photos","skk_acts"].forEach(c=>es.addEventListener(c,()=>changed(c)));
+  es.addEventListener("broadcasts",bcIn);   // 1.9.21: сообщение / цитата от администратора
   es.addEventListener("skk_acts",ev=>{actClosedNote(ev);clearTimeout(NTF.t);NTF.t=setTimeout(ntfLoad,800)});   // 1.9.13: уведомление о закрытом акте
   es.onerror=()=>{S.rt="wait";paintNet();if(es.readyState===2){clearTimeout(esRetry);esRetry=setTimeout(rtStart,4000)}};
 }
@@ -390,7 +392,7 @@ function render(changedCols,force){
   if(!S.user||!$("#main"))return;
   const [p,id]=S.route.split("/");
   document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("on",a.dataset.n===(p==="receipt"?"receive":p==="request"||p==="leftovers"?"requests":/^(upd|updedit|skkact|skkactedit|oper)$/.test(p)?"skk":p==="topic"?"topics":p)));
-  const V={zreg:vZreg,backup:vBackup,find:vFind,leftovers:vLeftovers,fields:vFields,home:vHome,receive:vReceive,receipt:vReceipt,requests:vRequests,request:vRequest,resources:vResources,history:vHistory,rules:vRules,users:vUsers,split:vSplit,report:vReport,mpz:vMpz,skk:vSkk,upd:vUpd,updedit:vUpdEdit,skkact:vSkkAct,skkactedit:vSkkActEdit,oper:vOper,topics:vTopics,topic:vTopic}[p]||vHome;
+  const V={bc:vBc,zreg:vZreg,backup:vBackup,find:vFind,leftovers:vLeftovers,fields:vFields,home:vHome,receive:vReceive,receipt:vReceipt,requests:vRequests,request:vRequest,resources:vResources,history:vHistory,rules:vRules,users:vUsers,split:vSplit,report:vReport,mpz:vMpz,skk:vSkk,upd:vUpd,updedit:vUpdEdit,skkact:vSkkAct,skkactedit:vSkkActEdit,oper:vOper,topics:vTopics,topic:vTopic}[p]||vHome;
   if((p==="users"||p==="fields")&&!can.admin())return vHome();
   const key=S.route;if(key!==lastKey){window.scrollTo(0,0);lastKey=key;dirty.clear()}
   // Обновление пришло, пока человек вводит данные: сохраняем введённое, фокус и курсор
@@ -433,7 +435,7 @@ function vHome(){
   const res=S.data.resources||[];const c={crane:[0,0],worker:[0,0]};
   res.forEach(r=>{if(!c[r.category])return;const i=resInfo(r);c[r.category][i.st==="free"?0:1]++});
   const aps=(S.data.approvals||[]).filter(a=>can.manage()&&(a.approver_role!=="admin"||can.admin()));
-  $("#main").innerHTML=`<h1>Главная</h1>${window.myslDay?`<div class="mysl noprint">💬 <i>«${esc(myslDay())}»</i><div class="muted">— мысль дня от бригадира Михалыча</div></div>`:""}${window.Notification&&Notification.permission==="default"?`<button class="btn sm noprint" id="hntf" style="margin-bottom:10px">🔔 Включить уведомления об актах СКК на этом устройстве</button>`:""}
+  $("#main").innerHTML=`<h1>Главная</h1>${BC.last?`<div class="mysl noprint">💬 <i>${esc(BC.last.text)}</i><div class="muted">— ${esc(BC.last.author_name||"")}, ${dt(BC.last.created)}</div></div>`:""}${can.admin()&&!S.user.scope?`<a class="btn sm noprint" href="#/bc" style="margin-bottom:10px">📣 Сообщение / цитата всем</a> `:""}${window.Notification&&Notification.permission==="default"?`<button class="btn sm noprint" id="hntf" style="margin-bottom:10px">🔔 Включить уведомления об актах СКК на этом устройстве</button>`:""}
   ${can.write()?`<a class="btn acc big noprint" href="#/receive" style="margin-bottom:14px;text-decoration:none">＋ НОВАЯ ПРИЁМКА</a>`:""}
   <div class="grid">
    <div class="kpi b" data-go="#/receive"><div class="n">${active}</div><div class="t">Активные приёмки</div></div>
@@ -1042,12 +1044,12 @@ async function vRequest(id,changedCols){
   const full=items.filter(i=>itemState(i)==="full").length,s=rqPill(r),sig=sigsOf(r);
   const missing=SIGNS.filter(x=>!sig[x[0]]);
   $("#main").innerHTML=`<div class="row noprint" style="margin-bottom:8px"><a class="btn sm" href="#/requests">← К заявкам</a><div class="grow"></div>
-   ${W?`<button class="btn sm" id="rqedit">✏ Изменить</button>`:""}<button class="btn sm" id="rqprint">🖨 Печать / PDF</button><button class="btn sm" id="rqxl">⬇ Excel</button>${!can.zay()?`<button class="btn sm acc" id="rqsh" title="Позиции с фото и видео — распечатать или отправить стропальщикам на телефон">🖼 Отчёт с фото для стропальщиков</button>`:""}</div>
+   ${W?`<button class="btn sm" id="rqedit">✏ Изменить</button>`:""}<button class="btn sm" id="rqprint">🖨 Печать / PDF</button><button class="btn sm" id="rqxl">⬇ Excel</button>${!can.zay()?`<button class="btn sm acc" id="rqsh" title="Позиции с фото и видео — распечатать или отправить стропальщикам на телефон">🖼 Отчёт с фото для стропальщиков</button>`:""}${W&&!can.zay()?`<button class="btn sm" id="rqmsg" title="Сообщение получателю: сколько осталось и до какого числа забрать">✉ Сообщение заявителю</button>`:""}</div>
   <h1>Заявка № ${esc(r.number)} <span class="pill ${s[1]}" style="vertical-align:middle">${s[0]}</span> ${uchetPill(r)}</h1>
   ${isDebt(r)?`<div class="banner violet">ДОЛГ: ЗАЯВКА ЗАКРЫТА, НО НЕ ВСЕ ПОДПИСИ<small>Не хватает: ${missing.map(x=>esc(x[1])).join(", ")}</small></div>`:""}
   <div class="card"><div class="kv">
    <b>Дата заявки</b><span>${r.req_date?dt(r.req_date).slice(0,10):"—"}</span><b>Объект</b><span>${esc(r.object||"—")}</span>
-   <b>Получатель</b><span>${esc(r.recipient||"—")}</span><b>Создал</b><span>${esc(uname(r.created_by))}, ${dt(r.created)}</span>
+   <b>Получатель</b><span>${esc(r.recipient||"—")}${r.phone?` · <a href="tel:${esc(r.phone.replace(/[^\d+]/g,""))}">📞 ${esc(r.phone)}</a>`:""}${r.pickup_until?` · <b style="color:${r.pickup_until<new Date().toISOString().slice(0,10)?"var(--r)":"inherit"}">забрать до ${dmy(r.pickup_until)}</b>`:""}</span><b>Создал</b><span>${esc(uname(r.created_by))}, ${dt(r.created)}</span>
    ${r.note?`<b>Примечание</b><span>${esc(r.note)}</span>`:""}
    ${HEADF.filter(f=>r[f[0]]).map(f=>`<b>${esc(f[1])}</b><span>${esc(r[f[0]])}</span>`).join("")}${r.tmc_kind?`<b>Вид ТМЦ</b><span>${esc(r.tmc_kind)}</span>`:""}${xfKV("request",r.extra)}
    ${r.status!=="open"?`<b>${r.status==="closed"?"Закрыл":"Аннулировал"}</b><span>${esc(uname(r.closed_by))}, ${dt(r.closed_at)}${r.close_comment?" — «"+esc(r.close_comment)+"»":""}</span>`:""}
@@ -1150,6 +1152,7 @@ async function vRequest(id,changedCols){
   const ed=$("#rqedit");if(ed)ed.onclick=()=>requestForm({r,items});
   $("#rqprint").onclick=()=>printRequest(r,items);
   {const b=$("#rqsh");if(b)b.onclick=()=>act(b,()=>reqShare([r.id],"Заявка № "+r.number+(r.object?" — "+r.object:"")))}
+  {const b=$("#rqmsg");if(b)b.onclick=()=>act(b,()=>reqMsg(r,items))}
   document.querySelectorAll("[data-imup]").forEach(inp=>inp.onchange=()=>{const fs=[...inp.files];inp.value="";if(!fs.length)return;
     act(null,async()=>{const n=await imedUpload(r.id,inp.dataset.imup,fs);S.curReq=null;await vRequest(id,["request_files"]);if(n)toast("Добавлено к позиции: "+n,"ok")})});
   const na=$("#nadd");if(na){const go=()=>act(na,async()=>{const t=$("#ntx").value.trim();if(!t)throw new Error("Напишите текст заметки.");
@@ -1967,6 +1970,61 @@ function hubBind(){const go=()=>{HUB.q=$("#hubq").value.trim();HUB.data=null;hub
   $("#hubb").onclick=go;$("#hubq").onkeydown=e=>{if(e.key==="Enter")go()};const x=$("#hubx");if(x)x.onclick=()=>{$("#hubq").value="";go()};
   document.querySelectorAll("[data-hubt]").forEach(b=>b.onclick=()=>{HUB.tab=b.dataset.hubt;hubPaint()});
   if(HUB.tab==="files"&&HUB.data&&HUB.data.files)sfBind(HUB.data.files)}
+/* ----- 1.9.21: сообщение заявителю — сколько осталось по позициям и до какого числа забрать; телефон получателя ----- */
+const phDigits=p=>{let d=String(p||"").replace(/\D/g,"");if(d.length===11&&d[0]==="8")d="7"+d.slice(1);if(d.length===10)d="7"+d;return d};
+function reqMsgText(r,items,until,link){const rest=items.map(i=>({i,left:Math.max(0,num(i.qty_ordered)-num(i.qty_issued))})).filter(x=>x.left>0);
+  const L=["Здравствуйте"+(r.recipient?", "+r.recipient:"")+"!","",`По заявке № ${r.number}${r.object?" ("+r.object+")":""} на складе ВЕЛЕССТРОЙ вас ожидает:`];
+  rest.forEach((x,k)=>{const iss=num(x.i.qty_issued);L.push(`${k+1}. ${x.i.material} — ${fmtQ(x.left)} ${x.i.unit||""}`.trim()+(iss>0?` (заказано ${fmtQ(x.i.qty_ordered)}, уже выдано ${fmtQ(iss)})`:""))});
+  if(!rest.length)L.push("— всё по заявке уже выдано.");
+  L.push("");if(until)L.push(`Просим забрать материал до ${dmy(until)}.`);if(link)L.push("Фото и где лежит: "+link);
+  L.push("","Склад ВЕЛЕССТРОЙ"+(S.user&&S.user.name?", "+S.user.name:""));return {text:L.join("\n"),n:rest.length}}
+async function reqMsg(r,items){let ph=r.phone||"";
+  if(!ph&&r.recipient){try{const c=await all("contacts",`name_lc="${flt(lcq(r.recipient).replace(/\s+/g," "))}"`,"");if(c[0])ph=c[0].phone}catch(_){}}
+  const def=r.pickup_until||new Date(Date.now()+3*864e5+180*60000).toISOString().slice(0,10);
+  modal(`<h3>✉ Сообщение заявителю — заявка № ${esc(r.number)}</h3><div class="muted">Сколько осталось по позициям и до какого числа забрать. Отправьте через MAX, WhatsApp, Telegram или SMS.</div>
+   <div class="g2x"><div><label class="f" for="mph">Телефон получателя${r.recipient?` (${esc(r.recipient)})`:""}</label><input id="mph" type="tel" value="${esc(ph)}" placeholder="+7 900 123-45-67"></div><div><label class="f" for="mun">Забрать до</label><input id="mun" type="date" value="${def}"></div></div>
+   <label class="row" style="gap:8px;margin-top:8px"><input type="checkbox" id="mlk" style="width:22px;height:22px"> добавить ссылку с фото позиций (без входа, 30 дней)</label>
+   <label class="f" for="mtx">Текст (можно поправить)</label><textarea id="mtx" rows="10"></textarea>
+   <div class="row" style="margin-top:10px;gap:6px;flex-wrap:wrap">${navigator.share?`<button class="btn p" id="msh">📤 Отправить (MAX и др.)</button>`:""}<button class="btn${navigator.share?"":" p"}" id="mcp">📋 Скопировать</button><a class="btn" id="mwa" target="_blank" rel="noopener">💬 WhatsApp</a><a class="btn" id="mtg" target="_blank" rel="noopener">✈ Telegram</a><a class="btn" id="msm">✉ SMS</a><button class="btn" data-close>Закрыть</button></div>
+   <div class="muted" id="mst" style="margin-top:6px"></div>`,box=>{let link="";const tx=$("#mtx",box);let edited=false;tx.oninput=()=>{edited=true;links()};
+    const build=()=>{if(edited)return;tx.value=reqMsgText(r,items,$("#mun",box).value,link).text;links()};
+    const links=()=>{const d=phDigits($("#mph",box).value),t=encodeURIComponent(tx.value);$("#mwa",box).href=d?`https://wa.me/${d}?text=${t}`:`https://wa.me/?text=${t}`;$("#mtg",box).href=`https://t.me/share/url?url=${encodeURIComponent(link||" ")}&text=${t}`;$("#msm",box).href=`sms:${d?"+"+d:""}?body=${t}`};
+    const save=async()=>{const p=$("#mph",box).value.trim(),u=$("#mun",box).value;if(p===(r.phone||"")&&u===(r.pickup_until||""))return;await api("POST","/api/vs/request/contact",{request:r.id,phone:p,pickup_until:u});r.phone=p;r.pickup_until=u;$("#mst",box).textContent="✔ Телефон и срок сохранены в заявке"};
+    $("#mun",box).onchange=()=>{build()};$("#mph",box).oninput=links;
+    $("#mlk",box).onchange=e=>act(null,async()=>{if(e.target.checked&&!link){const j=await api("POST","/api/vs/req/share",{requests:[r.id],title:"Заявка № "+r.number});link=location.origin+j.url}if(!e.target.checked)link="";build()});
+    const sent=async()=>{try{await save()}catch(er){toast(er.message,"err")}};
+    $("#mcp",box).onclick=async()=>{try{await navigator.clipboard.writeText(tx.value)}catch(_){tx.select();document.execCommand("copy")}toast("Текст скопирован","ok");sent()};
+    const sh=$("#msh",box);if(sh)sh.onclick=()=>{sent();navigator.share({title:"Заявка № "+r.number,text:tx.value}).catch(()=>{})};
+    ["#mwa","#mtg","#msm"].forEach(k=>$(k,box).addEventListener("click",()=>{sent()}));
+    build()})}
+/* ----- 1.9.21: сообщение / цитата от администратора всем — через 🔔, всплывает и системным уведомлением ----- */
+const BC={last:null,seen:new Set()};
+function bcIn(ev){try{const d=JSON.parse(ev.data),b=d.record;if(d.action!=="create"||!b||!S.user||BC.seen.has(b.id))return;BC.seen.add(b.id);BC.last=b;
+  if(b.author!==S.user.id){bcShow(b);try{if(window.Notification&&Notification.permission==="granted")new Notification("ВЕЛЕССТРОЙ — "+(b.author_name||"сообщение"),{body:b.text,tag:"bc"+b.id})}catch(_){}}
+  clearTimeout(NTF.t);NTF.t=setTimeout(ntfLoad,600);if(S.route==="home"||S.route==="")vHome()}catch(_){}}
+function bcShow(b){let box=$("#bcpop");if(box)box.remove();box=document.createElement("div");box.id="bcpop";box.setAttribute("role","status");
+  box.innerHTML=`<div style="font-size:13px;opacity:.8">💬 ${esc(b.author_name||"")}</div><div style="font-size:18px;font-weight:700;white-space:pre-wrap;margin-top:4px">${esc(b.text)}</div><button class="btn sm" style="margin-top:8px">OK</button>`;
+  box.style.cssText="position:fixed;left:12px;right:12px;top:70px;max-width:560px;margin:0 auto;z-index:90;background:linear-gradient(120deg,#fff8e6,#eef7ff);border:2px solid #f3c969;border-radius:14px;padding:14px;box-shadow:0 10px 30px rgba(0,0,0,.25)";
+  document.body.appendChild(box);box.querySelector("button").onclick=()=>box.remove();setTimeout(()=>{if(box.isConnected)box.remove()},20000)}
+async function vBc(){if(!can.admin()||S.user.scope)return vHome();
+  const [Q,B]=await Promise.all([all("bc_quotes","","sent_count,created").catch(()=>[]),api("GET","/api/collections/broadcasts/records?perPage=20&sort=-created").then(j=>j.items).catch(()=>[])]);if(S.route!=="bc")return;
+  $("#main").innerHTML=`<h1>📣 Сообщение / цитата всем</h1>
+   <div class="card"><label class="f" for="bct">Текст — придёт всем в 🔔, всплывёт на экране и системным уведомлением. Отправлять можете только вы.</label><textarea id="bct" rows="3" placeholder="Напишите сообщение или цитату"></textarea>
+    <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap"><button class="btn p" id="bcs">📣 ОТПРАВИТЬ ВСЕМ</button>${Q.length?`<button class="btn" id="bcr">🎲 Случайную из моих цитат</button>`:""}</div></div>
+   <div class="card"><h3 style="margin-top:0">Мои цитаты (${Q.length})</h3><textarea id="bcq" rows="4" placeholder="Вставьте свои цитаты — каждая с новой строки"></textarea>
+    <div class="row" style="margin-top:8px;gap:6px"><button class="btn" id="bca">＋ Добавить в список</button>${Q.length?`<button class="btn sm" id="bcx" style="margin-left:auto">Очистить список</button>`:""}</div>
+    ${Q.length?`<div style="margin-top:10px">${Q.map(q=>`<div class="row" style="gap:8px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line)"><div class="grow">${esc(q.text)}<div class="muted">${q.sent_count?`отправлена ${q.sent_count} раз, последний ${dt(q.last_sent)}`:"ещё не отправлялась"}</div></div>
+      <button class="btn sm" data-bqs="${q.id}">📣 Отправить</button><button class="btn sm" data-bqx="${q.id}" aria-label="Удалить">✕</button></div>`).join("")}</div>`:""}</div>
+   <div class="card"><h3 style="margin-top:0">Отправленные</h3>${B.length?B.map(b=>`<div class="row" style="gap:8px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line)"><div class="grow">${esc(b.text)}<div class="muted">${dt(b.created)}</div></div><button class="btn sm" data-bcd="${b.id}" title="Убрать у всех" aria-label="Убрать у всех">✕</button></div>`).join(""):`<div class="muted">Пока ничего не отправляли</div>`}</div>`;
+  const sent=t=>{toast("Отправлено всем: "+t.slice(0,60),"ok");vBc();ntfLoad()};
+  $("#bcs").onclick=e=>act(e.target,async()=>{const t=$("#bct").value.trim();if(!t)throw new Error("Напишите текст.");const r=await api("POST","/api/vs/bc/send",{text:t});sent(r.text)});
+  const r=$("#bcr");if(r)r.onclick=()=>act(r,async()=>{const x=await api("POST","/api/vs/bc/send",{random:true});sent(x.text)});
+  $("#bca").onclick=e=>act(e.target,async()=>{const L=$("#bcq").value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);if(!L.length)throw new Error("Вставьте цитаты — каждая с новой строки.");
+    const x=await api("POST","/api/vs/bc/quotes",{lines:L});toast("Добавлено: "+x.added+(x.dup?", уже были: "+x.dup:""),"ok");vBc()});
+  const cx=$("#bcx");if(cx)cx.onclick=()=>{if(!confirm("Удалить все цитаты из списка?"))return;act(cx,async()=>{await api("POST","/api/vs/bc/quote_delete",{all:true});vBc()},"Список очищен")};
+  document.querySelectorAll("[data-bqs]").forEach(b=>b.onclick=()=>act(b,async()=>{const x=await api("POST","/api/vs/bc/send",{quote:b.dataset.bqs});sent(x.text)}));
+  document.querySelectorAll("[data-bqx]").forEach(b=>b.onclick=()=>act(b,async()=>{await api("POST","/api/vs/bc/quote_delete",{id:b.dataset.bqx});vBc()},"Удалено"));
+  document.querySelectorAll("[data-bcd]").forEach(b=>b.onclick=()=>{if(!confirm("Убрать это сообщение у всех?"))return;act(b,async()=>{await api("POST","/api/vs/bc/delete",{id:b.dataset.bcd});vBc();ntfLoad()},"Убрано")})}
 /* ----- 1.9.19: реестр заявок (файл склада) — загрузить, проверить номера ----- */
 const zrOk=()=>!!S.user&&!S.user.scope&&["admin","manager","storekeeper","viewer"].includes(role());
 const ZR={q:"",nums:"",res:null};

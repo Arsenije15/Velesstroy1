@@ -52,10 +52,8 @@ label.ck{display:flex;gap:8px;align-items:center;font-weight:600}label.ck input{
   <div id="out"></div>
 </main>
 <div id="zoom" role="dialog" aria-label="Фото"><img alt=""></div>
-<script src="img/mysli.js"></script>
 <script>
 (function(){
-if(window.myslDay){document.getElementById("hero").innerHTML='<div class="q">💬 <i>«'+myslDay().replace(/[&<>]/g,"")+'»</i><span>— мысль дня от бригадира Михалыча</span></div>'}
 const tok=new URLSearchParams(location.search).get("t")||"";
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const fq=v=>{const n=parseFloat(String(v||"").replace(/\s/g,"").replace(",","."));return isFinite(n)?String(Math.round(n*1000)/1000).replace(".",","):String(v||"")};

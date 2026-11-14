@@ -74,21 +74,21 @@ routerUse((e) => {
     const p = e.request.url.path;
     let okp = true;
     if (p.indexOf("/api/vs/") === 0) okp = /^\/api\/vs\/(upd|skk|oper|mpz|suppliers|fields|sfiles|pub|aosr)(\/|$)/.test(p);
-    else if (p.indexOf("/api/collections/") === 0) okp = /^\/api\/collections\/(users|upd_docs|skk_acts|suppliers|supplier_splits|supplier_files|oper_rows|mpz_stock|upd_photos|suggestions|form_fields|field_files|acts|aosr|skk_photos)\//.test(p);
+    else if (p.indexOf("/api/collections/") === 0) okp = /^\/api\/collections\/(users|upd_docs|skk_acts|suppliers|supplier_splits|supplier_files|oper_rows|mpz_stock|upd_photos|suggestions|form_fields|field_files|acts|aosr|skk_photos|broadcasts)\//.test(p);
     if (!okp) throw new ForbiddenError("По этой ссылке доступна только страница «Склад / СКК».");
   } else if (sc === "sklad") {
     // 1.9.12: «Склад» — новый приход (УПД + фото груза), оперативка, МПЗ, журнал актов; ссылки на СКК и акты СКК закрыты
     const p = e.request.url.path;
     let okp = true;
     if (p.indexOf("/api/vs/") === 0) okp = /^\/api\/vs\/(upd|oper|mpz|fields|pub)(\/|$)/.test(p) && !/^\/api\/vs\/upd\/(spec|delete)/.test(p);
-    else if (p.indexOf("/api/collections/") === 0) okp = /^\/api\/collections\/(users|upd_docs|upd_photos|oper_rows|mpz_stock|acts|suggestions|form_fields|field_files)\//.test(p);
+    else if (p.indexOf("/api/collections/") === 0) okp = /^\/api\/collections\/(users|upd_docs|upd_photos|oper_rows|mpz_stock|acts|suggestions|form_fields|field_files|broadcasts)\//.test(p);
     if (!okp) throw new ForbiddenError("По этой ссылке доступна только страница «Склад».");
   } else if (sc === "zay") {
     // 1.9.15: «Склад: заявки» — ресурсы склада (как в программе), поиск (оперативка, МПЗ, журнал актов) и свои заявки (с проверкой на акт)
     const p = e.request.url.path;
     let okp = true;
     if (p.indexOf("/api/vs/") === 0) okp = /^\/api\/vs\/(request\/(create|update|note|ocr|file_delete)|acts\/match|pickhist|reserve|reservation\/action|resource\/status|actcheck|oper|mpz|fields|pub)(\/|$)/.test(p);
-    else if (p.indexOf("/api/collections/") === 0) okp = /^\/api\/collections\/(users|requests|request_items|request_files|request_notes|request_shipments|request_ocr|resources|reservations|oper_rows|mpz_stock|acts|suggestions|form_fields|field_files)\//.test(p);
+    else if (p.indexOf("/api/collections/") === 0) okp = /^\/api\/collections\/(users|requests|request_items|request_files|request_notes|request_shipments|request_ocr|resources|reservations|oper_rows|mpz_stock|acts|suggestions|form_fields|field_files|broadcasts)\//.test(p);
     if (!okp) throw new ForbiddenError("По этой ссылке доступны только «Ресурсы склада», «Поиск» и «Мои заявки».");
   }
   return e.next();
