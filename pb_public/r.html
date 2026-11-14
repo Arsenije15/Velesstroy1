@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>ВЕЛЕССТРОЙ — что грузить</title>
+<style>
+:root{--ink:#111827;--mut:#5b6472;--line:#d6dbe3;--bg:#f3f5f8;--acc:#f59e0b;--g:#15803d;--gbg:#dcfce7;--r:#b91c1c;--rbg:#fee2e2;--y:#a16207;--ybg:#fef3c7}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:linear-gradient(180deg,#eaf5ff,#fff6ea) fixed;color:var(--ink);font-size:17px;line-height:1.35;min-height:100vh}
+.hero{height:150px;background:url(img/sunrise.svg) center bottom/cover no-repeat;border-radius:0 0 18px 18px;margin:0 -10px 10px;display:flex;align-items:flex-end;padding:10px 14px}
+.hero .q{background:rgba(255,255,255,.88);border-radius:12px;padding:8px 12px;font-size:15px;box-shadow:0 2px 10px rgba(0,0,0,.08)}.hero .q i{font-size:16px}.hero .q span{display:block;color:var(--mut);font-size:12px;margin-top:2px}
+header{background:#1c2430;color:#fff;padding:12px 14px;position:sticky;top:0;z-index:5;border-bottom:4px solid var(--acc)}
+header h1{margin:0;font-size:20px}header .s{color:#cbd5e1;font-size:13px;margin-top:2px}
+main{max-width:900px;margin:0 auto;padding:10px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:4px 0 10px}
+button,.btn{min-height:46px;padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:#fff;font-size:16px;font-weight:700;cursor:pointer;color:var(--ink);text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+button.p{background:var(--acc);border-color:var(--acc)}
+label.ck{display:flex;gap:8px;align-items:center;font-weight:600}label.ck input{width:24px;height:24px}
+.rq{background:#fff;border:1px solid var(--line);border-radius:14px;margin-bottom:14px;overflow:hidden}
+.rq>.h{background:#fef3c7;padding:10px 12px;border-bottom:1px solid var(--line)}.rq>.h b{font-size:19px}.rq>.h .m{color:var(--mut);font-size:14px}
+.it{padding:12px;border-bottom:1px solid var(--line);break-inside:avoid;page-break-inside:avoid}.it:last-child{border-bottom:0}
+.n{display:inline-block;min-width:30px;height:30px;border-radius:15px;background:#1c2430;color:#fff;text-align:center;line-height:30px;font-weight:800;margin-right:6px}
+.mat{font-size:19px;font-weight:800}
+.q{margin-top:4px;font-size:18px}.q b{font-size:22px;color:var(--r)}.q.done b{color:var(--g)}
+.pk{margin-top:6px;background:#eef4ff;border-radius:8px;padding:6px 8px;font-size:16px}
+.med{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:8px}
+.med img,.med video{width:100%;border-radius:10px;border:1px solid var(--line);background:#000;display:block}
+.med img{aspect-ratio:4/3;object-fit:cover;cursor:zoom-in;background:#fff}
+.med video{aspect-ratio:4/3}
+.nomed{color:var(--mut);font-size:14px;margin-top:6px}
+.pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:13px;font-weight:800}.pill.g{background:var(--gbg);color:var(--g)}.pill.r{background:var(--rbg);color:var(--r)}
+#zoom{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;z-index:20}#zoom img{max-width:100%;max-height:100%}
+.err{background:var(--rbg);color:var(--r);padding:14px;border-radius:12px;font-weight:700}
+.vtxt{display:none}
+@media print{
+  @page{size:A4;margin:10mm}
+  body{background:#fff;font-size:12pt}header{position:static;background:#fff;color:#000;border-bottom:2px solid #000;padding:0 0 4mm}header .s{color:#333}
+  .bar,#zoom,.hero{display:none!important}main{padding:0;max-width:none}
+  .rq{border:1px solid #000;border-radius:0;margin-bottom:6mm;break-inside:auto}.rq>.h{background:#eee}
+  .med{grid-template-columns:repeat(2,1fr)}.med img{aspect-ratio:auto;max-height:85mm;object-fit:contain;border:1px solid #999}
+  .med video{display:none}.vtxt{display:block;border:1px dashed #999;padding:4mm;font-size:10pt;color:#333}
+}
+</style>
+</head>
+<body>
+<header><h1>ВЕЛЕССТРОЙ — что грузить</h1><div class="s" id="sub">Загрузка…</div></header>
+<main>
+  <div class="hero" id="hero"></div>
+  <div class="bar"><label class="ck"><input type="checkbox" id="only" checked> только то, что ещё выдать</label><button class="p" id="pr">🖨 Печать / PDF</button></div>
+  <div id="out"></div>
+</main>
+<div id="zoom" role="dialog" aria-label="Фото"><img alt=""></div>
+<script src="img/mysli.js"></script>
+<script>
+(function(){
+if(window.myslDay){document.getElementById("hero").innerHTML='<div class="q">💬 <i>«'+myslDay().replace(/[&<>]/g,"")+'»</i><span>— мысль дня от бригадира Михалыча</span></div>'}
+const tok=new URLSearchParams(location.search).get("t")||"";
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fq=v=>{const n=parseFloat(String(v||"").replace(/\s/g,"").replace(",","."));return isFinite(n)?String(Math.round(n*1000)/1000).replace(".",","):String(v||"")};
+const dmy=s=>{const m=String(s||"").match(/^(\d{4})-(\d{2})-(\d{2})/);return m?m[3]+"."+m[2]+"."+m[1]:""};
+let D=null;
+function draw(){const only=document.getElementById("only").checked,out=document.getElementById("out");
+  if(!D.requests.length){out.innerHTML='<div class="err">Заявок нет.</div>';return}
+  out.innerHTML=D.requests.map(r=>{const its=r.items.filter(i=>!only||i.rest>0);
+    return `<section class="rq"><div class="h"><b>Заявка № ${esc(r.number)}</b> ${r.status==="open"?"":'<span class="pill g">ЗАКРЫТА</span>'}<div class="m">${esc([r.object,r.recipient&&"получатель: "+r.recipient,dmy(r.date)].filter(Boolean).join(" · "))}</div>${r.note?`<div class="m">${esc(r.note)}</div>`:""}</div>
+    ${its.length?its.map(i=>{const done=i.rest<=0;return `<div class="it"><div class="mat"><span class="n">${i.n}</span>${esc(i.material)}</div>
+      <div class="q${done?" done":""}">${done?`<b>✔ выдано</b> ${fq(i.ordered)} ${esc(i.unit)}`:`Грузить: <b>${fq(i.rest)} ${esc(i.unit)}</b>${String(i.issued||"")&&parseFloat(String(i.issued).replace(",","."))>0?` <span style="color:var(--mut)">(заказано ${fq(i.ordered)}, уже выдано ${fq(i.issued)})</span>`:""}`}</div>
+      ${i.pick_place||i.pick_tool?`<div class="pk">📍 Откуда: <b>${esc(i.pick_place||"—")}</b>${i.pick_tool?` · чем: <b>${esc(i.pick_tool)}</b>`:""}</div>`:""}
+      ${i.media.length?`<div class="med">${i.media.map((m,k)=>{const u="/api/vs/pub/req/"+encodeURIComponent(tok)+"/f/"+m.id;
+        return m.video?`<div><video src="${u}" controls playsinline preload="metadata"></video><div class="vtxt">🎬 Видео ${k+1} — смотрите по ссылке на телефоне</div></div>`:`<img src="${u}" alt="Фото ${k+1}" loading="lazy" data-z="${u}">`}).join("")}</div>`:`<div class="nomed">фото нет</div>`}</div>`}).join("")
+     :`<div class="it nomed">Всё по заявке выдано.</div>`}</section>`}).join("");
+  out.querySelectorAll("[data-z]").forEach(im=>im.onclick=()=>{const z=document.getElementById("zoom");z.querySelector("img").src=im.dataset.z;z.style.display="flex"})}
+document.getElementById("zoom").onclick=e=>{e.currentTarget.style.display="none"};
+document.getElementById("only").onchange=()=>D&&draw();
+document.getElementById("pr").onclick=()=>{const imgs=[...document.querySelectorAll(".med img")];imgs.forEach(i=>i.loading="eager");
+  Promise.all(imgs.map(i=>i.complete?1:new Promise(r=>{i.onload=i.onerror=r}))).then(()=>window.print())};
+fetch("/api/vs/pub/req/"+encodeURIComponent(tok)).then(r=>r.json().then(j=>({ok:r.ok,j}))).then(({ok,j})=>{
+  if(!ok)throw new Error(j&&j.message||"Ссылка не открывается");D=j;
+  const n=j.requests.reduce((a,r)=>a+r.items.filter(i=>i.rest>0).length,0);
+  document.getElementById("sub").textContent=(j.title?j.title+" · ":"")+"заявок: "+j.requests.length+" · позиций к выдаче: "+n+" · ссылка до "+dmy(j.expires);
+  document.title="Что грузить — "+(j.title||"ВЕЛЕССТРОЙ");draw()})
+ .catch(e=>{document.getElementById("sub").textContent="";document.getElementById("out").innerHTML='<div class="err">'+esc(e.message)+'</div>'});
+})();
+</script>
+</body>
+</html>

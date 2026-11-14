@@ -10,6 +10,10 @@
 --g:#15803d;--gbg:#dcfce7;--r:#b91c1c;--rbg:#fee2e2;--y:#a16207;--ybg:#fef3c7;--b:#1d4ed8;--bbg:#dbeafe;--v:#6d28d9;--vbg:#ede9fe;--o:#c2410c;--obg:#ffedd5;--gr:#4b5563;--grbg:#e5e7eb}
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+html{background:linear-gradient(180deg,#eaf5ff 0%,#f4f7fb 38%,#fff6ea 100%) fixed}body{background:transparent;min-height:100vh}
+body::before{content:"";position:fixed;left:0;right:0;bottom:0;height:42vh;background:url(img/sunrise.svg) center bottom/cover no-repeat;opacity:.55;pointer-events:none;z-index:-1}
+.mysl{background:linear-gradient(120deg,#fff8e6,#eef7ff);border:1px solid #f3dca8;border-left:5px solid var(--acc,#f59e0b);border-radius:12px;padding:10px 14px;margin-bottom:14px}.mysl i{font-size:17px}.mysl .muted{margin-top:4px}
+@media print{html,body{background:#fff}body::before{display:none}}
 button,input,select,textarea{font:inherit}
 header{background:var(--head);color:#fff;position:sticky;top:0;z-index:20;padding:0 12px;display:flex;align-items:center;gap:10px;min-height:56px}
 header .logo{font-weight:800;letter-spacing:.04em}
@@ -18,6 +22,7 @@ header .sp{flex:1}
 header>*{flex-shrink:0}header nav.top{flex-shrink:1;min-width:0;flex-wrap:wrap}
 mark{background:#fde68a;color:inherit;border-radius:2px;padding:0 1px}
 header .who{font-size:13px;opacity:.85;text-align:right;line-height:1.2}
+@media(max-width:480px){header .who{display:none}header .btn.sm{padding-left:9px;padding-right:9px}}
 .net{width:10px;height:10px;border-radius:50%;background:#22c55e;flex:none}
 .net.off{background:#ef4444}.net.wait{background:#f59e0b}
 nav.top{display:none;gap:4px}
@@ -133,6 +138,7 @@ td.r{text-align:right;font-variant-numeric:tabular-nums}
 <div class="netbar" id="netbar">НЕТ СВЯЗИ С СЕРВЕРОМ — данные на экране могут быть неактуальны</div>
 <div id="app"></div>
 <div id="toast"></div>
+<script src="img/mysli.js"></script>
 <script>
 "use strict";
 /* ВЕЛЕССТРОЙ — клиент. Без внешних библиотек и CDN: работает в России без VPN, грузится только с вашего сервера. */
@@ -427,7 +433,7 @@ function vHome(){
   const res=S.data.resources||[];const c={crane:[0,0],worker:[0,0]};
   res.forEach(r=>{if(!c[r.category])return;const i=resInfo(r);c[r.category][i.st==="free"?0:1]++});
   const aps=(S.data.approvals||[]).filter(a=>can.manage()&&(a.approver_role!=="admin"||can.admin()));
-  $("#main").innerHTML=`<h1>Главная</h1>${window.Notification&&Notification.permission==="default"?`<button class="btn sm noprint" id="hntf" style="margin-bottom:10px">🔔 Включить уведомления об актах СКК на этом устройстве</button>`:""}
+  $("#main").innerHTML=`<h1>Главная</h1>${window.myslDay?`<div class="mysl noprint">💬 <i>«${esc(myslDay())}»</i><div class="muted">— мысль дня от бригадира Михалыча</div></div>`:""}${window.Notification&&Notification.permission==="default"?`<button class="btn sm noprint" id="hntf" style="margin-bottom:10px">🔔 Включить уведомления об актах СКК на этом устройстве</button>`:""}
   ${can.write()?`<a class="btn acc big noprint" href="#/receive" style="margin-bottom:14px;text-decoration:none">＋ НОВАЯ ПРИЁМКА</a>`:""}
   <div class="grid">
    <div class="kpi b" data-go="#/receive"><div class="n">${active}</div><div class="t">Активные приёмки</div></div>
@@ -791,7 +797,7 @@ async function vRequests(){
   if(!can.linkOnly()&&!S.lftT){S.lftT=1;api("GET","/api/collections/leftovers/records?perPage=1&filter="+encodeURIComponent('status="open"')).then(j=>{S.lftN=j.totalItems;S.lftT=0;const b=document.querySelector('a[href="#/leftovers"]');if(b&&j.totalItems&&!b.querySelector(".pill"))b.insertAdjacentHTML("beforeend",` <span class="pill y">${j.totalItems}</span>`)}).catch(()=>{S.lftT=0})}
   const W=can.write();
   $("#main").innerHTML=`<h1>Заявки на выдачу ТМЦ</h1>${offCanUse()&&location.protocol!=="https:"&&!/^(localhost|127\.)/.test(location.hostname)?`<div class="muted noprint" style="margin:-4px 0 8px">📴 Работа без интернета на телефоне доступна только по адресу https — попросите администратора включить (bash install.sh auto).</div>`:""}
-  ${!can.zay()?`<a class="btn noprint" href="#/leftovers" style="margin-bottom:10px;display:inline-flex;gap:6px">📦 Невыданное по заявкам${S.lftN?` <span class="pill y">${S.lftN}</span>`:""}</a>`:""}${zrOk()?` <a class="btn noprint" href="#/zreg" style="margin-bottom:10px;display:inline-flex;gap:6px">📒 Реестр заявок</a>`:""}
+  ${!can.zay()?`<a class="btn noprint" href="#/leftovers" style="margin-bottom:10px;display:inline-flex;gap:6px">📦 Невыданное по заявкам${S.lftN?` <span class="pill y">${S.lftN}</span>`:""}</a>`:""}${zrOk()?` <a class="btn noprint" href="#/zreg" style="margin-bottom:10px;display:inline-flex;gap:6px">📒 Реестр заявок</a>`:""}${!can.zay()&&!can.linkOnly()?` <button class="btn acc noprint" id="rqshm" style="margin-bottom:10px">🖼 Отчёт с фото для стропальщиков</button>`:""}
   ${W?`<div class="row noprint" style="margin-bottom:14px"><button class="btn acc big grow" id="rqNew" style="width:auto">＋ НОВАЯ ЗАЯВКА</button>${can.zay()?"":`<button class="btn big grow" id="rqShip" style="width:auto">🚚 Отгрузка из нескольких заявок</button>`}</div>`:""}
   ${rqTabs()}
   <div class="card noprint"><div class="row">
@@ -807,6 +813,17 @@ async function vRequests(){
   const go=()=>{RQ.q=$("#rqq").value.trim();RQ.mat=$("#rqm").value.trim();RQ.from=$("#rqf").value;RQ.to=$("#rqt").value;RQ.page=1;vRequests()};
   $("#rqb").onclick=go;["#rqq","#rqm"].forEach(s=>$(s).onkeydown=e=>{if(e.key==="Enter")go()});
   $("#rqx").onclick=e=>act(e.target,exportRequestList);
+  {const sm=$("#rqshm");if(sm)sm.onclick=()=>act(sm,async()=>{   // 1.9.20: несколько открытых заявок — одна ссылка
+    const L=(await all("requests",'status="open"',"-created"));if(!L.length)throw new Error("Открытых заявок нет.");
+    const F=await all("request_files","item!=''","-created").catch(()=>[]);const cnt={};F.forEach(f=>cnt[f.request]=(cnt[f.request]||0)+1);
+    modal(`<h3>🖼 Отчёт с фото для стропальщиков</h3><div class="muted">Отметьте заявки — получится одна ссылка (без входа, 30 дней): что грузить, откуда, фото и видео позиций.</div>
+     <label class="row" style="gap:6px;margin-top:8px"><input type="checkbox" id="shall" style="width:22px;height:22px"> <b>Все открытые (${L.length})</b></label>
+     <div style="max-height:50vh;overflow:auto;margin-top:6px">${L.map(r=>`<label class="row" style="gap:8px;padding:6px 0;border-bottom:1px dashed var(--line)"><input type="checkbox" data-shr="${r.id}" ${cnt[r.id]?"checked":""} style="width:22px;height:22px;flex:none">
+      <span><b>№ ${esc(r.number)}</b> ${esc(r.object||"")} <span class="muted">${esc(r.recipient||"")}</span> ${cnt[r.id]?`<span class="pill b">📷 ${cnt[r.id]}</span>`:`<span class="muted">без фото</span>`}</span></label>`).join("")}</div>
+     <div class="row" style="margin-top:10px"><button class="btn p grow" id="mok">СДЕЛАТЬ ССЫЛКУ</button><button class="btn" data-close>Отмена</button></div>`,box=>{
+      $("#shall",box).onchange=e=>box.querySelectorAll("[data-shr]").forEach(c=>c.checked=e.target.checked);
+      $("#mok",box).onclick=e=>act(e.target,async()=>{const ids=[...box.querySelectorAll("[data-shr]:checked")].map(c=>c.dataset.shr);if(!ids.length)throw new Error("Отметьте заявки.");
+        closeModal();await reqShare(ids,"Открытые заявки: "+ids.length)})})})}
   try{
     const f=await rqFilter();
     const arHint=async()=>{if(!RQ.mat&&!RQ.q)return"";try{const t=lcq(RQ.mat||RQ.q),n=(RQ.q||"").replace(/\D/g,"");
@@ -986,6 +1003,24 @@ async function uploadReqFiles(reqId,files,kind,shipmentId){
     const fd=new FormData();fd.append("request",reqId);fd.append("kind",kind);fd.append("uploaded_by",S.user.id);if(shipmentId)fd.append("shipment",shipmentId);fd.append("file",await shrink(f));
     await api("POST","/api/collections/request_files/records",fd,true)}
 }
+/* ----- 1.9.20: фото и видео к позиции заявки; отчёт с фото для стропальщиков ----- */
+const isVid=n=>/\.(mp4|mov|webm|3gp|mkv|avi)$/i.test(String(n||""));
+function imedStrip(list,ft,W){if(!list.length)return "";return `<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">${list.map(a=>{const u="/api/files/request_files/"+a.id+"/"+encodeURIComponent(a.file)+"?token="+ft;
+  const del=W&&(can.manage()||a.uploaded_by===S.user.id);
+  return `<div style="position:relative">${del?`<button class="phx noprint" data-fdel="${a.id}" data-fn="${esc((isVid(a.file)?"видео":"фото")+" позиции от "+dt(a.created))}" title="Удалить" aria-label="Удалить">✕</button>`:""}<a href="${u}" target="_blank" rel="noopener">${isVid(a.file)
+    ?`<div style="width:96px;height:96px;border-radius:8px;background:#111;color:#fff;display:flex;align-items:center;justify-content:center;flex-direction:column;font-size:28px">▶<span style="font-size:11px">видео</span></div>`
+    :`<img src="${u}&thumb=200x200" alt="Фото позиции" style="width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">`}</a></div>`}).join("")}</div>`}
+async function imedUpload(rid,itemId,files){let n=0;for(let i=0;i<files.length;i++){let f=files[i];const v=/^video\//.test(f.type)||isVid(f.name);
+    if(v&&f.size>150*1024*1024){toast(f.name+": видео больше 150 МБ — снимите короче (до 1 мин.)","err");continue}
+    toast(`Загрузка ${i+1} из ${files.length}${v?" (видео — подождите)":""}…`);
+    try{if(!v)f=await shrink(f);const fd=new FormData();fd.append("request",rid);fd.append("item",itemId);fd.append("kind","item");fd.append("uploaded_by",S.user.id);fd.append("file",f);
+      await api("POST","/api/collections/request_files/records",fd,true);n++}catch(e){toast((f.name||"файл")+": "+e.message,"err")}}return n}
+async function reqShare(ids,title){const j=await api("POST","/api/vs/req/share",{requests:ids,title});const url=location.origin+j.url;
+  modal(`<h3>🖼 Отчёт с фото для стропальщиков</h3><div class="muted">Ссылка открывается без входа на любом телефоне, 30 дней. Там: что грузить, сколько, откуда, фото и видео. Можно распечатать.</div>
+   <input id="shu" value="${esc(url)}" readonly style="margin-top:8px" onclick="this.select()">
+   <div class="row" style="margin-top:10px;gap:6px;flex-wrap:wrap"><button class="btn p" id="shc">📋 Скопировать ссылку</button>${navigator.share?`<button class="btn" id="shs">📤 Отправить (MAX, WhatsApp…)</button>`:""}<a class="btn" href="${esc(url)}" target="_blank" rel="noopener">👁 Открыть / 🖨 печать</a><button class="btn" data-close>Закрыть</button></div>`,box=>{
+    $("#shc",box).onclick=async()=>{try{await navigator.clipboard.writeText(url);toast("Ссылка скопирована","ok")}catch(_){$("#shu",box).select();document.execCommand("copy");toast("Ссылка скопирована","ok")}};
+    const sh=$("#shs",box);if(sh)sh.onclick=()=>navigator.share({title:"ВЕЛЕССТРОЙ — что грузить",text:title||"Заявки с фото",url}).catch(()=>{})})}
 function photoStrip(list,ft){return list.length?`<div class="photos">${list.map(a=>{const u="/api/files/request_files/"+a.id+"/"+encodeURIComponent(a.file)+"?token="+ft;const img=/\.(jpe?g|png|webp)$/i.test(a.file);
   const del=can.write()&&(can.manage()||a.uploaded_by===S.user.id);const kn={shipment:"Фото погрузки",close:"Фото закрытия",signed:"Подписи",other:"Фото"}[a.kind]||"Файл";
   return `<div class="ph">${del?`<button class="phx noprint" data-fdel="${a.id}" data-fn="${esc(kn+" от "+dt(a.created))}" title="Удалить" aria-label="Удалить ${esc(kn)}">✕</button>`:""}<a href="${u}" target="_blank" rel="noopener">${img?`<img src="${u}&thumb=200x200" alt="">`:`<div style="padding:30px 8px;text-align:center">PDF</div>`}<span>${esc({shipment:"Отгрузка",close:"Закрытие",signed:"Подписи",other:"Фото"}[a.kind]||"")}</span></a></div>`}).join("")}</div>`:`<div class="muted">Нет фото</div>`}
@@ -1007,7 +1042,7 @@ async function vRequest(id,changedCols){
   const full=items.filter(i=>itemState(i)==="full").length,s=rqPill(r),sig=sigsOf(r);
   const missing=SIGNS.filter(x=>!sig[x[0]]);
   $("#main").innerHTML=`<div class="row noprint" style="margin-bottom:8px"><a class="btn sm" href="#/requests">← К заявкам</a><div class="grow"></div>
-   ${W?`<button class="btn sm" id="rqedit">✏ Изменить</button>`:""}<button class="btn sm" id="rqprint">🖨 Печать / PDF</button><button class="btn sm" id="rqxl">⬇ Excel</button></div>
+   ${W?`<button class="btn sm" id="rqedit">✏ Изменить</button>`:""}<button class="btn sm" id="rqprint">🖨 Печать / PDF</button><button class="btn sm" id="rqxl">⬇ Excel</button>${!can.zay()?`<button class="btn sm acc" id="rqsh" title="Позиции с фото и видео — распечатать или отправить стропальщикам на телефон">🖼 Отчёт с фото для стропальщиков</button>`:""}</div>
   <h1>Заявка № ${esc(r.number)} <span class="pill ${s[1]}" style="vertical-align:middle">${s[0]}</span> ${uchetPill(r)}</h1>
   ${isDebt(r)?`<div class="banner violet">ДОЛГ: ЗАЯВКА ЗАКРЫТА, НО НЕ ВСЕ ПОДПИСИ<small>Не хватает: ${missing.map(x=>esc(x[1])).join(", ")}</small></div>`:""}
   <div class="card"><div class="kv">
@@ -1026,6 +1061,7 @@ async function vRequest(id,changedCols){
     ${it.project_name&&it.project_name!==it.material?`<div class="muted">Проектное: ${esc(it.project_name)}</div>`:""}${it.name1c&&it.name1c!==it.material?`<div class="muted">В 1С: ${esc(it.name1c)}</div>`:""}${it.objcode?`<div class="muted">Объект/код: ${esc(it.objcode)}</div>`:""}${it.stock_note?`<div class="muted">Наличие: ${esc(it.stock_note)}</div>`:""}
     ${xfLine("request_item",it.extra)?`<div class="muted">${xfLine("request_item",it.extra)}</div>`:""}${acts.length?`<div style="color:var(--v);font-weight:700;margin-top:4px">⚠ Неустранённый акт № ${acts.map(a=>esc(a.act_no)).filter((v,k,a)=>a.indexOf(v)===k).join(", ")} — служебная записка</div>`:""}<div data-acn="${it.id}"></div>
     ${it.pick_place||it.pick_tool?`<div class="pickl">📍 Взяли: <b>${esc(it.pick_place||"—")}</b>${it.pick_tool?` · чем: <b>${esc(it.pick_tool)}</b>`:""} <span class="muted">(${esc(it.pick_by_name||"")}, ${dt(it.pick_at)})</span></div>`:""}
+    ${imedStrip(files.filter(f=>f.item===it.id),ft,WS)}${WS?`<label class="btn sm acc noprint" style="margin-top:4px">📷 Фото / 🎬 видео<input type="file" data-imup="${it.id}" accept="image/*,video/*" multiple hidden></label> `:""}
     <div data-phn="${it.id}"></div>${WS&&!can.zay()?`<button class="btn sm noprint" data-pick="${it.id}" style="margin-top:4px">📍 ${it.pick_place||it.pick_tool?"Изменить, откуда и чем":"Откуда взяли и чем"}</button>`:""}</div><span class="pill ${st[1]}">${st[0]}</span></div>
    <div class="row" style="margin-top:10px;align-items:flex-end">
     <div class="grow"><label class="f">Заказано</label><div style="min-height:48px;padding:10px 12px;border:1px dashed var(--line);border-radius:8px;background:var(--bg);font-weight:800">${fmtQ(it.qty_ordered)} ${esc(it.unit)}</div></div>
@@ -1048,7 +1084,7 @@ async function vRequest(id,changedCols){
    ${SIGNS.map(x=>{const v=sig[x[0]];return `<div class="chk ${v?"done":""}"><input type="checkbox" data-sig="${x[0]}" ${v?"checked":""} ${WS?"":"disabled"} aria-label="${esc(x[1])}">
      <div style="flex:1"><div class="t">${esc(x[1])}</div>${v?`<div class="muted">✔ ${v.who?esc(v.who)+" · ":""}отметил ${esc(v.name||uname(v.by))}, ${dt(v.at)}</div>`:""}</div></div>`}).join("")}
    <div class="muted" style="margin-top:6px">Подписи можно отмечать и после закрытия. Закрытая заявка без всех подписей попадает в «Долг».</div></div>
-  <h2>Фото по заявке (${files.filter(f=>!f.shipment).length})</h2><div class="card">${photoStrip(files.filter(f=>!f.shipment),ft)}
+  <h2>Фото по заявке (${files.filter(f=>!f.shipment&&!f.item).length})</h2><div class="card">${photoStrip(files.filter(f=>!f.shipment&&!f.item),ft)}
    ${WS?`<div class="row noprint" style="margin-top:10px"><select id="rfk" style="width:auto;flex:1"><option value="signed">Подписанная заявка</option><option value="close">Выданный материал</option><option value="other">Прочее</option></select>
     <label class="btn" style="flex:1">📷 Фото<input type="file" id="rfp" accept="image/*,application/pdf" multiple hidden></label></div>`:""}</div>
   <div class="card noprint">
@@ -1113,6 +1149,9 @@ async function vRequest(id,changedCols){
   const ro=$("#rqreopen");if(ro)ro.onclick=()=>reason("Открыть повторно","reopen","p","Заявка открыта");
   const ed=$("#rqedit");if(ed)ed.onclick=()=>requestForm({r,items});
   $("#rqprint").onclick=()=>printRequest(r,items);
+  {const b=$("#rqsh");if(b)b.onclick=()=>act(b,()=>reqShare([r.id],"Заявка № "+r.number+(r.object?" — "+r.object:"")))}
+  document.querySelectorAll("[data-imup]").forEach(inp=>inp.onchange=()=>{const fs=[...inp.files];inp.value="";if(!fs.length)return;
+    act(null,async()=>{const n=await imedUpload(r.id,inp.dataset.imup,fs);S.curReq=null;await vRequest(id,["request_files"]);if(n)toast("Добавлено к позиции: "+n,"ok")})});
   const na=$("#nadd");if(na){const go=()=>act(na,async()=>{const t=$("#ntx").value.trim();if(!t)throw new Error("Напишите текст заметки.");
     const rm=$("#nrm").value;await api("POST","/api/vs/request/note",{request:id,text:t,remind_at:rm?new Date(rm).toISOString():""});dirty.delete("ntx");$("#ntx").value="";await refresh();ntfLoad()},"Заметка добавлена");na.onclick=go;$("#ntx").onkeydown=e=>{if(e.key==="Enter")go()}}
   document.querySelectorAll("[data-nrem]").forEach(b=>b.onclick=()=>{const n=notes.find(x=>x.id===b.dataset.nrem);const loc=n.remind_at?new Date(new Date(String(n.remind_at).replace(" ","T")).getTime()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16):"";
