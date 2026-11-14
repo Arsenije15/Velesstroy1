@@ -15,6 +15,8 @@ header{background:var(--head);color:#fff;position:sticky;top:0;z-index:20;paddin
 header .logo{font-weight:800;letter-spacing:.04em}
 header .logo b{color:var(--acc)}
 header .sp{flex:1}
+header>*{flex-shrink:0}header nav.top{flex-shrink:1;min-width:0;flex-wrap:wrap}
+mark{background:#fde68a;color:inherit;border-radius:2px;padding:0 1px}
 header .who{font-size:13px;opacity:.85;text-align:right;line-height:1.2}
 .net{width:10px;height:10px;border-radius:50%;background:#22c55e;flex:none}
 .net.off{background:#ef4444}.net.wait{background:#f59e0b}
@@ -358,25 +360,26 @@ function shell(){
   $("#app").innerHTML=`<header><div class="logo">ВЕЛЕС<b>СТРОЙ</b></div>
   <nav class="top">${nav.map(n=>`<a href="#/${n[0]}" data-n="${n[0]}">${n[1].toUpperCase()}</a>`).join("")}</nav>
   <div class="sp"></div><div class="who">${esc(S.user.name||S.user.username)}<br><span style="opacity:.75">${esc(T.roles[S.user.role]||"")}</span></div>
-  ${ntfOk()?`<button class="btn sm" id="ntfb" title="Уведомления об актах СКК" style="background:transparent;color:#fff;border-color:#475569;position:relative">🔔<span id="ntfn" class="ntfn" hidden></span></button>`:""}<span class="net wait" id="net"></span><button class="btn sm" id="lo" style="background:transparent;color:#fff;border-color:#475569">Выход</button></header>
+  ${fndOk()?`<button class="btn sm" id="fndh" title="Поиск по всему (заявки, отгрузки, УПД, акты…)" style="background:transparent;color:#fff;border-color:#475569">🔎</button>`:""}${ntfOk()?`<button class="btn sm" id="ntfb" title="Уведомления об актах СКК" style="background:transparent;color:#fff;border-color:#475569;position:relative">🔔<span id="ntfn" class="ntfn" hidden></span></button>`:""}<span class="net wait" id="net"></span><button class="btn sm" id="lo" style="background:transparent;color:#fff;border-color:#475569">Выход</button></header>
   <main id="main"></main>
   <nav class="bottom">${nav.slice(0,6).map(n=>`<a href="#/${n[0]}" data-n="${n[0]}"><i>${n[2]}</i>${n[1]}</a>`).join("")}</nav>`;
   $("#lo").onclick=()=>{if(confirm("Выйти из системы?"))logout()};
   {const nb=$("#ntfb");if(nb){nb.onclick=ntfOpen;setTimeout(ntfLoad,1500)}}
+  {const fb=$("#fndh");if(fb)fb.onclick=()=>{location.hash="#/find"+(FND.q?"/"+encodeURIComponent(FND.q):"")}}
 }
 window.addEventListener("hashchange",route);
 function route(){if(!S.user)return;if(S.off)return offRoute();const home=can.coord()?"#/topics":can.skkView()?"#/skk":"#/home";if(!location.hash||location.hash==="#/")location.hash=home;
   if(can.coord()&&!/^#\/(topics|topic)(\/|$)/.test(location.hash)){location.hash=home;return}
   if(can.zay()&&!/^#\/(resources|requests|request|skk|oper|mpz)(\/|$)/.test(location.hash)){location.hash="#/requests";return}   // 1.9.15: «Склад: заявки»
   if(can.linkOnly()&&!can.zay()&&!(can.sklad()?/^#\/(skk|upd|oper|mpz)(\/|$)/:/^#\/(skk|upd|updedit|skkact|skkactedit|oper|mpz)(\/|$)/).test(location.hash)){location.hash="#/skk";return}   // 1.9.10: по ссылке — только «Склад / СКК»
-  if(can.skkView()&&!/^#\/(skk|upd|updedit|skkact|skkactedit|oper|mpz|topics|topic)(\/|$)/.test(location.hash)){location.hash=home;return}
+  if(can.skkView()&&!/^#\/(find|skk|upd|updedit|skkact|skkactedit|oper|mpz|topics|topic)(\/|$)/.test(location.hash)){location.hash=home;return}
   S.route=location.hash.slice(2);render(null,true)}
 let lastKey="";
 function render(changedCols,force){
   if(!S.user||!$("#main"))return;
   const [p,id]=S.route.split("/");
   document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("on",a.dataset.n===(p==="receipt"?"receive":p==="request"||p==="leftovers"?"requests":/^(upd|updedit|skkact|skkactedit|oper)$/.test(p)?"skk":p==="topic"?"topics":p)));
-  const V={leftovers:vLeftovers,fields:vFields,home:vHome,receive:vReceive,receipt:vReceipt,requests:vRequests,request:vRequest,resources:vResources,history:vHistory,rules:vRules,users:vUsers,split:vSplit,report:vReport,mpz:vMpz,skk:vSkk,upd:vUpd,updedit:vUpdEdit,skkact:vSkkAct,skkactedit:vSkkActEdit,oper:vOper,topics:vTopics,topic:vTopic}[p]||vHome;
+  const V={find:vFind,leftovers:vLeftovers,fields:vFields,home:vHome,receive:vReceive,receipt:vReceipt,requests:vRequests,request:vRequest,resources:vResources,history:vHistory,rules:vRules,users:vUsers,split:vSplit,report:vReport,mpz:vMpz,skk:vSkk,upd:vUpd,updedit:vUpdEdit,skkact:vSkkAct,skkactedit:vSkkActEdit,oper:vOper,topics:vTopics,topic:vTopic}[p]||vHome;
   if((p==="users"||p==="fields")&&!can.admin())return vHome();
   const key=S.route;if(key!==lastKey){window.scrollTo(0,0);lastKey=key;dirty.clear()}
   // Обновление пришло, пока человек вводит данные: сохраняем введённое, фокус и курсор
@@ -1920,6 +1923,84 @@ function hubBind(){const go=()=>{HUB.q=$("#hubq").value.trim();HUB.data=null;hub
   $("#hubb").onclick=go;$("#hubq").onkeydown=e=>{if(e.key==="Enter")go()};const x=$("#hubx");if(x)x.onclick=()=>{$("#hubq").value="";go()};
   document.querySelectorAll("[data-hubt]").forEach(b=>b.onclick=()=>{HUB.tab=b.dataset.hubt;hubPaint()});
   if(HUB.tab==="files"&&HUB.data&&HUB.data.files)sfBind(HUB.data.files)}
+/* ----- 1.9.17: общий поиск 🔎 по всему (заявки, отгрузки, УПД, акты, приёмка, оперативка, МПЗ, невыданное, ресурсы) ----- */
+const FND={q:"",seq:0,tab:"all",res:null};
+const fndOk=()=>!!S.user&&!can.coord()&&!can.linkOnly();
+// регистр для полей без search_lc («КМУ» / «кму» / «Кму»)
+const casev=w=>[...new Set(xv(w).flatMap(v=>[v,v.toUpperCase(),v.charAt(0).toUpperCase()+v.slice(1)]))];
+const wfilF=(q,flds,cs)=>qWords(q).map(w=>"("+flds.flatMap(f=>(cs?casev(w):xv(w)).map(v=>`${f}~"${v}"`)).join("||")+")").join("&&");
+function hlq(t,q){t=String(t==null?"":t);const W=qWords(q).filter(w=>w.length>1||/\d/.test(w)).map(w=>xv(w).map(v=>v.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|"));
+  if(!W.length)return esc(t);const re=new RegExp("("+W.join("|")+")","gi");return t.split(re).map((x,i)=>i%2?`<mark>${esc(x)}</mark>`:esc(x)).join("")}
+const FSEC=[["req","Заявки"],["ship","Отгрузки"],["upd","УПД / приход"],["skk","Акты СКК"],["jact","Журнал актов"],["rcp","Приёмка"],["oper","Оперативка"],["mpz","Остатки МПЗ"],["lft","Невыданное"],["res","Ресурсы"]];
+async function fndRun(){const my=++FND.seq;const q=FND.q;const W=qWords(q);if(!W.length){FND.res=null;return fndPaint()}
+  const L=(c,f,sort,n,ex)=>api("GET",`/api/collections/${c}/records?perPage=${n}&sort=${sort}&filter=${encodeURIComponent(f)}${ex?"&expand="+ex:""}`).then(j=>j.items).catch(()=>[]);
+  const sf=wfil(q),m=t=>wmatch(q,t);
+  const [its,rqs,upd,sk,ja,rc,op,mp,lf,shv]=await Promise.all([
+    L("request_items",wfilF(q,["search_lc","request.search_lc"]),"-created",300,"request"),L("requests",sf,"-created",100),
+    L("upd_docs","status!='draft'&&("+sf+")","-created",60),L("skk_acts",sf,"-created",60),L("acts",sf,"-created",60),L("receipts",sf,"-created",60),
+    L("oper_rows",sf,"pid,line_no",300),L("mpz_stock",sf,"name,warehouse",300),L("leftovers",sf,"-created",60),
+    L("request_shipments",wfilF(q,["vehicle","driver","note"],true),"-created",60,"request")]);
+  if(my!==FND.seq)return;
+  // заявки: позиция совпала (слова — в позиции и/или в самой заявке) или совпала сама заявка
+  const RQ=new Map(),II=new Map();const rqT=r=>[r.number,r.object,r.recipient,r.note].join(" ");
+  its.forEach(i=>{const r=i.expand&&i.expand.request;if(!r||!m(rqT(r)+" "+[i.material,i.supplier,i.rd,i.supply_doc].join(" ")))return;II.set(i.id,i);
+    const g=RQ.get(r.id)||{r,items:[]};g.items.push(i);RQ.set(r.id,g)});
+  rqs.filter(r=>m(rqT(r))).forEach(r=>{if(!RQ.has(r.id))RQ.set(r.id,{r,items:[]})});
+  // отгрузки: по заявкам с совпадением + по машине / водителю / примечанию
+  const rid=[...RQ.keys()].slice(0,60);
+  const shr=rid.length?await L("request_shipments",rid.map(x=>`request="${x}"`).join("||"),"-created",200,"request"):[];if(my!==FND.seq)return;
+  const SH=new Map();
+  shr.concat(shv).forEach(s=>{if(SH.has(s.id))return;const r=s.expand&&s.expand.request;let ln=[];try{ln=Array.isArray(s.lines)?s.lines:JSON.parse(s.lines||"[]")}catch(_){}
+    const hit=ln.filter(l=>II.has(l.item));const g=RQ.get(s.request);
+    if(hit.length||(g&&!g.items.length)||m([r?rqT(r):"",s.vehicle,s.driver,s.note].join(" ")))SH.set(s.id,{s,r,lines:hit.map(l=>({qty:l.qty,it:II.get(l.item)}))})});
+  const res=(S.data.resources||[]).filter(x=>m([x.name,x.inv_number,x.warehouse,x.unavailable_reason].join(" ")));
+  FND.res={req:[...RQ.values()],ship:[...SH.values()],upd:upd.filter(u=>m(u.search_lc)),skk:sk.filter(a=>m(a.search_lc)),jact:ja.filter(a=>m(a.search_lc)),rcp:rc.filter(x=>m(x.search_lc)),
+    oper:op.filter(x=>m(operText(x))),mpz:mp.filter(x=>m(mpzText(x))),lft:lf.filter(x=>m(x.search_lc)),res};
+  if(FND.tab!=="all"&&!(FND.res[FND.tab]||[]).length)FND.tab="all";
+  fndPaint()}
+function fndSec(k,list,q,lim){const n=list.length,L=list.slice(0,lim),h=s=>hlq(s,q);
+  const more=n>lim?`<div class="muted" style="margin-top:6px"><a href="#" data-fmore="${k}">Показать все ${n} →</a></div>`:"";
+  const row=(href,a,b,c)=>`<a class="it" href="${href}" style="display:block;padding:8px 0;border-bottom:1px dashed var(--line);color:inherit;text-decoration:none">${a}${b?`<div>${b}</div>`:""}${c?`<div class="muted">${c}</div>`:""}</a>`;
+  let body="";
+  if(k==="req")body=L.map(({r,items})=>{const p=rqPill(r)||[r.status,"gr"];return row(`#/request/${r.id}`,`<b>Заявка № ${h(r.number)}</b> <span class="pill ${p[1]}">${p[0]}</span> <span class="muted">${dt(r.created)}</span>`,h([r.object,r.recipient].filter(Boolean).join(" · ")),
+    items.slice(0,6).map(i=>`• ${h(i.material)} — ${fmtQ(i.qty_ordered)} ${esc(i.unit||"")}${num(i.qty_issued)?`, выдано ${fmtQ(i.qty_issued)}`:""}${i.pick_place?` · 📍 ${esc(i.pick_place)}`:""}`).join("<br>")+(items.length>6?`<br>… ещё ${items.length-6} поз.`:""))}).join("");
+  if(k==="ship")body=L.map(({s,r,lines})=>{const p=SHS[s.status]||[s.status,"gr"];return row(`#/request/${s.request}`,`<b>Отгрузка${r?` по заявке № ${h(r.number)}`:""}</b> <span class="pill ${p[1]}">${p[0]}</span> <span class="muted">${dt(s.sent_at||s.created)}</span>`,
+    h([s.vehicle,s.driver].filter(Boolean).join(" · "))+(r&&r.object?` <span class="muted">${h(r.object)}</span>`:""),lines.slice(0,6).map(l=>`• ${h(l.it.material)} — ${fmtQ(l.qty)} ${esc(l.it.unit||"")}`).join("<br>")+(s.note?`<div>${h(s.note)}</div>`:""))}).join("");
+  if(k==="upd")body=L.map(u=>{const p=UST[u.status]||[u.status,"gr"];const its=updItems(u).filter(x=>wmatch(q,[x.name,x.spec_name,x.code,x.pid,x.objcode].join(" ")));
+    return row(`#/upd/${u.id}`,`<b>УПД № ${h(u.number)}</b> <span class="pill ${p[1]}">${p[0]}</span> <span class="muted">${u.date?dmy(u.date):dt(u.created)}</span>`,h(u.supplier)+(u.unload_place?` <span class="muted">📍 ${esc(u.unload_place)}</span>`:""),
+      its.slice(0,6).map(x=>`• ${h(x.name)} — ${fmtQ(x.qty)} ${esc(x.unit||"")}`).join("<br>")+(its.length>6?`<br>… ещё ${its.length-6} поз.`:""))}).join("");
+  if(k==="skk")body=L.map(a=>{let rw=[];try{rw=Array.isArray(a.rows)?a.rows:JSON.parse(a.rows||"[]")}catch(_){}const hit=rw.filter(x=>wmatch(q,JSON.stringify(x)));
+    return row(`#/skkact/${a.id}`,`<b>Акт СКК № ${h(a.number)}</b> <span class="pill ${a.status==="open"?"r":"g"}">${a.status==="open"?"ОТКРЫТ":"ЗАКРЫТ"}</span> <span class="muted">${dmy(a.date)}</span>`,h(a.supplier),hit.slice(0,5).map(x=>`• ${h(x.material||x.name||"")}`).join("<br>"))}).join("");
+  if(k==="jact")body=L.map(a=>row(`#/fact/${a.id}`,`<b>Акт ${h(a.act_no)}</b> <span class="pill ${a.open?"v":"gr"}">${a.open?"НЕ УСТРАНЕНО":"УСТРАНЕНО"}</span> <span class="muted">${esc(a.act_date||"")}</span>`,h([a.supplier,a.torg].filter(Boolean).join(" · ")),h(a.material)+(a.reason?` — ${h(a.reason)}`:""))).join("");
+  if(k==="rcp")body=L.map(x=>{const p=T.rst[x.status]||[x.status,"gr"];return row(`#/receipt/${x.id}`,`<b>Приёмка УПД № ${h(x.upd_number)}</b> <span class="pill ${p[1]}">${p[0]}</span> <span class="muted">${dt(x.created)}</span>`,h(x.supplier),h([x.sender,x.vehicle].filter(Boolean).join(" · ")))}).join("");
+  if(k==="oper")body=L.map(x=>row("#/foper",`<b>${h(x.pid)}</b> · ${h(x.name_proj||x.name_supp||x.name_1c)} <span class="muted">— ${fmtQ(x.qty_c||x.qty)} ${esc(x.unit_c||x.unit)}</span>`,h(x.supplier)+" "+stagePill(x.stage),h([x.object,x.subobject,x.code,x.torg].filter(Boolean).join(" · ")))).join("");
+  if(k==="mpz")body=L.map(x=>row("#/fmpz",`${h(x.name)} <b style="white-space:nowrap">${fmtQ(x.qty_end)} ${esc(x.unit)}</b>`,"",h([x.code,whShort(x.warehouse),x.quality].filter(Boolean).join(" · ")))).join("");
+  if(k==="lft")body=L.map(x=>row("#/flft",`<b>${h(x.material)}</b> <span class="muted">— осталось ${fmtQ(num(x.qty)-num(x.issued))} ${esc(x.unit||"")}</span> <span class="pill ${x.status==="open"?"y":"gr"}">${x.status==="open"?"ОТКРЫТО":"ВЫДАНО"}</span>`,`Заявка № ${h(x.number)} · ${h(x.object)}`,h(x.recipient))).join("");
+  if(k==="res")body=L.map(x=>row("#/resources",`<b>${h(x.name)}</b> <span class="muted">${x.category==="crane"?"техника":"люди"}${x.inv_number?" · инв. "+h(x.inv_number):""}</span>`,x.unavailable?`<span class="pill r">НЕДОСТУПНО</span> ${esc(x.unavailable_reason||"")}`:"",esc(x.warehouse||""))).join("");
+  return `<div class="card" data-fsec="${k}"><h3 style="margin:0 0 4px">${FSEC.find(s=>s[0]===k)[1]} — ${n}</h3>${body}${more}</div>`}
+function fndPaint(){const b=$("#fndr");if(!b)return;const R=FND.res,q=FND.q;
+  if(!qWords(q).length){b.innerHTML=`<div class="card muted">Введите слова в любом порядке: номер заявки или УПД, материал, размер, поставщика, машину, водителя… Например: «кабель 3х2,5», «125 Иванов», «КМУ отгрузка».</div>`;return}
+  if(!R){b.innerHTML=`<div class="card muted">Ищу…</div>`;return}
+  const ks=FSEC.map(s=>s[0]).filter(k=>R[k].length),tot=ks.reduce((a,k)=>a+R[k].length,0);
+  if(!tot){b.innerHTML=`<div class="card empty">Ничего не найдено по «${esc(q)}». Проверьте слова или уберите лишнее.</div>`;return}
+  b.innerHTML=`<div class="tabs" style="margin-bottom:10px;flex-wrap:wrap"><button class="${FND.tab==="all"?"on":""}" data-ftab="all">Всё — ${tot}</button>${ks.map(k=>`<button class="${FND.tab===k?"on":""}" data-ftab="${k}">${FSEC.find(s=>s[0]===k)[1]} — ${R[k].length}</button>`).join("")}</div>
+   ${(FND.tab==="all"?ks:[FND.tab]).map(k=>fndSec(k,R[k],q,FND.tab==="all"?5:100)).join("")}`;
+  b.querySelectorAll("[data-ftab]").forEach(x=>x.onclick=()=>{FND.tab=x.dataset.ftab;fndPaint();window.scrollTo(0,0)});
+  b.querySelectorAll("[data-fmore]").forEach(x=>x.onclick=e=>{e.preventDefault();FND.tab=x.dataset.fmore;fndPaint();window.scrollTo(0,0)});
+  // переход в раздел с тем же запросом
+  b.querySelectorAll('a[href="#/foper"],a[href="#/fmpz"],a[href="#/flft"]').forEach(a=>a.onclick=e=>{e.preventDefault();const h=a.getAttribute("href");
+    if(h==="#/foper"){OPER.q=q;location.hash="#/oper"}else if(h==="#/fmpz"){MPZ.q=q;MPZ.page=1;location.hash="#/mpz"}else{LFT.q=q;location.hash="#/leftovers"}});
+  b.querySelectorAll('a[href^="#/fact/"]').forEach(a=>a.onclick=e=>{e.preventDefault();AF.q=q;AF.open="all";AF.page=1;if(SKK_T().some(t=>t[0]==="jact")){SKK.tab="jact";location.hash="#/skk"}else location.hash="#/rules/acts"})}
+async function vFind(id,changed){if(!fndOk())return vHome();if(changed&&$("#fndq"))return;   // обновления в реальном времени не сбивают ввод
+  const q0=id?decodeURIComponent(id):FND.q;if(q0!==FND.q||!FND.res){FND.q=q0;FND.res=null;FND.tab="all"}
+  $("#main").innerHTML=`<h1>🔎 Поиск по всему</h1><div class="card"><div class="row" style="gap:6px"><input id="fndq" class="grow" placeholder="Слова в любом порядке: заявка, УПД, материал, машина, водитель…" value="${esc(FND.q)}" autocomplete="off" enterkeyhint="search">
+   <button class="btn p" id="fndb">НАЙТИ</button>${FND.q?`<button class="btn" id="fndx" aria-label="Очистить">✕</button>`:""}</div>
+   <div class="muted" style="margin-top:6px">Ищет сразу в заявках, отгрузках, УПД, актах, приёмке, оперативке, остатках МПЗ, невыданном и ресурсах. Число ищется целым: «50» найдёт «50 мм», но не «150».</div></div><div id="fndr"></div>`;
+  const inp=$("#fndq");let t=0;
+  const go=()=>{const v=inp.value.trim();if(v===FND.q&&FND.res)return;FND.q=v;FND.res=null;FND.tab="all";history.replaceState(null,"","#/find"+(v?"/"+encodeURIComponent(v):""));S.route="find"+(v?"/"+encodeURIComponent(v):"");fndPaint();fndRun()};
+  inp.oninput=()=>{clearTimeout(t);t=setTimeout(go,450)};inp.onkeydown=e=>{if(e.key==="Enter"){clearTimeout(t);go()}};$("#fndb").onclick=go;
+  const x=$("#fndx");if(x)x.onclick=()=>{inp.value="";go();inp.focus()};
+  fndPaint();if(FND.q&&!FND.res)fndRun();if(!FND.q)inp.focus()}
 /* ----- «Задачи и согласования» ----- */
 const TOP={arch:false,q:"",res:"",seq:0,people:{}};
 // 1.9.6: участники по группам (Руководители, Склад, ОГИ, ОМТС, СКК, Подрядчики) — группу можно отметить целиком
