@@ -84,3 +84,30 @@ routerAdd("POST", "/api/vs/request/contact", (e) => {
   L.log($app, a, "request_contact", "requests", r.id, "Заявка № " + r.getString("number") + ": телефон " + (ph || "—") + (until ? ", забрать до " + until.split("-").reverse().join(".") : ""));
   return e.json(200, { ok: true });
 }, $apis.requireAuth("users"));
+
+// ---------- 1.9.22: заявку передали мне (фаза 2) — от этой даты считается неделя ----------
+routerAdd("POST", "/api/vs/request/handed", (e) => {
+  const L = require(`${__hooks}/lib.js`);
+  const a = L.requireRole(e, L.WRITE_ROLES);
+  const b = e.requestInfo().body || {};
+  const r = $app.findRecordById("requests", L.str(b.id));
+  if (r.getString("status") !== "open") throw new BadRequestError("Заявка не открыта.");
+  if (b.undo) {
+    if (L.role(a) !== "admin" && L.role(a) !== "manager" && r.getString("handed_by") !== a.id) throw new ForbiddenError("Вернуть «на почту» может тот, кто подтвердил, или руководитель.");
+    r.set("handed_at", ""); r.set("handed_by", "");
+    $app.saveNoValidate(r);
+    L.log($app, a, "request_handed_undo", "requests", r.id, "Заявка № " + r.getString("number") + " — снова «на почте»");
+    return e.json(200, { ok: true });
+  }
+  let d = L.str(b.date).slice(0, 10);
+  if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new BadRequestError("Неверная дата.");
+  const today = new Date(Date.now() + 3 * 3600000).toISOString().slice(0, 10);
+  if (d > today) throw new BadRequestError("Дата передачи не может быть в будущем.");
+  const created = r.getString("created").slice(0, 10);
+  if (d && d < created) throw new BadRequestError("Дата передачи раньше, чем заявка появилась (" + created.split("-").reverse().join(".") + ").");
+  const at = d && d !== today ? d + " 09:00:00.000Z" : L.fmt(new Date());
+  r.set("handed_at", at); r.set("handed_by", a.id);
+  $app.saveNoValidate(r);
+  L.log($app, a, "request_handed", "requests", r.id, "Заявка № " + r.getString("number") + " передана на склад " + at.slice(0, 10).split("-").reverse().join("."));
+  return e.json(200, { ok: true, handed_at: at });
+}, $apis.requireAuth("users"));

@@ -50,6 +50,9 @@ routerAdd("POST", "/api/vs/request/create", (e) => {
       .forEach((f) => { r.set(f[0], L.str(b[f[0]]).slice(0, f[1])); if (["from_wh", "to_org", "contract_no", "poa_no", "tmc_kind"].indexOf(f[0]) >= 0) X.remember(tx, f[0], L.str(b[f[0]])); });
     r.set("status", "open"); r.set("signatures", {}); r.set("signed_all", false);
     if (L.authId(a)) r.set("created_by", a.id);
+    // 1.9.22: новая заявка — «на почте», пока заявитель не передаст; «уже передали» — сразу в работу
+    // форма приложения всегда шлёт handed true/false; без поля (старые вызовы) — как раньше, сразу в работе
+    if (b.handed !== false) { r.set("handed_at", L.fmt(new Date())); if (L.authId(a)) r.set("handed_by", a.id); }
     r.set("warehouse", L.isSuper(a) ? "" : a.getString("warehouse"));
     tx.save(r);
     const col = tx.findCollectionByNameOrId("request_items");
