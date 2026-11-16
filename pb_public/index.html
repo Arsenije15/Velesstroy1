@@ -231,8 +231,8 @@ function sugKey(inp,e){if(!SUGP)return;const n=SUGP._v.length;
   else if(e.key==="Enter"&&SUGP._k>=0){e.preventDefault();inp.value=SUGP._v[SUGP._k];sugHide();inp._skip=1;inp.dispatchEvent(new Event("input",{bubbles:true}));inp.dispatchEvent(new Event("change",{bubbles:true}))}else if(e.key==="Escape")sugHide()}
 async function all(col,filter,sort,expand){
   let page=1,out=[];
-  for(;;){const q=new URLSearchParams({page,perPage:500});if(filter)q.set("filter",filter);if(sort)q.set("sort",sort);if(expand)q.set("expand",expand);
-    const j=await api("GET","/api/collections/"+col+"/records?"+q);out=out.concat(j.items);if(page>=j.totalPages)break;page++}
+  for(;;){const q=new URLSearchParams({page,perPage:500,skipTotal:1});if(filter)q.set("filter",filter);if(sort)q.set("sort",sort);if(expand)q.set("expand",expand);   // 1.9.26: без подсчёта total
+    const j=await api("GET","/api/collections/"+col+"/records?"+q);out=out.concat(j.items);if(j.items.length<500)break;page++}
   return out;
 }
 async function act(btn,fn,okMsg){
@@ -302,13 +302,13 @@ async function ntfLoad(){if(!ntfOk())return;
     N.forEach(n=>ev.push({t:n.remind_at,kind:"note",n}));
     const due=N.filter(n=>!NTF.seenNote.has(n.id));due.forEach(n=>{NTF.seenNote.add(n.id);if(NTF.loaded&&Date.now()-new Date(String(n.remind_at).replace(" ","T")).getTime()<600000){toast("⏰ "+n.text,"ok");try{if(window.Notification&&Notification.permission==="granted")new Notification("ВЕЛЕССТРОЙ — напоминание",{body:n.text,tag:"n"+n.id})}catch(_){}}})}catch(_){}
   // 1.9.24: напоминания складу — всё выдано, а заявка не закрыта; прошёл срок «забрать до»; УПД без приёмки больше 2 дней
-  if(can.write()&&!S.user.scope){const today=new Date(Date.now()+180*60000).toISOString().slice(0,10);
+  if(can.write()&&!S.user.scope&&(!NTF.remAt||Date.now()-NTF.remAt>=300000||NTF.remForce)){NTF.remAt=Date.now();NTF.remForce=0;NTF.rem=[];const ev0=ev.length;const today=new Date(Date.now()+180*60000).toISOString().slice(0,10);
     try{const R=await all("requests",`status="open"&&handed_at!=""`,"-updated");const ids=R.map(r=>r.id);
       if(ids.length){const its=[];for(let i=0;i<ids.length;i+=40){its.push(...await all("request_items",ids.slice(i,i+40).map(x=>`request="${x}"`).join("||"),""))}
         const g={};its.forEach(x=>(g[x.request]=g[x.request]||[]).push(x));
         R.forEach(r=>{const L=g[r.id]||[];if(L.length&&L.every(x=>num(x.qty_issued)>=num(x.qty_ordered)&&num(x.qty_ordered)>0)){const t=L.map(x=>x.updated).sort().pop();ev.push({t,kind:"rqfull",r})}
           if(r.pickup_until&&r.pickup_until<today&&L.some(x=>num(x.qty_issued)<num(x.qty_ordered)))ev.push({t:r.pickup_until+" 21:00:00.000Z",kind:"rqpick",r})})}}catch(_){}
-    try{const d2=new Date(Date.now()-2*86400000).toISOString().replace("T"," ");(await all("upd_docs",`status="new"&&created<="${d2}"`,"created")).forEach(u=>ev.push({t:new Date(new Date(String(u.created).replace(" ","T")).getTime()+2*86400000).toISOString().replace("T"," "),kind:"updnew",u}))}catch(_){}}
+    try{const d2=new Date(Date.now()-2*86400000).toISOString().replace("T"," ");(await all("upd_docs",`status="new"&&created<="${d2}"`,"created")).forEach(u=>ev.push({t:new Date(new Date(String(u.created).replace(" ","T")).getTime()+2*86400000).toISOString().replace("T"," "),kind:"updnew",u}))}catch(_){}NTF.rem=ev.slice(ev0)}else if(NTF.rem)ev.push(...NTF.rem);
   // 1.9.21: сообщения / цитаты от администратора
   try{const B=await all("broadcasts",`created>="${d14}"`,"-created");const had=!!BC.last;BC.last=B[0]||null;if(!had&&BC.last&&S.route==="home"&&!$(".mysl"))setTimeout(vHome,0);B.forEach(b=>{if(b.author!==S.user.id)ev.push({t:b.created,kind:"bc",b})})}catch(_){}
   // 1.9.19: бэкап на компьютер — раз в неделю (администратор)
@@ -346,9 +346,12 @@ function rtStart(){
   es.addEventListener("skk_acts",ev=>{actClosedNote(ev);clearTimeout(NTF.t);NTF.t=setTimeout(ntfLoad,800)});   // 1.9.13: уведомление о закрытом акте
   es.onerror=()=>{S.rt="wait";paintNet();if(es.readyState===2){clearTimeout(esRetry);esRetry=setTimeout(rtStart,4000)}};
 }
-async function flushAll(){(can.coord()?["users"]:Object.keys(LOAD)).forEach(c=>pend.add(c));pend.add("checklist_items");pend.add("attachments");pend.add("activity_log");pend.add("request_items");pend.add("request_files");clearTimeout(pendT);pendT=setTimeout(flush,50)}
+const LOAD_STATIC=new Set(["rules","checklist_templates","users","suggestions"]);   // 1.9.26: справочники приходят через realtime — в плановой перезагрузке не нужны
+async function flushAll(periodic){(can.coord()?["users"]:Object.keys(LOAD).filter(c=>!periodic||!LOAD_STATIC.has(c))).forEach(c=>pend.add(c));pend.add("checklist_items");pend.add("attachments");pend.add("activity_log");pend.add("request_items");pend.add("request_files");clearTimeout(pendT);pendT=setTimeout(flush,50)}
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&S.auth){flushAll();if(!es||es.readyState===2)rtStart()}});
-setInterval(()=>{if(S.auth&&!document.hidden&&!S.off){flushAll();offSnap(false)}},60000); // страховка при плохой связи; копия заявок для работы без сети
+let lastFull=Date.now();
+setInterval(()=>{if(!S.auth||document.hidden||S.off)return;   // 1.9.26: при живой связи изменения и так приходят сразу — полная перезагрузка редко
+  if(S.rt!=="on"||Date.now()-lastFull>=300000){lastFull=Date.now();flushAll(true)}offSnap(false)},60000); // страховка при плохой связи; копия заявок для работы без сети
 setInterval(()=>{if(S.auth&&location.hash.startsWith("#/resources"))render([])},30000); // статусы по времени
 
 /* ---------- Вход ---------- */
@@ -3724,9 +3727,19 @@ function offPaint(){let b=$("#offq");const n=OFF.box.length;if(!b&&$("header")){
 // копия заявок для работы без сети (раз в 5 минут, пока есть связь)
 async function offSnap(force){if(!offCanUse()||S.off||(!force&&Date.now()-OFF.lastSync<300000))return;OFF.lastSync=Date.now();
   try{const d90=new Date(Date.now()-90*86400000).toISOString().replace("T"," ");
+    // 1.9.26: копия для работы без сети — догружаем только изменённое с прошлого раза; целиком — раз в 2 часа
+    const prev=OFF.data&&OFF.data.user===S.user.id&&OFF.data.items?OFF.data:(await offGet("data").catch(()=>null));
+    if(!force&&prev&&prev.user===S.user.id&&prev.syncAt&&Date.now()-new Date(prev.fullAt||0).getTime()<7200000){
+      const since=new Date(new Date(prev.syncAt).getTime()-120000).toISOString().replace("T"," ");const now=new Date().toISOString();
+      const [r2,i2,s2]=await Promise.all([all("requests",`updated>="${since}"`,""),all("request_items",`updated>="${since}"`,""),all("request_shipments",`updated>="${since}"`,"")]);
+      const mg=(A,B)=>{if(!B.length)return A;const m=new Map(A.map(x=>[x.id,x]));B.forEach(x=>m.set(x.id,x));return [...m.values()]};
+      const reqs=mg(prev.requests,r2).filter(r=>r.status==="open"||r.created>=d90).sort((a,b)=>String(b.created).localeCompare(String(a.created)));const keep=new Set(reqs.map(r=>r.id));
+      OFF.data={...prev,at:now,syncAt:now,requests:reqs,items:mg(prev.items,i2).filter(x=>keep.has(x.request)),ships:mg(prev.ships||[],s2),resources:(S.data.resources||[]).map(r=>({id:r.id,name:r.name,category:r.category})),users:(S.data.users||[]).map(u=>({id:u.id,name:u.name,username:u.username}))};
+      if(r2.length||i2.length||s2.length)await offPut("data",OFF.data);return}
+    const t0=new Date().toISOString();
     const [reqs,items,ships,res]=await Promise.all([all("requests",`status="open"||created>="${d90}"`,"-created"),all("request_items",`request.status="open"||request.created>="${d90}"`,"sort"),
       all("request_shipments",`status="preparing"||status="sent"||created>="${new Date(Date.now()-14*86400000).toISOString().replace("T"," ")}"`,"-created"),Promise.resolve(S.data.resources||[])]);
-    OFF.data={at:new Date().toISOString(),user:S.user.id,requests:reqs,items,ships,resources:res.map(r=>({id:r.id,name:r.name,category:r.category})),users:(S.data.users||[]).map(u=>({id:u.id,name:u.name,username:u.username})),
+    OFF.data={at:new Date().toISOString(),syncAt:t0,fullAt:t0,user:S.user.id,requests:reqs,items,ships,resources:res.map(r=>({id:r.id,name:r.name,category:r.category})),users:(S.data.users||[]).map(u=>({id:u.id,name:u.name,username:u.username})),
       steps:sugList("steps_tpl")[0]||"",vehicles:sugList("vehicle").slice(0,40),drivers:sugList("driver").slice(0,40)};
     await offPut("data",OFF.data)}catch(_){}}
 async function offStart(){if(!offCanUse())return false;OFF.data=await offGet("data");await offLoadBox();
