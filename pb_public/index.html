@@ -291,7 +291,7 @@ const ntfKey=()=>"vs_ntf_seen_"+(S.user&&S.user.id);
 const ntfSeen=()=>{try{return localStorage.getItem(ntfKey())||""}catch(_){return ""}};
 async function ntfLoad(){if(!ntfOk())return;
   const d14=new Date(Date.now()-14*86400000).toISOString().replace("T"," "),now=new Date(),nowS=now.toISOString().replace("T"," ");const ev=[];
-  if(!can.linkOnly()||S.user.scope==="skk"){try{const L=await all("skk_acts",`created>="${d14}"||closed_at>="${d14}"`,"-created");
+  if(!appOn()&&(!can.linkOnly()||S.user.scope==="skk")){try{const L=await all("skk_acts",`created>="${d14}"||closed_at>="${d14}"`,"-created");
     L.forEach(a=>{if(a.created>=d14)ev.push({t:a.created,kind:"new",a});if(a.status==="closed"&&a.closed_at&&a.closed_at>=d14)ev.push({t:a.closed_at,kind:"closed",a})})}catch(_){}}
   // 1.9.15: моя заявка открыта дольше 7 дней
   const w7=new Date(now.getTime()-7*86400000).toISOString().replace("T"," ");
@@ -308,11 +308,11 @@ async function ntfLoad(){if(!ntfOk())return;
         const g={};its.forEach(x=>(g[x.request]=g[x.request]||[]).push(x));
         R.forEach(r=>{const L=g[r.id]||[];if(L.length&&L.every(x=>num(x.qty_issued)>=num(x.qty_ordered)&&num(x.qty_ordered)>0)){const t=L.map(x=>x.updated).sort().pop();ev.push({t,kind:"rqfull",r})}
           if(r.pickup_until&&r.pickup_until<today&&L.some(x=>num(x.qty_issued)<num(x.qty_ordered)))ev.push({t:r.pickup_until+" 21:00:00.000Z",kind:"rqpick",r})})}}catch(_){}
-    try{const d2=new Date(Date.now()-2*86400000).toISOString().replace("T"," ");(await all("upd_docs",`status="new"&&created<="${d2}"`,"created")).forEach(u=>ev.push({t:new Date(new Date(String(u.created).replace(" ","T")).getTime()+2*86400000).toISOString().replace("T"," "),kind:"updnew",u}))}catch(_){}NTF.rem=ev.slice(ev0)}else if(NTF.rem)ev.push(...NTF.rem);
+    if(!appOn())try{const d2=new Date(Date.now()-2*86400000).toISOString().replace("T"," ");(await all("upd_docs",`status="new"&&created<="${d2}"`,"created")).forEach(u=>ev.push({t:new Date(new Date(String(u.created).replace(" ","T")).getTime()+2*86400000).toISOString().replace("T"," "),kind:"updnew",u}))}catch(_){}NTF.rem=ev.slice(ev0)}else if(NTF.rem)ev.push(...NTF.rem);
   // 1.9.21: сообщения / цитаты от администратора
   try{const B=await all("broadcasts",`created>="${d14}"`,"-created");const had=!!BC.last;BC.last=B[0]||null;if(!had&&BC.last&&S.route==="home"&&!$(".mysl"))setTimeout(vHome,0);B.forEach(b=>{if(b.author!==S.user.id)ev.push({t:b.created,kind:"bc",b})})}catch(_){}
   // 1.9.19: бэкап на компьютер — раз в неделю (администратор)
-  if(can.admin()&&!S.user.scope){const l=bkLast();if(!l||Date.now()-l>7*864e5){   // время события — когда бэкап стал нужен (не «сейчас»): прочитанное не всплывает снова
+  if(can.admin()&&!S.user.scope&&!appOn()){const l=bkLast();if(!l||Date.now()-l>7*864e5){   // время события — когда бэкап стал нужен (не «сейчас»): прочитанное не всплывает снова
     let since=l?l+7*864e5:0;if(!since){try{since=+localStorage.getItem("vs_bk_due")||0;if(!since){since=Date.now();localStorage.setItem("vs_bk_due",String(since))}}catch(_){since=Date.now()}}
     ev.push({t:new Date(since).toISOString().replace("T"," "),kind:"bk"})}}
   NTF.loaded=true;
@@ -332,7 +332,7 @@ function ntfOpen(){const s=ntfSeen();
    <div style="max-height:60vh;overflow:auto;margin-top:8px">${NTF.items.map(e=>{const nw=e.t>s;
      return `<a class="it" href="${ntfHref(e)}" style="display:block;padding:10px;border-left:4px solid ${{new:"var(--r)",closed:"var(--g)",req7:"var(--o)",note:"var(--b)",bk:"var(--v)",bc:"var(--acc,#f59e0b)",rqfull:"var(--g)",rqpick:"var(--r)",updnew:"var(--o)"}[e.kind]};margin-bottom:6px;background:${nw?"#eef4ff":"#fff"};border-radius:8px;text-decoration:none;color:inherit">
       <div><b>${esc(ntfTitle(e))}</b>${nw?' <span class="pill b">НОВОЕ</span>':""} <span class="muted">${dt(e.t)}</span></div><div class="muted">${ntfSub(e)}</div></a>`}).join("")||'<div class="muted">Уведомлений нет</div>'}</div>
-   <div class="row" style="margin-top:10px;gap:6px">${can.admin()&&!S.user.scope?`<a class="btn" href="#/bc" data-bclink>📣 Сообщение всем</a>`:""}${can.write()&&!S.user.scope?`<a class="btn" href="#/walk">🚶 Обход склада</a>`:""}<button class="btn grow" data-close>Закрыть</button></div>`,box=>box.querySelectorAll("a[href]").forEach(x=>x.addEventListener("click",()=>setTimeout(closeModal,0))));
+   <div class="row" style="margin-top:10px;gap:6px">${can.admin()&&!S.user.scope&&!appOn()?`<a class="btn" href="#/bc" data-bclink>📣 Сообщение всем</a>`:""}${can.write()&&!S.user.scope&&!appOn()?`<a class="btn" href="#/walk">🚶 Обход склада</a>`:""}<button class="btn grow" data-close>Закрыть</button></div>`,box=>box.querySelectorAll("a[href]").forEach(x=>x.addEventListener("click",()=>setTimeout(closeModal,0))));
   try{if(NTF.items[0])localStorage.setItem(ntfKey(),NTF.items[0].t)}catch(_){}ntfPaint()}
 function rtStart(){
   if(es)es.close();S.rt="wait";paintNet();
@@ -380,8 +380,15 @@ async function boot(){
 
 /* ---------- Каркас ---------- */
 const NAV=[["home","Главная","⌂"],["receive","Приёмка","▣"],["requests","Заявки","▤"],["resources","Ресурсы","⚙"],["history","История","☰"],["rules","Инструкции","⚑"],["split","Поставщики","⇄"],["skk","Склад / СКК","✔"],["topics","Задачи и согласования","☑"],["report","Отчёт дня","☰"],["mpz","Остатки МПЗ","▦"],["users","Пользователи","👥"]];
+/* ----- 1.9.27: приложение для телефона (Android) — только заявки и всё, что с ними связано ----- */
+const APPM=/VSApp\//.test(navigator.userAgent);
+const appOn=()=>APPM&&!!S.user&&!S.user.scope&&!can.coord();
+if(APPM&&window.VSApp){   // мост к телефону: сохранение Excel/PDF, печать, «поделиться»
+  try{window.print=()=>VSApp.print()}catch(_){}
+  if(!navigator.share)try{navigator.share=d=>{VSApp.share([d&&d.title,d&&d.text,d&&d.url].filter(Boolean).join("\n"));return Promise.resolve()}}catch(_){}
+}
 function shell(){
-  const nav=role()==="coord"?NAV.filter(n=>n[0]==="topics"):can.zay()?[["resources","Ресурсы склада","⚙"],["requests","Мои заявки","▤"],["skk","Поиск","🔎"]]:can.linkOnly()?NAV.filter(n=>n[0]==="skk").map(n=>[n[0],skkTitle(),n[2]]):can.skkView()?NAV.filter(n=>n[0]==="skk"||n[0]==="topics"):NAV.filter(n=>n[0]!=="users"||can.admin());   // СКК и наблюдатель — только склад; участник согласований — только темы
+  const nav=appOn()?[["requests","Заявки","▤"],["find","Поиск","🔎"],["leftovers","Невыданное","📦"],...(zrOk()?[["zreg","Реестр","📒"]]:[])]:role()==="coord"?NAV.filter(n=>n[0]==="topics"):can.zay()?[["resources","Ресурсы склада","⚙"],["requests","Мои заявки","▤"],["skk","Поиск","🔎"]]:can.linkOnly()?NAV.filter(n=>n[0]==="skk").map(n=>[n[0],skkTitle(),n[2]]):can.skkView()?NAV.filter(n=>n[0]==="skk"||n[0]==="topics"):NAV.filter(n=>n[0]!=="users"||can.admin());   // СКК и наблюдатель — только склад; участник согласований — только темы
   $("#app").innerHTML=`<header><div class="logo">ВЕЛЕС<b>СТРОЙ</b></div>
   <nav class="top">${nav.map(n=>`<a href="#/${n[0]}" data-n="${n[0]}">${n[1].toUpperCase()}</a>`).join("")}</nav>
   <div class="sp"></div><div class="who">${esc(S.user.name||S.user.username)}<br><span style="opacity:.75">${esc(T.roles[S.user.role]||"")}</span></div>
@@ -394,7 +401,8 @@ function shell(){
   {const fb=$("#fndh");if(fb)fb.onclick=()=>{location.hash="#/find"+(FND.q?"/"+encodeURIComponent(FND.q):"")}}
 }
 window.addEventListener("hashchange",route);
-function route(){if(!S.user)return;if(S.off)return offRoute();const home=can.coord()?"#/topics":can.skkView()?"#/skk":"#/home";if(!location.hash||location.hash==="#/")location.hash=home;
+function route(){if(!S.user)return;if(S.off)return offRoute();const home=can.coord()?"#/topics":appOn()?"#/requests":can.skkView()?"#/skk":"#/home";if(!location.hash||location.hash==="#/")location.hash=home;
+  if(appOn()&&!/^#\/(requests|request|leftovers|find|zreg)(\/|$)/.test(location.hash)){location.hash="#/requests";return}   // 1.9.27: приложение — только заявки
   if(can.coord()&&!/^#\/(topics|topic)(\/|$)/.test(location.hash)){location.hash=home;return}
   if(can.zay()&&!/^#\/(resources|requests|request|skk|oper|mpz)(\/|$)/.test(location.hash)){location.hash="#/requests";return}   // 1.9.15: «Склад: заявки»
   if(can.linkOnly()&&!can.zay()&&!(can.sklad()?/^#\/(skk|upd|oper|mpz)(\/|$)/:/^#\/(skk|upd|updedit|skkact|skkactedit|oper|mpz)(\/|$)/).test(location.hash)){location.hash="#/skk";return}   // 1.9.10: по ссылке — только «Склад / СКК»
@@ -460,7 +468,7 @@ function vHome(){
    <div class="kpi v" data-go="#/requests" data-debt><div class="n">${(S.data.debt||[]).length}</div><div class="t">Долг: закрытые заявки без подписей</div></div>
    <div class="kpi o" data-go="#/history" data-ovr><div class="n">${(S.data.overrides||[]).length}</div><div class="t">Обходы запретов за 7 дней</div></div>
   </div>
-  <div class="row noprint" style="margin:12px 0 0"><a class="btn sm" href="/zametki/" target="_blank" rel="noopener">📝 Мои заметки (в телефоне, без интернета)</a>${urOk()?`<a class="btn sm" href="#/ureg">📗 Сводный отчёт прихода</a>`:""}${can.write()?`<button class="btn sm" id="hStrop">📋 Задача</button>`:""}<a class="btn sm" href="#/split">⇄ Распределение поставщиков</a><a class="btn sm" href="#/report">☰ Отчёт за день</a><a class="btn sm" href="#/mpz">▦ Остатки МПЗ</a><a class="btn sm" href="#/skk">✔ Склад / СКК</a></div>
+  <div class="row noprint" style="margin:12px 0 0"><a class="btn sm" href="/zametki/" target="_blank" rel="noopener">📝 Мои заметки (в телефоне, без интернета)</a>${urOk()?`<a class="btn sm" href="#/ureg">📗 Сводный отчёт прихода</a>`:""}${!APPM?`<a class="btn sm" href="/app/velesstroy-zayavki.apk" download title="Android: заявки, поиск, отгрузки, фото — без VPN">📱 Приложение «Заявки» (Android)</a>`:""}${can.write()?`<button class="btn sm" id="hStrop">📋 Задача</button>`:""}<a class="btn sm" href="#/split">⇄ Распределение поставщиков</a><a class="btn sm" href="#/report">☰ Отчёт за день</a><a class="btn sm" href="#/mpz">▦ Остатки МПЗ</a><a class="btn sm" href="#/skk">✔ Склад / СКК</a></div>
   <h2>Отгрузки сейчас</h2><div class="card list">${shipmentsBoard()}
    ${can.write()?`<div class="row noprint" style="margin-top:10px"><button class="btn sm" id="shAny">🚚 Новая отгрузка (из нескольких заявок)</button></div>`:""}</div>
   ${can.manage()?`<h2>Ожидают вашего решения (${aps.length})</h2><div class="card list">${aps.length?aps.map(apRow).join(""):`<div class="empty">Нет запросов</div>`}</div>`:""}
@@ -2461,11 +2469,11 @@ async function fndRun(){const my=++FND.seq;const q=FND.q;const W=qWords(q);if(!W
   const FAIL=[];const L=(c,f,sort,n,ex)=>{const u=`/api/collections/${c}/records?perPage=${n}&sort=${sort}&filter=${encodeURIComponent(f)}${ex?"&expand="+ex:""}`;
     return api("GET",u).catch(e=>e.status===403?{items:[]}:new Promise(r=>setTimeout(r,700)).then(()=>api("GET",u))).then(j=>j.items).catch(()=>{FAIL.push(c);return []})};   // 1.9.18: сбой — ещё раз
   const sf=wfil(q),m=t=>wmatch(q,t);
-  const zrP=zrOk()?L("zreg",sf,"row_no",60):Promise.resolve([]);const urP=urOk()?L("ureg",sf,"-recv_date",60):Promise.resolve([]);
+  const zrP=zrOk()?L("zreg",sf,"row_no",60):Promise.resolve([]);const urP=urOk()&&!appOn()?L("ureg",sf,"-recv_date",60):Promise.resolve([]);const NO=appOn(),E=()=>Promise.resolve([]);
   const [its,rqs,upd,sk,ja,rc,op,mp,lf,shv]=await Promise.all([
     L("request_items",wfilF(q,["search_lc","request.search_lc"]),"-created",300,"request"),L("requests",sf,"-created",100),
-    L("upd_docs","status!='draft'&&("+sf+")","-created",60),L("skk_acts",sf,"-created",60),L("acts",sf,"-created",60),L("receipts",sf,"-created",60),
-    L("oper_rows",sf,"pid,line_no",300),L("mpz_stock",sf,"name,warehouse",300),L("leftovers",sf,"-created",60),
+    NO?E():L("upd_docs","status!='draft'&&("+sf+")","-created",60),NO?E():L("skk_acts",sf,"-created",60),NO?E():L("acts",sf,"-created",60),NO?E():L("receipts",sf,"-created",60),
+    NO?E():L("oper_rows",sf,"pid,line_no",300),NO?E():L("mpz_stock",sf,"name,warehouse",300),L("leftovers",sf,"-created",60),
     L("request_shipments",wfilF(q,["vehicle","driver","note"],true),"-created",60,"request")]);
   if(my!==FND.seq)return;
   // заявки: позиция совпала (слова — в позиции и/или в самой заявке) или совпала сама заявка
@@ -2480,7 +2488,7 @@ async function fndRun(){const my=++FND.seq;const q=FND.q;const W=qWords(q);if(!W
   shr.concat(shv).forEach(s=>{if(SH.has(s.id))return;const r=s.expand&&s.expand.request;let ln=[];try{ln=Array.isArray(s.lines)?s.lines:JSON.parse(s.lines||"[]")}catch(_){}
     const hit=ln.filter(l=>II.has(l.item));const g=RQ.get(s.request);
     if(hit.length||(g&&!g.items.length)||m([r?rqT(r):"",s.vehicle,s.driver,s.note].join(" ")))SH.set(s.id,{s,r,lines:hit.map(l=>({qty:l.qty,it:II.get(l.item)}))})});
-  const res=(S.data.resources||[]).filter(x=>m([x.name,x.inv_number,x.warehouse,x.unavailable_reason].join(" ")));
+  const res=NO?[]:(S.data.resources||[]).filter(x=>m([x.name,x.inv_number,x.warehouse,x.unavailable_reason].join(" ")));
   FND.res={req:[...RQ.values()],ship:[...SH.values()],upd:upd.filter(u=>m(u.search_lc)),skk:sk.filter(a=>m(a.search_lc)),jact:ja.filter(a=>m(a.search_lc)),rcp:rc.filter(x=>m(x.search_lc)),
     oper:op.filter(x=>m(operText(x))),mpz:mp.filter(x=>m(mpzText(x))),lft:lf.filter(x=>m(x.search_lc)),zreg:(await zrP).filter(x=>m(x.search_lc)),ureg:(await urP).filter(x=>m(x.search_lc)),res};
   FND.fail=FAIL.length;
@@ -3411,7 +3419,8 @@ ${sh.merges&&sh.merges.length?`<mergeCells count="${sh.merges.length}">${sh.merg
   const end=new Uint8Array([...u32(0x06054b50),...u16(0),...u16(0),...u16(files.length),...u16(files.length),...u32(cdSize),...u32(off),...u16(0)]);
   return new Blob([...parts,...cd,end],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
 }
-function saveBlob(blob,name){const u=URL.createObjectURL(blob);const a=document.createElement("a");a.href=u;a.download=name;document.body.appendChild(a);a.click();
+function saveBlob(blob,name){if(APPM&&window.VSApp&&VSApp.save){const fr=new FileReader();fr.onload=()=>{try{VSApp.save(name,blob.type||"application/octet-stream",String(fr.result).split(",")[1]||"")}catch(e){toast(e.message,"err")}};fr.readAsDataURL(blob);window.__lastExport={name,blob};return}   // 1.9.27: приложение — в «Загрузки»
+  const u=URL.createObjectURL(blob);const a=document.createElement("a");a.href=u;a.download=name;document.body.appendChild(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(u);a.remove()},4000);window.__lastExport={name,blob}}
 const TR={а:"a",б:"b",в:"v",г:"g",д:"d",е:"e",ё:"e",ж:"zh",з:"z",и:"i",й:"y",к:"k",л:"l",м:"m",н:"n",о:"o",п:"p",р:"r",с:"s",т:"t",у:"u",ф:"f",х:"h",ц:"ts",ч:"ch",ш:"sh",щ:"sch",ъ:"",ы:"y",ь:"",э:"e",ю:"yu",я:"ya"};
 const fname=s=>String(s).split("").map(c=>{const l=c.toLowerCase();return TR[l]!==undefined?(c===l?TR[l]:TR[l].toUpperCase()):c}).join("").replace(/[^A-Za-z0-9._-]+/g,"_"); // латиница: имя файла не теряется на телефоне
