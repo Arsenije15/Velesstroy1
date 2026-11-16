@@ -395,14 +395,14 @@ function route(){if(!S.user)return;if(S.off)return offRoute();const home=can.coo
   if(can.coord()&&!/^#\/(topics|topic)(\/|$)/.test(location.hash)){location.hash=home;return}
   if(can.zay()&&!/^#\/(resources|requests|request|skk|oper|mpz)(\/|$)/.test(location.hash)){location.hash="#/requests";return}   // 1.9.15: «Склад: заявки»
   if(can.linkOnly()&&!can.zay()&&!(can.sklad()?/^#\/(skk|upd|oper|mpz)(\/|$)/:/^#\/(skk|upd|updedit|skkact|skkactedit|oper|mpz)(\/|$)/).test(location.hash)){location.hash="#/skk";return}   // 1.9.10: по ссылке — только «Склад / СКК»
-  if(can.skkView()&&!/^#\/(find|skk|upd|updedit|skkact|skkactedit|oper|mpz|topics|topic)(\/|$)/.test(location.hash)){location.hash=home;return}
+  if(can.skkView()&&!/^#\/(find|ureg|skk|upd|updedit|skkact|skkactedit|oper|mpz|topics|topic)(\/|$)/.test(location.hash)){location.hash=home;return}
   S.route=location.hash.slice(2);render(null,true)}
 let lastKey="";
 function render(changedCols,force){
   if(!S.user||!$("#main"))return;
   const [p,id]=S.route.split("/");
   document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("on",a.dataset.n===(p==="receipt"?"receive":p==="request"||p==="leftovers"?"requests":/^(upd|updedit|skkact|skkactedit|oper)$/.test(p)?"skk":p==="topic"?"topics":p)));
-  const V={walk:vWalk,bc:vBc,zreg:vZreg,backup:vBackup,find:vFind,leftovers:vLeftovers,fields:vFields,home:vHome,receive:vReceive,receipt:vReceipt,requests:vRequests,request:vRequest,resources:vResources,history:vHistory,rules:vRules,users:vUsers,split:vSplit,report:vReport,mpz:vMpz,skk:vSkk,upd:vUpd,updedit:vUpdEdit,skkact:vSkkAct,skkactedit:vSkkActEdit,oper:vOper,topics:vTopics,topic:vTopic}[p]||vHome;
+  const V={ureg:vUreg,walk:vWalk,bc:vBc,zreg:vZreg,backup:vBackup,find:vFind,leftovers:vLeftovers,fields:vFields,home:vHome,receive:vReceive,receipt:vReceipt,requests:vRequests,request:vRequest,resources:vResources,history:vHistory,rules:vRules,users:vUsers,split:vSplit,report:vReport,mpz:vMpz,skk:vSkk,upd:vUpd,updedit:vUpdEdit,skkact:vSkkAct,skkactedit:vSkkActEdit,oper:vOper,topics:vTopics,topic:vTopic}[p]||vHome;
   if((p==="users"||p==="fields")&&!can.admin())return vHome();
   const key=S.route;if(key!==lastKey){window.scrollTo(0,0);lastKey=key;dirty.clear()}
   // Обновление пришло, пока человек вводит данные: сохраняем введённое, фокус и курсор
@@ -457,7 +457,7 @@ function vHome(){
    <div class="kpi v" data-go="#/requests" data-debt><div class="n">${(S.data.debt||[]).length}</div><div class="t">Долг: закрытые заявки без подписей</div></div>
    <div class="kpi o" data-go="#/history" data-ovr><div class="n">${(S.data.overrides||[]).length}</div><div class="t">Обходы запретов за 7 дней</div></div>
   </div>
-  <div class="row noprint" style="margin:12px 0 0"><a class="btn sm" href="/zametki/" target="_blank" rel="noopener">📝 Мои заметки (в телефоне, без интернета)</a>${can.write()?`<button class="btn sm" id="hStrop">📋 Задача</button>`:""}<a class="btn sm" href="#/split">⇄ Распределение поставщиков</a><a class="btn sm" href="#/report">☰ Отчёт за день</a><a class="btn sm" href="#/mpz">▦ Остатки МПЗ</a><a class="btn sm" href="#/skk">✔ Склад / СКК</a></div>
+  <div class="row noprint" style="margin:12px 0 0"><a class="btn sm" href="/zametki/" target="_blank" rel="noopener">📝 Мои заметки (в телефоне, без интернета)</a>${urOk()?`<a class="btn sm" href="#/ureg">📗 Сводный отчёт прихода</a>`:""}${can.write()?`<button class="btn sm" id="hStrop">📋 Задача</button>`:""}<a class="btn sm" href="#/split">⇄ Распределение поставщиков</a><a class="btn sm" href="#/report">☰ Отчёт за день</a><a class="btn sm" href="#/mpz">▦ Остатки МПЗ</a><a class="btn sm" href="#/skk">✔ Склад / СКК</a></div>
   <h2>Отгрузки сейчас</h2><div class="card list">${shipmentsBoard()}
    ${can.write()?`<div class="row noprint" style="margin-top:10px"><button class="btn sm" id="shAny">🚚 Новая отгрузка (из нескольких заявок)</button></div>`:""}</div>
   ${can.manage()?`<h2>Ожидают вашего решения (${aps.length})</h2><div class="card list">${aps.length?aps.map(apRow).join(""):`<div class="empty">Нет запросов</div>`}</div>`:""}
@@ -2230,6 +2230,81 @@ async function vZreg(){if(!zrOk())return vHome();
     $("#zrl").innerHTML=R.length?`<div class="muted">Найдено: ${R.length}${R.length===100?"+":""}</div><div class="tw"><table>${TH}${R.map(r=>pz(r)).join("")}</table></div>`:`<div class="muted">Ничего не найдено</div>`};
   $("#zrq").oninput=()=>{clearTimeout(t);t=setTimeout(sr,400)};if(ZR.q)sr()}
 
+/* ----- 1.9.25: «Единый сводный отчёт» прихода — какой кладовщик принял УПД, когда, статус в 1С ----- */
+const urOk=()=>!!S.user&&!S.user.scope&&["admin","manager","storekeeper","viewer","skk"].includes(role());
+const UR={q:"",from:"",to:"",keeper:""};
+const urD=d=>/^\d{4}-\d{2}-\d{2}$/.test(d||"")?dmy(d):(d||"");
+const urPill=st=>{if(!st)return "";const l=lcq(st);const c=/ошибк|аннулир/.test(l)?"r":/^проведено/.test(l)?"g":/^не провед/.test(l)?"r":"y";return `<span class="pill ${c}">${esc(st)}</span>`};
+const urIso=v=>{const d=xlDate(v);let m=String(d||"").match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})/);if(m){const y=m[3].length===2?"20"+m[3]:m[3];return `${y}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`}
+  m=String(d||"").match(/^(\d{4})-(\d{2})-(\d{2})/);return m?m[0]:""};
+const URC=[["gm_no",/^№\s*п\/п/],["date_in",/дата\s*занесения/],["kind",/^вид\s*поставки/],["short",/^краткое/],["supplier",/^организация.*поставщик/],["contract",/^№\s*договора/],["contract_date",/^дата\s*договора/],
+  ["spec",/^№\s*спецификаци/],["doc1c_ship",/документа.*отгрузк/],["doc_kind",/^вид\s*\(\s*упд/],["number",/^№\s*\(\s*упд/],["doc_date",/^дата\s*\(\s*упд/],["amount",/^сумма\s*\(\s*упд/],["doc_form",/^вид\s*док-та\s*\(\s*упд/],
+  ["keeper",/принял\s*кладовщик/],["recv_date",/дата\s*принятия\s*груза/],["nc_has",/^наличие\s*актов/],["nc_no",/^№\s*актов/],["nc_date",/^дата\s*акта/],["status",/^статус\s*документа/],["doc1c",/в\s*1[сc]\s*усо/],
+  ["orig_date",/оригиналов/],["buh_no",/реестр\s*передачи\s*в\s*бухгалтерию\s*№/],["buh_date",/реестр\s*передачи\s*в\s*бухгалтерию\s*дата/],["note",/^примечание/]];
+const URDT={date_in:1,contract_date:1,doc_date:1,recv_date:1,nc_date:1,orig_date:1,buh_date:1};
+async function urImport(f,say){if(say)say("Читаю файл…");const x=await readXlsx(f);let pick=null;
+  for(const sh of x.sheets){const rows=await x.rows(sh);for(let i=0;i<Math.min(rows.length,15);i++){const r=(rows[i]||[]).map(c=>String(c==null?"":c).replace(/\s+/g," ").trim().toLowerCase());
+    if(r.some(c=>/принял\s*кладовщик/.test(c))&&r.some(c=>/^№\s*\(\s*упд/.test(c))){pick={rows,hi:i,name:sh.name,H:r};break}}if(pick)break}
+  if(!pick)throw new Error("Не найден лист с колонками «№ (УПД/ТОРГ-12)» и «Принял кладовщик».");
+  const ci={};URC.forEach(([k,re])=>{const i=pick.H.findIndex((h,j)=>re.test(h)&&!Object.values(ci).includes(j));if(i>=0)ci[k]=i});
+  const out=[];for(let i=pick.hi+1;i<pick.rows.length;i++){const r=pick.rows[i];if(!r)continue;const g=k=>ci[k]==null?"":r[ci[k]];
+    const no=xlStr(typeof g("number")==="number"?String(g("number")):g("number"));if(!no||no==="13"&&i<=pick.hi+2)continue;
+    const o={row_no:i+1};URC.forEach(([k])=>{const v=g(k);o[k]=URDT[k]?urIso(v):k==="amount"?(typeof v==="number"?v:xlStr(v)):k==="doc1c"||k==="doc1c_ship"||k==="spec"?(typeof v==="number"?String(v):xlStr(v)):xlStr(v)});o.number=no;out.push(o)}
+  if(!out.length)throw new Error("В отчёте нет строк с номером УПД.");
+  for(let i=0;i<out.length;i+=2000){if(say)say(`Загружаю сводный отчёт: ${Math.min(i+2000,out.length)} из ${out.length}…`);
+    await api("POST","/api/vs/ureg/import",{rows:out.slice(i,i+2000),first:i===0,last:i+2000>=out.length,file_name:f.name+" / лист «"+pick.name+"»",total:out.length})}
+  return out.length}
+// найти строку сводного отчёта для УПД приложения: номер (или его цифры) + дата + поставщик
+async function urFind(u){const nn=lcq(u.number).replace(/№/g,"").replace(/\s+/g,"");const d=nn.replace(/\D/g,"").replace(/^0+/,"");if(!nn)return [];
+  const L=await all("ureg",`number_n="${flt(nn)}"`+(d.length>=3?`||num_d="${d}"`:""),"-recv_date").catch(()=>[]);const ud=String(u.date||"").slice(0,10);const st=new Set(cToks(u.supplier).filter(w=>!/^(ооо|оао|зао|пао|ао|ип)$/.test(w)));
+  return L.map(r=>{let sc=r.number_n===nn?2:1;if(ud&&r.doc_date===ud)sc+=2;if(st.size&&cToks(r.supplier).some(w=>st.has(w)))sc+=1.5;return {r,sc}}).filter(x=>x.sc>=3||(x.sc>=2&&L.length===1)).sort((a,b)=>b.sc-a.sc).map(x=>x.r)}
+async function uregBlock(u){const box=$("#updreg");if(!box||!urOk())return;const L=await urFind(u);if(!$("#updreg"))return;
+  if(!L.length){const m=await api("GET","/api/vs/ureg/meta").catch(()=>({count:0}));if(!$("#updreg"))return;box.innerHTML=m.count?`<div class="card"><b>📗 Сводный отчёт прихода:</b> <span class="pill y">НЕ НАЙДЕН</span> <span class="muted">УПД № ${esc(u.number)} от ${dmy(u.date)} в отчёте нет.</span> <a href="#/ureg">открыть отчёт</a></div>`:"";return}
+  box.innerHTML=`<div class="card"><h3 style="margin-top:0">📗 Сводный отчёт прихода${L.length>1?` <span class="pill y">${L.length} строки</span>`:""} <a class="btn sm noprint" href="#/ureg" style="float:right">открыть отчёт</a></h3>${L.slice(0,3).map(r=>`<div class="kv" style="margin-bottom:6px">
+    <b>Принял кладовщик</b><span><b>${esc(r.keeper||"—")}</b>${r.recv_date?" · "+urD(r.recv_date):""}</span><b>Статус</b><span>${urPill(r.status)||"—"}${r.doc1c?` · № в 1С УСО ${esc(r.doc1c)}`:""}</span>
+    <b>Строка</b><span>${esc(r.gm_no)} · ${esc(r.doc_kind||"УПД")} № ${esc(r.number)} от ${urD(r.doc_date)}${r.amount?` · ${money(r.amount)} ₽`:""}${r.doc_form?` · ${esc(r.doc_form)}`:""}</span>
+    ${r.contract?`<b>Договор / спец.</b><span>${esc(r.contract)}${r.contract_date?" от "+urD(r.contract_date):""}${r.spec?` · спец. № ${esc(r.spec)}${r.doc1c_ship?"":""}`:""}</span>`:""}
+    ${r.nc_no||r.nc_has?`<b>Акты несоответствия</b><span>${esc([r.nc_has,r.nc_no&&"№ "+r.nc_no,r.nc_date&&"от "+urD(r.nc_date)].filter(Boolean).join(" "))}</span>`:""}
+    ${r.orig_date?`<b>Оригиналы получены</b><span>${urD(r.orig_date)}</span>`:""}${r.note?`<b>Примечание</b><span>${esc(r.note)}</span>`:""}</div>`).join("")}</div>`}
+async function vUreg(){if(!urOk())return vHome();
+  const m=await api("GET","/api/vs/ureg/meta").catch(()=>({count:0}));if(S.route!=="ureg")return;const W=["admin","manager","storekeeper"].includes(role());
+  const y0=new Date(Date.now()+180*60000);const def1=new Date(y0.getFullYear(),y0.getMonth(),1);const iso=d=>new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+  if(!UR.from){UR.from=iso(def1);UR.to=iso(y0)}
+  $("#main").innerHTML=`<h1>📗 Сводный отчёт прихода</h1>
+   <div class="card"><div class="row" style="align-items:center;gap:8px;flex-wrap:wrap"><div class="grow">${m.count?`В отчёте <b>${m.count}</b> строк${m.last?` · ${esc(String(m.last.summary||"").replace(/^Сводный отчёт:\s*/,""))} · загружен ${dt(m.last.at)} (${esc(m.last.user||"")})`:""}`:`<span class="muted">Отчёт ещё не загружен.</span>`}</div>
+    ${W?`<label class="btn acc">⬆ Загрузить отчёт (.xlsx)<input type="file" id="urf" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden></label>`:""}</div>
+    <div class="muted" id="urp" style="margin-top:6px">${W?"Файл «Единый сводный отчёт» (лист «Приход собств»). Новая загрузка заменяет прежний отчёт целиком. На странице каждого УПД видно, кто его принял.":""}</div></div>
+   <div class="card"><h3 style="margin-top:0">По кладовщикам</h3><div class="g2x"><div><label class="f">Принят с</label><input id="urf1" type="date" value="${UR.from}"></div><div><label class="f">по</label><input id="urf2" type="date" value="${UR.to}"></div></div>
+    <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap"><button class="btn p" id="urk">ПОКАЗАТЬ</button><button class="btn" id="urkx">⬇ Excel по кладовщикам</button><button class="btn" id="urmx" title="УПД, которые есть в приложении, но нет в сводном отчёте">⬇ УПД из приложения, которых нет в отчёте</button></div><div id="urkl" style="margin-top:8px"></div></div>
+   <div class="card"><h3 style="margin-top:0">Поиск</h3><input id="urq" placeholder="🔎 № УПД, поставщик, кладовщик, № 1С, договор…" value="${esc(UR.q)}"><div id="url" style="margin-top:8px"></div></div>`;
+  const TH=`<tr><th>№ п/п</th><th>Документ</th><th>Поставщик</th><th>Что</th><th>Сумма</th><th>Принял</th><th>Дата приёмки</th><th>Статус</th><th>№ 1С</th><th>Акты</th></tr>`;
+  const tr=r=>`<tr><td>${esc(r.gm_no)}</td><td><b>${esc(r.doc_kind||"УПД")} № ${esc(r.number)}</b><div class="muted">от ${urD(r.doc_date)}</div></td><td>${esc(r.supplier)}</td><td>${esc(r.short)}</td><td style="text-align:right">${r.amount?money(r.amount):""}</td><td><b>${esc(r.keeper)}</b></td><td>${urD(r.recv_date)}</td><td>${urPill(r.status)}</td><td>${esc(r.doc1c)}</td><td>${esc([r.nc_no,r.nc_date&&urD(r.nc_date)].filter(Boolean).join(" от "))}</td></tr>`;
+  const rng=()=>{const a=$("#urf1").value,b=$("#urf2").value;if(!a||!b||b<a)throw new Error("Проверьте даты.");UR.from=a;UR.to=b;return [a,b]};
+  const keepers=async()=>{const [a,b]=rng();return [(await api("GET","/api/vs/ureg/keepers?"+new URLSearchParams({from:a,to:b}))).rows,a,b]};
+  const showK=async()=>{const [K]=await keepers();const l=$("#urkl");if(!l)return;const tot=K.reduce((s,x)=>s+x.n,0);
+    l.innerHTML=K.length?`<div class="tw"><table><tr><th>Кладовщик</th><th>Принято док.</th><th>Сумма, ₽</th><th>Проведено в 1С</th><th>С ошибкой</th><th>Не проведено</th><th>С актами</th><th></th></tr>${K.map(k=>`<tr><td><b>${esc(k.keeper)}</b></td><td style="text-align:right"><b>${k.n}</b></td><td style="text-align:right">${money(k.sum)}</td><td style="text-align:right">${k.posted?`<span class="pill g">${k.posted}</span>`:0}</td><td style="text-align:right">${k.err?`<span class="pill y">${k.err}</span>`:0}</td><td style="text-align:right">${k.notp?`<span class="pill r">${k.notp}</span>`:0}</td><td style="text-align:right">${k.nc}</td><td><button class="btn sm" data-urk="${esc(k.keeper)}">список</button></td></tr>`).join("")}<tr><td><b>ИТОГО</b></td><td style="text-align:right"><b>${tot}</b></td><td colspan="6"></td></tr></table></div><div id="urkd"></div>`:`<div class="muted">За эти дни приёмок в отчёте нет.</div>`;
+    l.querySelectorAll("[data-urk]").forEach(b=>b.onclick=()=>act(b,async()=>{const k=b.dataset.urk;const R=await all("ureg",`recv_date>="${UR.from}"&&recv_date<="${UR.to}"&&keeper="${flt(k==="—"?"":k)}"`,"recv_date,row_no");const d=$("#urkd");if(d)d.innerHTML=`<h3>${esc(k)} — ${R.length}</h3><div class="tw"><table>${TH}${R.map(tr).join("")}</table></div>`}))};
+  $("#urk").onclick=e=>act(e.target,showK);
+  $("#urkx").onclick=e=>act(e.target,async()=>{const [K,a,b]=await keepers();if(!K.length)throw new Error("За эти дни приёмок нет.");const T=XS.cC;
+    const r1=[[{v:`Приёмка по кладовщикам ${dmy(a)} – ${dmy(b)} (сводный отчёт)`,s:XS.title}],[],["Кладовщик","Принято документов","Сумма, ₽","Проведено в 1С","С ошибкой","Не проведено","С актами несоответствия","Первая приёмка","Последняя"].map(v=>({v,s:XS.head}))];
+    K.forEach(k=>r1.push([{v:k.keeper,s:T},{v:k.n,s:XS.cN},{v:Math.round(k.sum*100)/100,s:XS.cN},{v:k.posted,s:k.posted?XS.cG:XS.cN},{v:k.err,s:k.err?XS.sY:XS.cN},{v:k.notp,s:k.notp?XS.cR:XS.cN},{v:k.nc,s:XS.cN},{v:xlSerial(k.first),s:XS.cD},{v:xlSerial(k.last),s:XS.cD}]));
+    r1.push([{v:"ИТОГО",s:XS.lbl},{v:K.reduce((s,x)=>s+x.n,0),s:XS.lbl},{v:Math.round(K.reduce((s,x)=>s+x.sum,0)*100)/100,s:XS.lbl}]);
+    const R=await all("ureg",`recv_date>="${a}"&&recv_date<="${b}"`,"keeper,recv_date,row_no");
+    const r2=[["Кладовщик","Дата приёмки","№ п/п","Вид","№ документа","Дата документа","Поставщик","Что","Сумма, ₽","Статус","№ 1С УСО","Акт несоответствия","Примечание"].map(v=>({v,s:XS.head}))];
+    R.forEach(x=>{const l=lcq(x.status);const ss=/ошибк|аннулир/.test(l)?XS.sY:/^проведено/.test(l)?XS.cG:/^не провед/.test(l)||!l?XS.cR:T;
+      r2.push([{v:x.keeper,s:T},{v:xlSerial(x.recv_date),s:XS.cD},{v:x.gm_no,s:T},{v:x.doc_kind,s:T},{v:x.number,s:T},{v:xlSerial(x.doc_date),s:XS.cD},{v:x.supplier,s:T},{v:x.short,s:T},{v:x.amount||"",s:XS.cN},{v:x.status,s:ss},{v:x.doc1c,s:T},{v:[x.nc_no,x.nc_date&&urD(x.nc_date)].filter(Boolean).join(" от "),s:T},{v:x.note,s:T}])});
+    saveBlob(xlsxBlob([{name:"По кладовщикам",cols:[26,12,16,14,12,14,14,13,13],rows:r1,merges:["A1:I1"],freeze:3},{name:"Документы",cols:[22,12,12,8,18,12,34,22,14,26,12,20,30],rows:r2,freeze:1}]),`Priemka_kladovshiki_${a}_${b}.xlsx`)});
+  $("#urmx").onclick=e=>act(e.target,async()=>{const [a,b]=rng();const U=await all("upd_docs",`status!="draft"&&date>="${a}"&&date<="${b} 23:59:59"`,"date");if(!U.length)throw new Error("В приложении нет УПД за эти дни.");
+    const miss=[];for(const u of U){const f=await urFind(u);if(!f.length)miss.push(u)}const T=XS.cC;
+    const r=[[{v:`УПД в приложении, которых нет в сводном отчёте: ${miss.length} из ${U.length} (${dmy(a)} – ${dmy(b)})`,s:XS.title}],[],["№ УПД","Дата","Поставщик","ИНН","Статус в приложении","Загружен"].map(v=>({v,s:XS.head}))];
+    miss.forEach(u=>r.push([{v:u.number,s:XS.cR},{v:xlSerial(String(u.date||"").slice(0,10)),s:XS.cD},{v:u.supplier,s:T},{v:u.inn||"",s:T},{v:(UST[u.status]||[u.status])[0],s:T},{v:dt(u.created),s:T}]));
+    saveBlob(xlsxBlob([{name:"Нет в отчёте",cols:[16,12,40,14,18,18],rows:r,merges:["A1:F1"],freeze:3}]),`UPD_net_v_otchete_${a}_${b}.xlsx`);toast(`Нет в отчёте: ${miss.length} из ${U.length}`,miss.length?"err":"ok")});
+  const ff=$("#urf");if(ff)ff.onchange=e=>{const f=e.target.files[0];e.target.value="";if(!f)return;const p=$("#urp");act(null,async()=>{try{const n=await urImport(f,t=>{if(p)p.textContent=t});await vUreg();toast("Сводный отчёт загружен: "+n+" строк","ok")}catch(e){const q=$("#urp");if(q)q.textContent="Отчёт не загружен: "+e.message+" Загрузите файл ещё раз.";throw e}})};
+  let t=0;const sr=async()=>{const q=$("#urq").value.trim();UR.q=q;const l=$("#url");if(!l)return;if(!q){l.innerHTML="";return}
+    const L=await all("ureg",wfil(q),"-recv_date").catch(()=>[]);const R=L.filter(r=>wmatch(q,r.search_lc)).slice(0,100);if(!$("#url"))return;
+    $("#url").innerHTML=R.length?`<div class="muted">Найдено: ${R.length}${R.length===100?"+":""}</div><div class="tw"><table>${TH}${R.map(tr).join("")}</table></div>`:`<div class="muted">Ничего не найдено</div>`};
+  $("#urq").oninput=()=>{clearTimeout(t);t=setTimeout(sr,400)};if(UR.q)sr();if(m.count)showK().catch(()=>{})}
+
 /* ----- 1.9.19: бэкап на компьютер (жёсткий диск) — раз в неделю автоматически + вручную ----- */
 const bkLast=()=>{try{return +localStorage.getItem("vs_bk_last")||0}catch(_){return 0}};
 const BK={busy:false};
@@ -2378,12 +2453,12 @@ const casev=w=>[...new Set(xv(w).flatMap(v=>[v,v.toUpperCase(),v.charAt(0).toUpp
 const wfilF=(q,flds,cs)=>qWords(q).map(w=>"("+flds.flatMap(f=>(cs?casev(w):xv(w)).map(v=>`${f}~"${v}"`)).join("||")+")").join("&&");
 function hlq(t,q){t=String(t==null?"":t);const W=qWords(q).filter(w=>w.length>1||/\d/.test(w)).map(w=>xv(w).map(v=>v.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|"));
   if(!W.length)return esc(t);const re=new RegExp("("+W.join("|")+")","gi");return t.split(re).map((x,i)=>i%2?`<mark>${esc(x)}</mark>`:esc(x)).join("")}
-const FSEC=[["req","Заявки"],["ship","Отгрузки"],["upd","УПД / приход"],["skk","Акты СКК"],["jact","Журнал актов"],["rcp","Приёмка"],["oper","Оперативка"],["mpz","Остатки МПЗ"],["lft","Невыданное"],["zreg","Реестр заявок"],["res","Ресурсы"]];
+const FSEC=[["req","Заявки"],["ship","Отгрузки"],["upd","УПД / приход"],["skk","Акты СКК"],["jact","Журнал актов"],["rcp","Приёмка"],["oper","Оперативка"],["mpz","Остатки МПЗ"],["lft","Невыданное"],["zreg","Реестр заявок"],["ureg","Сводный отчёт прихода"],["res","Ресурсы"]];
 async function fndRun(){const my=++FND.seq;const q=FND.q;const W=qWords(q);if(!W.length){FND.res=null;return fndPaint()}
   const FAIL=[];const L=(c,f,sort,n,ex)=>{const u=`/api/collections/${c}/records?perPage=${n}&sort=${sort}&filter=${encodeURIComponent(f)}${ex?"&expand="+ex:""}`;
     return api("GET",u).catch(e=>e.status===403?{items:[]}:new Promise(r=>setTimeout(r,700)).then(()=>api("GET",u))).then(j=>j.items).catch(()=>{FAIL.push(c);return []})};   // 1.9.18: сбой — ещё раз
   const sf=wfil(q),m=t=>wmatch(q,t);
-  const zrP=zrOk()?L("zreg",sf,"row_no",60):Promise.resolve([]);
+  const zrP=zrOk()?L("zreg",sf,"row_no",60):Promise.resolve([]);const urP=urOk()?L("ureg",sf,"-recv_date",60):Promise.resolve([]);
   const [its,rqs,upd,sk,ja,rc,op,mp,lf,shv]=await Promise.all([
     L("request_items",wfilF(q,["search_lc","request.search_lc"]),"-created",300,"request"),L("requests",sf,"-created",100),
     L("upd_docs","status!='draft'&&("+sf+")","-created",60),L("skk_acts",sf,"-created",60),L("acts",sf,"-created",60),L("receipts",sf,"-created",60),
@@ -2404,7 +2479,7 @@ async function fndRun(){const my=++FND.seq;const q=FND.q;const W=qWords(q);if(!W
     if(hit.length||(g&&!g.items.length)||m([r?rqT(r):"",s.vehicle,s.driver,s.note].join(" ")))SH.set(s.id,{s,r,lines:hit.map(l=>({qty:l.qty,it:II.get(l.item)}))})});
   const res=(S.data.resources||[]).filter(x=>m([x.name,x.inv_number,x.warehouse,x.unavailable_reason].join(" ")));
   FND.res={req:[...RQ.values()],ship:[...SH.values()],upd:upd.filter(u=>m(u.search_lc)),skk:sk.filter(a=>m(a.search_lc)),jact:ja.filter(a=>m(a.search_lc)),rcp:rc.filter(x=>m(x.search_lc)),
-    oper:op.filter(x=>m(operText(x))),mpz:mp.filter(x=>m(mpzText(x))),lft:lf.filter(x=>m(x.search_lc)),zreg:(await zrP).filter(x=>m(x.search_lc)),res};
+    oper:op.filter(x=>m(operText(x))),mpz:mp.filter(x=>m(mpzText(x))),lft:lf.filter(x=>m(x.search_lc)),zreg:(await zrP).filter(x=>m(x.search_lc)),ureg:(await urP).filter(x=>m(x.search_lc)),res};
   FND.fail=FAIL.length;
   if(FND.tab!=="all"&&!(FND.res[FND.tab]||[]).length)FND.tab="all";
   fndPaint()}
@@ -2427,6 +2502,7 @@ function fndSec(k,list,q,lim){const n=list.length,L=list.slice(0,lim),h=s=>hlq(s
   if(k==="mpz")body=L.map(x=>row("#/fmpz",`${h(x.name)} <b style="white-space:nowrap">${fmtQ(x.qty_end)} ${esc(x.unit)}</b>`,"",h([x.code,whShort(x.warehouse),x.quality].filter(Boolean).join(" · ")))).join("");
   if(k==="lft")body=L.map(x=>row("#/flft",`<b>${h(x.material)}</b> <span class="muted">— осталось ${fmtQ(num(x.qty)-num(x.issued))} ${esc(x.unit||"")}</span> <span class="pill ${x.status==="open"?"y":"gr"}">${x.status==="open"?"ОТКРЫТО":"ВЫДАНО"}</span>`,`Заявка № ${h(x.number)} · ${h(x.object)}`,h(x.recipient))).join("");
   if(k==="zreg")body=L.map(x=>row("#/fzreg",`<b>Заявка № ${h(x.number)}</b> <span class="muted">— реестр, строка ${x.row_no||""}</span>${x.status?` <span class="pill ${/выполн/i.test(x.status)?"g":"y"}">${esc(x.status)}</span>`:""}`,h([x.object,x.descr].filter(Boolean).join(" · ")),h([x.applicant,x.date_in&&"передана "+x.date_in,x.date_out&&"выдано "+x.date_out,x.doc1c&&"№ 1С "+x.doc1c,x.comment].filter(Boolean).join(" · ")))).join("");
+  if(k==="ureg")body=L.map(x=>row("#/fureg",`<b>${h(x.doc_kind||"УПД")} № ${h(x.number)}</b> <span class="muted">от ${h(urD(x.doc_date))} · ${h(x.gm_no)}</span> ${urPill(x.status)}`,h([x.supplier,x.short].filter(Boolean).join(" · ")),h([x.keeper&&"принял "+x.keeper,x.recv_date&&urD(x.recv_date),x.doc1c&&"№ 1С "+x.doc1c].filter(Boolean).join(" · ")))).join("");
   if(k==="res")body=L.map(x=>row("#/resources",`<b>${h(x.name)}</b> <span class="muted">${x.category==="crane"?"техника":"люди"}${x.inv_number?" · инв. "+h(x.inv_number):""}</span>`,x.unavailable?`<span class="pill r">НЕДОСТУПНО</span> ${esc(x.unavailable_reason||"")}`:"",esc(x.warehouse||""))).join("");
   return `<div class="card" data-fsec="${k}"><h3 style="margin:0 0 4px">${FSEC.find(s=>s[0]===k)[1]} — ${n}</h3>${body}${more}</div>`}
 function fndPaint(){const b=$("#fndr");if(!b)return;const R=FND.res,q=FND.q;
@@ -2439,6 +2515,7 @@ function fndPaint(){const b=$("#fndr");if(!b)return;const R=FND.res,q=FND.q;
   b.querySelectorAll("[data-ftab]").forEach(x=>x.onclick=()=>{FND.tab=x.dataset.ftab;fndPaint();window.scrollTo(0,0)});
   b.querySelectorAll("[data-fmore]").forEach(x=>x.onclick=e=>{e.preventDefault();FND.tab=x.dataset.fmore;fndPaint();window.scrollTo(0,0)});
   // переход в раздел с тем же запросом
+  b.querySelectorAll('a[href="#/fureg"]').forEach(a=>a.onclick=e=>{e.preventDefault();UR.q=q;location.hash="#/ureg"});
   b.querySelectorAll('a[href="#/fzreg"]').forEach(a=>a.onclick=e=>{e.preventDefault();ZR.q=q;location.hash="#/zreg"});
   b.querySelectorAll('a[href="#/foper"],a[href="#/fmpz"],a[href="#/flft"]').forEach(a=>a.onclick=e=>{e.preventDefault();const h=a.getAttribute("href");
     if(h==="#/foper"){OPER.q=q;location.hash="#/oper"}else if(h==="#/fmpz"){MPZ.q=q;MPZ.page=1;location.hash="#/mpz"}else{LFT.q=q;location.hash="#/leftovers"}});
@@ -2721,10 +2798,11 @@ async function vUpd(id,changed){await xfLoad();
    <h1 id="updv">УПД № ${esc(u.number)} <span class="pill ${UST[u.status][1]}">${UST[u.status][0]}</span></h1>
    <div class="card"><div class="kv"><b>Дата</b><span>${dmy(u.date)}</span><b>Поставщик</b><span>${esc(u.supplier)}${u.inn?` · ИНН ${esc(u.inn)}`:""}</span>${u.basis?`<b>Основание</b><span>${esc(u.basis)}</span>`:""}
     ${u.spec?`<b>Спецификация</b><span>№ ${esc(u.spec)}</span>`:""}${+u.total?`<b>Всего</b><span>${money(u.total)} ₽${u.total_nt?` (без НДС ${money(u.total_nt)})`:""}</span>`:""}<b>Позиций</b><span>${its.length}</span>${xfKV("upd",u.extra)}<b>Загрузил</b><span>${esc(uname(u.uploaded_by))}, ${dt(u.created)}</span>${u.note?`<b>Примечание</b><span>${esc(u.note)}</span>`:""}</div>
-    ${u.file?`<div style="margin-top:8px"><a class="btn sm" href="${furl}" target="_blank" rel="noopener">📄 Документ</a></div>`:""}<div id="updph">${updPhotoBlock(u.id,uph,ft,can.upd())}</div></div><div id="xffu"></div><div id="updcert"></div>
+    ${u.file?`<div style="margin-top:8px"><a class="btn sm" href="${furl}" target="_blank" rel="noopener">📄 Документ</a></div>`:""}<div id="updph">${updPhotoBlock(u.id,uph,ft,can.upd())}</div></div><div id="xffu"></div><div id="updreg"></div><div id="updcert"></div>
    ${acts.length?`<h2>Акты по этому УПД</h2><div class="card list">${acts.map(a=>`<a class="it" href="#/skkact/${a.id}"><div style="flex:1"><b>Акт № ${esc(a.number)}</b> от ${dmy(a.date)}<div class="muted">устранено ${actRows(a).filter(x=>x.fixed).length} из ${actRows(a).length}</div></div><span class="pill ${a.status==="open"?"r":"b"}">${a.status==="open"?"ОТКРЫТ":"ЗАКРЫТ"}</span></a>`).join("")}</div>`:""}
    <h2>Позиции (${its.length})</h2>${can.upd()?`<div class="row noprint" style="margin-bottom:6px"><button class="btn sm" id="updmatch">⇄ Сопоставить с оперативкой</button></div>`:""}<div class="card"><div class="tw"><table><tr><th>№</th>${PX.code?"<th>Код</th>":""}<th>Наименование</th><th>Кол-во</th>${PX.money?"<th>Цена</th><th>Сумма с НДС</th>":""}</tr>${its.map((x,i)=>`<tr><td>${i+1}</td>${PX.code?`<td>${esc(x.code)}</td>`:""}<td>${esc(x.name)}${x.spec_no?`<div class="muted">📎 спец. поз. ${esc(x.spec_no)}${x.spec_name&&x.spec_name!==x.name?` · <b>${esc(x.spec_name)}</b>`:""}${x.objcode?` · шифр <b>${esc(x.objcode)}</b>`:""}</div>`:""}${x.pid||x.object?`<div class="muted">PID <b>${esc(x.pid||"—")}</b> · ${esc(x.object||"")}${x.objcode&&!x.spec_no?" · <b>"+esc(x.objcode)+"</b>":""}</div>`:""}${x.stage?stagePill(x.stage):""}</td><td class="r" style="white-space:nowrap">${fmtQ(x.qty)} ${esc(x.unit)}</td>${PX.money?`<td class="r">${money(x.price)}</td><td class="r">${money(x.total)}</td>`:""}</tr>`).join("")}</table></div></div>`;
   bindUpdPhotos($("#updph"),()=>vUpd(id));
+  uregBlock(u);   // 1.9.25: кто из кладовщиков принял (сводный отчёт)
   certBlock(u,its);   // 1.9.24: сертификаты / паспорта качества
   const mt=$("#updmatch");if(mt)mt.onclick=()=>act(mt,()=>updMatch(u.id));
   const ab=$("#updact");if(ab)ab.onclick=()=>{SKK.newAct={upds:[u.id]};location.hash="#/skkactedit/new"};
