@@ -45,7 +45,9 @@ routerAdd("POST", "/api/vs/leftover/issue", (e) => {
       if (q > left + 1e-9) throw new BadRequestError("Осталось только " + String(left).replace(".", ",") + " " + v.getString("unit") + ".");
       const to = L.str(b.to).slice(0, 200); if (!to) throw new BadRequestError("Укажите, кому выдано (бригада / получатель).");
       v.set("issued", Math.round((v.getFloat("issued") + q) * 1000) / 1000);
-      log.push({ at: L.fmt(new Date()), qty: q, to: to, note: L.str(b.note).slice(0, 300), by: L.userName(a) });
+      const at = L.fmt(new Date());
+      log.push({ at: at, qty: q, to: to, note: L.str(b.note).slice(0, 300), by: L.userName(a) });
+      b.__at = at;
       if (v.getFloat("issued") + 1e-9 >= v.getFloat("qty")) v.set("status", "done");
       L.log(tx, a, "leftover_issue", "requests", v.getString("request"), "Невыданное по заявке № " + v.getString("number") + ": «" + v.getString("material").slice(0, 80) + "» выдано " + q + " " + v.getString("unit") + " — " + to, {});
     } else if (act === "close") {
@@ -54,7 +56,7 @@ routerAdd("POST", "/api/vs/leftover/issue", (e) => {
       L.log(tx, a, "leftover_close", "requests", v.getString("request"), "Невыданное по заявке № " + v.getString("number") + ": «" + v.getString("material").slice(0, 80) + "» убрано из списка — " + why, {});
     } else throw new BadRequestError("Неизвестное действие.");
     v.set("log", log); tx.save(v);
-    out = { status: v.getString("status"), issued: v.getFloat("issued") };
+    out = { status: v.getString("status"), issued: v.getFloat("issued"), at: b.__at || "" };   // 1.9.30: at — к этой выдаче привязываются фото
   });
   return e.json(200, out);
 }, $apis.requireAuth("users"));

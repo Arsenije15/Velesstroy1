@@ -382,6 +382,7 @@ async function boot(){
 const NAV=[["home","Главная","⌂"],["receive","Приёмка","▣"],["requests","Заявки","▤"],["resources","Ресурсы","⚙"],["history","История","☰"],["rules","Инструкции","⚑"],["split","Поставщики","⇄"],["skk","Склад / СКК","✔"],["topics","Задачи и согласования","☑"],["report","Отчёт дня","☰"],["mpz","Остатки МПЗ","▦"],["users","Пользователи","👥"]];
 /* ----- 1.9.27: приложение для телефона (Android) — только заявки и всё, что с ними связано ----- */
 const APPM=/VSApp\//.test(navigator.userAgent);
+const MOB=APPM||/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Macintosh/.test(navigator.userAgent));   // 1.9.30: телефон/планшет
 const appOn=()=>APPM&&!!S.user&&!S.user.scope&&!can.coord();
 if(APPM&&window.VSApp){   // мост к телефону: сохранение Excel/PDF, печать, «поделиться»
   try{window.print=()=>VSApp.print()}catch(_){}
@@ -792,10 +793,14 @@ async function vLeftovers(){
 async function lftItems(){const f=[LFT.st?`status="${LFT.st}"`:"",wfil(LFT.q)].filter(Boolean).join("&&");
   return (await all("leftovers",f,"object,material")).filter(x=>!LFT.q||wmatch(LFT.q,[x.number,x.object,x.recipient,x.material].join(" ")))}
 async function lftList(){const L=await lftItems();const box=$("#lfl");if(!box)return;const W=can.write()&&!can.linkOnly();
+  const PH={};let ft="";if(L.length){const ids=L.map(x=>x.id);const P=[];for(let i=0;i<ids.length;i+=40)P.push(...await all("leftover_photos",ids.slice(i,i+40).map(id=>`leftover="${id}"`).join("||"),"created").catch(()=>[]));
+    P.forEach(p=>{(PH[p.leftover+"|"+p.log_at]=PH[p.leftover+"|"+p.log_at]||[]).push(p)});if(P.length)ft=await fileToken()}   // 1.9.30: фото к каждой выдаче
+  if(!$("#lfl"))return;
+  const phHtml=(x,l)=>{const ps=PH[x.id+"|"+l.at]||[];return ps.map(p=>`<a href="/api/files/leftover_photos/${p.id}/${encodeURIComponent(p.file)}?token=${ft}" target="_blank" rel="noopener"><img src="/api/files/leftover_photos/${p.id}/${encodeURIComponent(p.file)}?thumb=240x240&token=${ft}" alt="фото выдачи" style="width:56px;height:56px;object-fit:cover;border-radius:6px;margin:3px 3px 0 0;vertical-align:top"></a>`).join("")};
   const g={};L.forEach(x=>{(g[x.object||"Без объекта"]=g[x.object||"Без объекта"]||[]).push(x)});
   box.innerHTML=Object.keys(g).sort().map(o=>`<h2 style="margin-top:14px">${esc(o)} <span class="muted">(${g[o].length})</span></h2><div class="card" style="padding:0;overflow:auto"><table class="tbl"><thead><tr><th>Материал</th><th style="text-align:right">Осталось</th><th>Заявка</th><th>Получатель</th><th>Выдано</th><th class="noprint"></th></tr></thead><tbody>
     ${g[o].map(x=>{const left=Math.max(0,Math.round((num(x.qty)-num(x.issued))*1000)/1000);const log=jarr(x.log);
-      return `<tr><td><b>${esc(x.material)}</b>${log.length?`<div class="muted">${log.map(l=>`${dt(l.at)}: ${l.qty?fmtQ(l.qty)+" "+esc(x.unit)+" → "+esc(l.to):esc(l.note)} (${esc(l.by)})`).join("<br>")}</div>`:""}</td>
+      return `<tr><td><b>${esc(x.material)}</b>${log.length?`<div class="lfh" style="margin-top:4px">${log.map((l,k)=>`<div style="padding:4px 0;border-top:1px dashed var(--line)"><span class="muted">${k+1}.</span> ${dt(l.at)}: ${l.qty?`<b>${fmtQ(l.qty)} ${esc(x.unit)}</b> → ${esc(l.to)}`:esc(l.note)}${l.qty&&l.note?` <span class="muted">— ${esc(l.note)}</span>`:""} <span class="muted">(${esc(l.by)})</span>${l.qty&&W?` <label class="btn sm" style="padding:2px 8px" title="Добавить фото к этой выдаче">📷<input type="file" accept="image/*" multiple hidden data-lfp="${x.id}" data-lfat="${esc(l.at)}"></label>`:""}<div>${phHtml(x,l)}</div></div>`).join("")}</div>`:""}</td>
        <td style="text-align:right;white-space:nowrap"><b style="font-size:17px;color:${left>0?"var(--r)":"var(--g)"}">${fmtQ(left)}</b> ${esc(x.unit)}<div class="muted">из ${fmtQ(x.qty)}</div></td>
        <td><a href="#/request/${x.request}">№ ${esc(x.number)}</a><div class="muted">${dt(x.created).slice(0,10)}</div></td><td>${esc(x.recipient||"")}</td><td>${fmtQ(x.issued)}</td>
        <td class="noprint" style="white-space:nowrap">${W&&x.status==="open"?`<button class="btn sm g" data-lfi="${x.id}">Выдать</button> <button class="btn sm" data-lfc="${x.id}">Убрать</button>`:x.status==="done"?'<span class="pill g">ЗАКРЫТО</span>':""}</td></tr>`}).join("")}</tbody></table></div>`).join("")||`<div class="card empty">${LFT.st==="open"?"Невыданного нет":"Ничего не найдено"}</div>`;
@@ -805,12 +810,18 @@ async function lftList(){const L=await lftItems();const box=$("#lfl");if(!box)re
      <label class="f" for="lq">Количество, ${esc(x.unit)}</label><input id="lq" inputmode="decimal" value="${fmtQ(left)}">
      <label class="f" for="lt">Кому выдано *</label><input id="lt" data-sug="recipient" placeholder="бригада / получатель">
      <label class="f" for="ln">Примечание</label><input id="ln">
+     <label class="f">Фото выданного (можно несколько)</label><label class="btn acc" style="display:inline-flex">📷 Сфотографировать / выбрать<input type="file" id="lph" accept="image/*" multiple hidden></label> <span class="muted" id="lphn"></span>
      <div class="row" style="margin-top:14px"><button class="btn g grow" id="mok">ВЫДАТЬ</button><button class="btn" data-close>Отмена</button></div>`,mb=>{sugAttach(mb);
-     $("#mok",mb).onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/leftover/issue",{id:x.id,qty:$("#lq",mb).value,to:$("#lt",mb).value,note:$("#ln",mb).value});closeModal();S.lftN=null;await lftList()},"Выдано")})});
+     let fs=[];$("#lph",mb).onchange=ev=>{fs=[...ev.target.files];$("#lphn",mb).textContent=fs.length?`📷 ${fs.length} фото`:""};
+     $("#mok",mb).onclick=e=>act(e.target,async()=>{const r=await api("POST","/api/vs/leftover/issue",{id:x.id,qty:$("#lq",mb).value,to:$("#lt",mb).value,note:$("#ln",mb).value});
+       if(fs.length&&r.at)await lftPhotoUp(x.id,r.at,fs);closeModal();S.lftN=null;await lftList()},"Выдано")})});
+  box.querySelectorAll("[data-lfp]").forEach(inp=>inp.onchange=ev=>{const fs=[...ev.target.files];ev.target.value="";if(fs.length)act(null,async()=>{await lftPhotoUp(inp.dataset.lfp,inp.dataset.lfat,fs);await lftList()},"Фото добавлено")});
   box.querySelectorAll("[data-lfc]").forEach(b=>b.onclick=()=>{const x=byId(b.dataset.lfc);
     modal(`<h3>Убрать из списка</h3><div><b>${esc(x.material)}</b></div><label class="f" for="ln">Почему *</label><textarea id="ln" placeholder="например: не нужен, вернули поставщику"></textarea>
      <div class="row" style="margin-top:14px"><button class="btn r grow" id="mok">УБРАТЬ</button><button class="btn" data-close>Отмена</button></div>`,mb=>{
      $("#mok",mb).onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/leftover/issue",{id:x.id,action:"close",note:$("#ln",mb).value});closeModal();await lftList()},"Убрано из списка")})})}
+async function lftPhotoUp(id,at,fs){for(const f0 of fs){const f=await shrinkImg(f0,2000).catch(()=>f0);const fd=new FormData();fd.append("leftover",id);fd.append("log_at",at);fd.append("created_by",S.user.id);fd.append("file",f);
+  await api("POST","/api/collections/leftover_photos/records",fd,true)}}
 async function lftExcel(){const L=await lftItems();if(!L.length)throw new Error("Нечего выгружать.");const T=XS.txt;
   const r=[[{v:"НЕВЫДАННОЕ ПО ЗАЯВКАМ",s:XS.title}],[{v:"Выгружено "+dt(new Date().toISOString())+(LFT.q?" · поиск: "+LFT.q:""),s:T}],[],["Объект","Материал","Ед.","Осталось","Было","Выдано","Заявка №","Дата","Получатель","Статус","История выдачи"].map(v=>({v,s:XS.head}))];
   L.forEach(x=>{const left=Math.max(0,Math.round((num(x.qty)-num(x.issued))*1000)/1000);
@@ -2152,7 +2163,7 @@ async function reqMsg(r,items){let ph=r.phone||"";
    <div class="g2x"><div><label class="f" for="mph">Телефон получателя${r.recipient?` (${esc(r.recipient)})`:""}</label><input id="mph" type="tel" value="${esc(ph)}" placeholder="+7 900 123-45-67"></div><div><label class="f" for="mun">Забрать до</label><input id="mun" type="date" value="${def}"></div></div>
    <label class="row" style="gap:8px;margin-top:8px"><input type="checkbox" id="mlk" style="width:22px;height:22px"> добавить ссылку с фото позиций (без входа, 30 дней)</label>
    <label class="f" for="mtx">Текст (можно поправить)</label><textarea id="mtx" rows="10"></textarea>
-   <div class="row" style="margin-top:10px;gap:6px;flex-wrap:wrap">${navigator.share?`<button class="btn p" id="msh">📤 Отправить (MAX и др.)</button>`:""}<button class="btn${navigator.share?"":" p"}" id="mcp">📋 Скопировать</button><a class="btn" id="mwa" target="_blank" rel="noopener">💬 WhatsApp</a><a class="btn" id="mtg" target="_blank" rel="noopener">✈ Telegram</a><a class="btn" id="msm">✉ SMS</a><button class="btn" data-close>Закрыть</button></div>
+   <div class="row" style="margin-top:10px;gap:6px;flex-wrap:wrap">${MOB&&navigator.share?`<button class="btn p" id="msh">📤 Отправить (MAX и др.)</button>`:`<button class="btn p" id="mmx" title="Текст скопируется, откроется MAX Web — выберите чат и вставьте (Ctrl+V)">💬 MAX</button>`}<button class="btn" id="mcp">📋 Скопировать</button><a class="btn" id="mwa" target="_blank" rel="noopener">💬 WhatsApp</a><a class="btn" id="mtg" target="_blank" rel="noopener">✈ Telegram</a><a class="btn" id="msm">✉ SMS</a><button class="btn" data-close>Закрыть</button></div>
    <div class="muted" id="mst" style="margin-top:6px"></div>`,box=>{let link="";const tx=$("#mtx",box);let edited=false;tx.oninput=()=>{edited=true;links()};
     const build=()=>{if(edited)return;tx.value=reqMsgText(r,items,$("#mun",box).value,link).text;links()};
     const links=()=>{const d=phDigits($("#mph",box).value),t=encodeURIComponent(tx.value);$("#mwa",box).href=d?`https://wa.me/${d}?text=${t}`:`https://wa.me/?text=${t}`;$("#mtg",box).href=`https://t.me/share/url?url=${encodeURIComponent(link||" ")}&text=${t}`;$("#msm",box).href=`sms:${d?"+"+d:""}?body=${t}`};
@@ -2162,6 +2173,7 @@ async function reqMsg(r,items){let ph=r.phone||"";
     const sent=async()=>{try{await save()}catch(er){toast(er.message,"err")}};
     $("#mcp",box).onclick=async()=>{try{await navigator.clipboard.writeText(tx.value)}catch(_){tx.select();document.execCommand("copy")}toast("Текст скопирован","ok");sent()};
     const sh=$("#msh",box);if(sh)sh.onclick=()=>{sent();navigator.share({title:"Заявка № "+r.number,text:tx.value}).catch(()=>{})};
+    const mx=$("#mmx",box);if(mx)mx.onclick=async()=>{try{await navigator.clipboard.writeText(tx.value)}catch(_){tx.select();document.execCommand("copy")}sent();window.open("https://web.max.ru/","_blank","noopener");toast("Текст скопирован — в MAX выберите чат и вставьте (Ctrl+V)","ok")};
     ["#mwa","#mtg","#msm"].forEach(k=>$(k,box).addEventListener("click",()=>{sent()}));
     build()})}
 /* ----- 1.9.21: сообщение / цитата от администратора всем — через 🔔, всплывает и системным уведомлением ----- */
@@ -2988,7 +3000,7 @@ async function vSkkActEdit(id,changed){await xfLoad();
 async function vSkkAct(id,changed){await xfLoad();
   if(changed&&$("#actv"))return;
   const a=await api("GET","/api/collections/skk_acts/records/"+id);if(S.route!=="skkact/"+id)return;const rows=actRows(a),n=rows.filter(x=>x.fixed).length;
-  $("#main").innerHTML=`<div class="row noprint"><a class="btn sm" href="#/skk" id="toacts">← К актам</a>${can.skk()?`<a class="btn sm" href="#/skkactedit/${a.id}">✏ Изменить</a>`:""}<button class="btn sm" id="actpr">🖨 Печать / PDF</button>${can.skk()?`<button class="btn sm acc" id="actclaim" title="Письмо-претензия поставщику на бланке компании — PDF или Word">✉ Претензия поставщику</button>`:""}<button class="btn sm" id="actxl">⬇ Excel</button><button class="btn sm" id="actjx" title="Строки в формате «Журнала актов несоответствия» — скопировать в общую таблицу">⬇ Excel для журнала</button></div>
+  $("#main").innerHTML=`<div class="row noprint"><a class="btn sm" href="#/skk" id="toacts">← К актам</a>${can.skk()?`<a class="btn sm" href="#/skkactedit/${a.id}">✏ Изменить</a><button class="btn sm r" id="actdel" title="Удалить акт (с причиной)">🗑 Удалить акт</button>`:""}<button class="btn sm" id="actpr">🖨 Печать / PDF</button>${can.skk()?`<button class="btn sm acc" id="actclaim" title="Письмо-претензия поставщику на бланке компании — PDF или Word">✉ Претензия поставщику</button>`:""}<button class="btn sm" id="actxl">⬇ Excel</button><button class="btn sm" id="actjx" title="Строки в формате «Журнала актов несоответствия» — скопировать в общую таблицу">⬇ Excel для журнала</button></div>
    <h1 id="actv">Акт СКК № ${esc(a.number)} <span class="pill ${a.status==="open"?"r":"b"}">${a.status==="open"?"ОТКРЫТ":"ЗАКРЫТ"}</span></h1>
    <div class="card"><div class="kv"><b>Дата</b><span>${dmy(a.date)}</span><b>Поставщик</b><span>${esc(a.supplier)}</span><b>По накладной</b><span>${esc(a.upd_line)}</span>${(a.upds||[]).length?`<b>УПД</b><span>${(a.upds||[]).map(u=>`<a href="#/upd/${u}">открыть</a>`).join(" · ")}</span>`:""}
     <b>Составил</b><span>${esc(uname(a.created_by))}, ${dt(a.created)}</span><b>Устранено</b><span><b>${n} из ${rows.length}</b>${a.closed_at?` · акт закрыт ${dt(a.closed_at)} · <b>в работе ${actDays(a)} дн.</b>`:` · открыт ${actDays(a)} дн.`}</span></div></div>
@@ -3008,6 +3020,10 @@ async function vSkkAct(id,changed){await xfLoad();
   phDraw();
   const phf=$("#actphf");if(phf)phf.onchange=e=>{const fs=[...e.target.files];e.target.value="";if(!fs.length)return;const l=$("#actphl");act(null,async()=>{const n=await actPhotoUp(a.id,fs,t=>{if(l)l.textContent=t});await phDraw();toast("Добавлено фото: "+n,"ok")})};
   $("#actpr").onclick=()=>act(null,async()=>{if(!PU.length)PU=await actPhotoUrls(await actPhotos(a.id));printAct(a,PU)});
+  {const d=$("#actdel");if(d)d.onclick=()=>modal(`<h3>🗑 Удалить акт № ${esc(a.number)}?</h3><div class="muted">Удалятся акт, его фото и строки в журнале актов. УПД снова станут «без акта» (если на них нет других актов). Копия акта останется в «Истории».</div>
+   <label class="f" for="adr">Причина удаления *</label><textarea id="adr" placeholder="например: составлен по ошибке, дубль акта № …"></textarea>
+   <div class="row" style="margin-top:12px"><button class="btn r grow" id="mok">УДАЛИТЬ АКТ</button><button class="btn" data-close>Отмена</button></div>`,mb=>{
+   $("#mok",mb).onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/skk/act/delete",{id:a.id,reason:$("#adr",mb).value.trim()});closeModal();location.hash="#/skk"},"Акт удалён")})}
   {const c=$("#actclaim");if(c)c.onclick=()=>act(c,async()=>{if(!PU.length)PU=await actPhotoUrls(await actPhotos(a.id));await claimOpen(a,PU)})}$("#actxl").onclick=()=>actExcel(a);$("#actjx").onclick=()=>actJournalExcel(a);
   // 1.9.13: выбрать все / несколько замечаний и устранить их одной записью
   const picks=()=>[...document.querySelectorAll("[data-pick]:checked")].map(c=>c.dataset.pick);
