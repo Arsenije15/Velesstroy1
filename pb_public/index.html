@@ -289,7 +289,7 @@ const ntfOk=()=>S.user&&!can.sklad()&&!can.coord();
 const ntfNew=e=>e.kind==="note"||e.kind==="req7"?!e.done:null;
 const ntfKey=()=>"vs_ntf_seen_"+(S.user&&S.user.id);
 const ntfSeen=()=>{try{return localStorage.getItem(ntfKey())||""}catch(_){return ""}};
-async function ntfLoad(){if(!ntfOk())return;
+async function ntfLoad(){if(!ntfOk())return;if(can.mz())return mzNtf();
   const d14=new Date(Date.now()-14*86400000).toISOString().replace("T"," "),now=new Date(),nowS=now.toISOString().replace("T"," ");const ev=[];
   if(!appOn()&&(!can.linkOnly()||S.user.scope==="skk")){try{const L=await all("skk_acts",`created>="${d14}"||closed_at>="${d14}"`,"-created");
     L.forEach(a=>{if(a.created>=d14)ev.push({t:a.created,kind:"new",a});if(a.status==="closed"&&a.closed_at&&a.closed_at>=d14)ev.push({t:a.closed_at,kind:"closed",a})})}catch(_){}}
@@ -320,9 +320,10 @@ async function ntfLoad(){if(!ntfOk())return;
   if(!ntfSeen()&&NTF.items[0])try{localStorage.setItem(ntfKey(),NTF.items.find(e=>e.kind!=="note"&&e.kind!=="req7")?NTF.items.find(e=>e.kind!=="note"&&e.kind!=="req7").t:"0")}catch(_){}   // первый вход — старые акты не сыпем; напоминания и долгие заявки — показываем
   ntfPaint()}
 function ntfPaint(){const n=$("#ntfn");if(!n)return;const s=ntfSeen();const k=NTF.items.filter(e=>e.t>s&&!(e.kind==="new"&&e.a.created_by===S.user.id)).length;n.hidden=!k;n.textContent=k>99?"99+":k}
-const ntfTitle=e=>({new:"📋 Новый акт № "+(e.a&&e.a.number),closed:"✔ Акт закрыт № "+(e.a&&e.a.number),req7:"⏳ Заявка № "+(e.r&&e.r.number)+" в работе больше 7 дней (с передачи "+(e.r&&e.r.handed_at?dmy(String(e.r.handed_at).slice(0,10)):"")+")",note:"⏰ Напоминание",bk:"💾 Пора сделать бэкап на компьютер",bc:"💬 "+(e.b?e.b.text:""),rqfull:"✅ Заявка № "+(e.r&&e.r.number)+" выдана полностью — закройте",rqpick:"📦 Заявка № "+(e.r&&e.r.number)+": прошёл срок «забрать до» "+(e.r&&e.r.pickup_until?dmy(e.r.pickup_until):""),updnew:"📄 УПД № "+(e.u&&e.u.number)+" без приёмки больше 2 дней"})[e.kind];
-const ntfHref=e=>e.u?"#/upd/"+e.u.id:e.kind==="bc"?"#/home":e.kind==="bk"?"#/backup":e.a?"#/skkact/"+e.a.id:e.r?"#/request/"+e.r.id:e.n?"#/request/"+e.n.request:"#/";
-const ntfSub=e=>{if(e.u)return esc(e.u.supplier||"")+" · от "+dmy(String(e.u.date||"").slice(0,10))+" · загружен "+dt(e.u.created);
+const ntfTitle=e=>({new:"📋 Новый акт № "+(e.a&&e.a.number),closed:"✔ Акт закрыт № "+(e.a&&e.a.number),req7:"⏳ Заявка № "+(e.r&&e.r.number)+" в работе больше 7 дней (с передачи "+(e.r&&e.r.handed_at?dmy(String(e.r.handed_at).slice(0,10)):"")+")",note:"⏰ Напоминание",bk:"💾 Пора сделать бэкап на компьютер",bc:"💬 "+(e.b?e.b.text:""),rqfull:"✅ Заявка № "+(e.r&&e.r.number)+" выдана полностью — закройте",rqpick:"📦 Заявка № "+(e.r&&e.r.number)+": прошёл срок «забрать до» "+(e.r&&e.r.pickup_until?dmy(e.r.pickup_until):""),updnew:"📄 УПД № "+(e.u&&e.u.number)+" без приёмки больше 2 дней",mzlow:"⚠ Ниже минимума: "+(e.i&&(MZS[e.i.section][1]+" "+e.i.name+(e.i.size?" "+e.i.size:""))),mztask:"⏰ Задача: "+(e.k&&e.k.title)})[e.kind];
+const ntfHref=e=>e.i?"#/mzitem/"+e.i.id:e.k?"#/mztasks":e.u?"#/upd/"+e.u.id:e.kind==="bc"?"#/home":e.kind==="bk"?"#/backup":e.a?"#/skkact/"+e.a.id:e.r?"#/request/"+e.r.id:e.n?"#/request/"+e.n.request:"#/";
+const ntfSub=e=>{if(e.i)return "остаток "+fmtQ(e.i.qty)+" "+esc(e.i.unit||"")+" при минимуме "+fmtQ(e.i.min_qty)+(e.i.place?" · 📍 "+esc(e.i.place):"");if(e.k)return (e.k.people?"👷 "+esc(e.k.people)+" · ":"")+"срок "+dmy(e.k.due);
+  if(e.u)return esc(e.u.supplier||"")+" · от "+dmy(String(e.u.date||"").slice(0,10))+" · загружен "+dt(e.u.created);
   if(e.r&&(e.kind==="rqfull"||e.kind==="rqpick"))return esc(e.r.object||"")+" · "+esc(e.r.recipient||"")+(e.r.phone?" · 📞 "+esc(e.r.phone):"");
   if(e.a){const rows=actRows(e.a);return esc(e.a.supplier||"")+" · "+(e.kind==="new"?"замечаний: "+rows.length+" · составил "+esc(uname(e.a.created_by)):"в работе "+actDays(e.a)+" дн.")}
   if(e.r){const d=Math.floor((Date.now()-new Date(String(e.r.created).replace(" ","T")).getTime())/86400000);return esc(e.r.object||"")+" · ввели "+dt(e.r.created)+" · открыта "+d+" дн."}
@@ -330,7 +331,7 @@ const ntfSub=e=>{if(e.u)return esc(e.u.supplier||"")+" · от "+dmy(String(e.u.
 function ntfOpen(){const s=ntfSeen();
   modal(`<h3>🔔 Уведомления</h3><div class="muted">Сообщения, акты СКК за 14 дней, заявки (больше 7 дней, выдано — не закрыто, срок «забрать до»), УПД без приёмки, напоминания из заметок.</div>
    <div style="max-height:60vh;overflow:auto;margin-top:8px">${NTF.items.map(e=>{const nw=e.t>s;
-     return `<a class="it" href="${ntfHref(e)}" style="display:block;padding:10px;border-left:4px solid ${{new:"var(--r)",closed:"var(--g)",req7:"var(--o)",note:"var(--b)",bk:"var(--v)",bc:"var(--acc,#f59e0b)",rqfull:"var(--g)",rqpick:"var(--r)",updnew:"var(--o)"}[e.kind]};margin-bottom:6px;background:${nw?"#eef4ff":"#fff"};border-radius:8px;text-decoration:none;color:inherit">
+     return `<a class="it" href="${ntfHref(e)}" style="display:block;padding:10px;border-left:4px solid ${{new:"var(--r)",closed:"var(--g)",req7:"var(--o)",note:"var(--b)",bk:"var(--v)",bc:"var(--acc,#f59e0b)",rqfull:"var(--g)",rqpick:"var(--r)",updnew:"var(--o)",mzlow:"var(--r)",mztask:"var(--o)"}[e.kind]};margin-bottom:6px;background:${nw?"#eef4ff":"#fff"};border-radius:8px;text-decoration:none;color:inherit">
       <div><b>${esc(ntfTitle(e))}</b>${nw?' <span class="pill b">НОВОЕ</span>':""} <span class="muted">${dt(e.t)}</span></div><div class="muted">${ntfSub(e)}</div></a>`}).join("")||'<div class="muted">Уведомлений нет</div>'}</div>
    <div class="row" style="margin-top:10px;gap:6px">${can.admin()&&!S.user.scope&&!appOn()?`<a class="btn" href="#/bc" data-bclink>📣 Сообщение всем</a>`:""}${can.write()&&!S.user.scope&&!appOn()?`<a class="btn" href="#/walk">🚶 Обход склада</a>`:""}<button class="btn grow" data-close>Закрыть</button></div>`,box=>box.querySelectorAll("a[href]").forEach(x=>x.addEventListener("click",()=>setTimeout(closeModal,0))));
   try{if(NTF.items[0])localStorage.setItem(ntfKey(),NTF.items[0].t)}catch(_){}ntfPaint()}
@@ -389,7 +390,7 @@ if(APPM&&window.VSApp){   // мост к телефону: сохранение 
   if(!navigator.share)try{navigator.share=d=>{VSApp.share([d&&d.title,d&&d.text,d&&d.url].filter(Boolean).join("\n"));return Promise.resolve()}}catch(_){}
 }
 function shell(){
-  const nav=appOn()?[["requests","Заявки","▤"],["find","Поиск","🔎"],["leftovers","Невыданное","📦"],...(zrOk()?[["zreg","Реестр","📒"]]:[])]:role()==="coord"?NAV.filter(n=>n[0]==="topics"):can.zay()?[["resources","Ресурсы склада","⚙"],["requests","Мои заявки","▤"],["skk","Поиск","🔎"]]:can.linkOnly()?NAV.filter(n=>n[0]==="skk").map(n=>[n[0],skkTitle(),n[2]]):can.skkView()?NAV.filter(n=>n[0]==="skk"||n[0]==="topics"):NAV.filter(n=>n[0]!=="users"||can.admin());   // СКК и наблюдатель — только склад; участник согласований — только темы
+  const nav=can.mz()?[["mz","Склад","▦"],["mztasks","Задачи","✓"],["mztopics","Темы","☰"],["mzhelp","Инструкция","📖"]]:appOn()?[["requests","Заявки","▤"],["find","Поиск","🔎"],["leftovers","Невыданное","📦"],...(zrOk()?[["zreg","Реестр","📒"]]:[])]:role()==="coord"?NAV.filter(n=>n[0]==="topics"):can.zay()?[["resources","Ресурсы склада","⚙"],["requests","Мои заявки","▤"],["skk","Поиск","🔎"]]:can.linkOnly()?NAV.filter(n=>n[0]==="skk").map(n=>[n[0],skkTitle(),n[2]]):can.skkView()?NAV.filter(n=>n[0]==="skk"||n[0]==="topics"):NAV.filter(n=>n[0]!=="users"||can.admin());   // СКК и наблюдатель — только склад; участник согласований — только темы
   $("#app").innerHTML=`<header><div class="logo">ВЕЛЕС<b>СТРОЙ</b></div>
   <nav class="top">${nav.map(n=>`<a href="#/${n[0]}" data-n="${n[0]}">${n[1].toUpperCase()}</a>`).join("")}</nav>
   <div class="sp"></div><div class="who">${esc(S.user.name||S.user.username)}<br><span style="opacity:.75">${esc(T.roles[S.user.role]||"")}</span></div>
@@ -406,7 +407,8 @@ function route(){if(!S.user)return;if(S.off)return offRoute();const home=can.coo
   if(appOn()&&!/^#\/(requests|request|leftovers|find|zreg)(\/|$)/.test(location.hash)){location.hash="#/requests";return}   // 1.9.27: приложение — только заявки
   if(can.coord()&&!/^#\/(topics|topic)(\/|$)/.test(location.hash)){location.hash=home;return}
   if(can.zay()&&!/^#\/(resources|requests|request|skk|oper|mpz)(\/|$)/.test(location.hash)){location.hash="#/requests";return}   // 1.9.15: «Склад: заявки»
-  if(can.linkOnly()&&!can.zay()&&!(can.sklad()?/^#\/(skk|upd|oper|mpz)(\/|$)/:/^#\/(skk|upd|updedit|skkact|skkactedit|oper|mpz)(\/|$)/).test(location.hash)){location.hash="#/skk";return}   // 1.9.10: по ссылке — только «Склад / СКК»
+  if(can.mz()){if(!/^#\/(mz|mzitem|mztasks|mztopics|mztopic|mzhelp)(\/|$)/.test(location.hash)){location.hash="#/mz";return}}   // 1.9.32: «Склад Велесстрой Монтаж»
+  else if(can.linkOnly()&&!can.zay()&&!(can.sklad()?/^#\/(skk|upd|oper|mpz)(\/|$)/:/^#\/(skk|upd|updedit|skkact|skkactedit|oper|mpz)(\/|$)/).test(location.hash)){location.hash="#/skk";return}   // 1.9.10: по ссылке — только «Склад / СКК»
   if(can.skkView()&&!/^#\/(find|ureg|skk|upd|updedit|skkact|skkactedit|oper|mpz|topics|topic)(\/|$)/.test(location.hash)){location.hash=home;return}
   S.route=location.hash.slice(2);render(null,true)}
 let lastKey="";
@@ -414,7 +416,7 @@ function render(changedCols,force){
   if(!S.user||!$("#main"))return;
   const [p,id]=S.route.split("/");
   document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("on",a.dataset.n===(p==="receipt"?"receive":p==="request"||p==="leftovers"?"requests":/^(upd|updedit|skkact|skkactedit|oper)$/.test(p)?"skk":p==="topic"?"topics":p)));
-  const V={ureg:vUreg,walk:vWalk,bc:vBc,zreg:vZreg,backup:vBackup,find:vFind,leftovers:vLeftovers,fields:vFields,home:vHome,receive:vReceive,receipt:vReceipt,requests:vRequests,request:vRequest,resources:vResources,history:vHistory,rules:vRules,users:vUsers,split:vSplit,report:vReport,mpz:vMpz,skk:vSkk,upd:vUpd,updedit:vUpdEdit,skkact:vSkkAct,skkactedit:vSkkActEdit,oper:vOper,topics:vTopics,topic:vTopic}[p]||vHome;
+  const V={mz:vMz,mzitem:vMzItem,mztasks:vMzTasks,mztopics:vMzTopics,mztopic:vMzTopic,mzhelp:vMzHelp,ureg:vUreg,walk:vWalk,bc:vBc,zreg:vZreg,backup:vBackup,find:vFind,leftovers:vLeftovers,fields:vFields,home:vHome,receive:vReceive,receipt:vReceipt,requests:vRequests,request:vRequest,resources:vResources,history:vHistory,rules:vRules,users:vUsers,split:vSplit,report:vReport,mpz:vMpz,skk:vSkk,upd:vUpd,updedit:vUpdEdit,skkact:vSkkAct,skkactedit:vSkkActEdit,oper:vOper,topics:vTopics,topic:vTopic}[p]||vHome;
   if((p==="users"||p==="fields")&&!can.admin())return vHome();
   const key=S.route;if(key!==lastKey){window.scrollTo(0,0);lastKey=key;dirty.clear()}
   // Обновление пришло, пока человек вводит данные: сохраняем введённое, фокус и курсор
@@ -1345,6 +1347,238 @@ async function shipmentForm(reqId,done){
       await api("POST","/api/vs/shipment/create",{request:lines.length?"":reqId,lines,steps,cars:cars(),vehicle:$("#shv",box).value,driver:$("#shd",box).value,hours:$("#shh",box).value,note:$("#shn",box).value,resources:res});
       closeModal();await done()},"Отгрузка подготовлена")});
 }
+/* ===================== 1.9.32: СКЛАД ВЕЛЕССТРОЙ МОНТАЖ (по ссылке, scope «mz») =====================
+   Позиции по разделам (арматура, леса и опалубка, инструмент, расходники, СИЗ, материал), у каждой — фото, место, минимальный остаток.
+   Движение: приход (арматура — только с фото и накладной), выдача, возврат, списание, пересчёт. Остаток считает сервер.
+   Ниже минимума — 🔔 со звуком. Задачи (люди, техника), темы и подтемы. Таблицы — загрузка из Excel и примеры. */
+const MZS={arm:["Арматура","🔩"],scaf:["Леса и опалубка","🏗"],tool:["Инструмент","🛠"],cons:["Расходники","📦"],siz:["СИЗ","🦺"],mat:["Материал","🧱"]};
+const MZK={in:["Приход","g","＋"],out:["Выдача","o","−"],ret:["Возврат","b","↩"],wo:["Списание","r","✕"],count:["Пересчёт","gr","="]};
+const MZ={sec:"arm",q:"",low:false,from:"",to:""};
+const mzW=()=>can.mz()&&S.user.role==="storekeeper";
+const mzLow=x=>num(x.min_qty)>0&&num(x.qty)<num(x.min_qty);
+const mzThumb=(x,ft,sz)=>x.photo?`<a href="/api/files/mz_items/${x.id}/${encodeURIComponent(x.photo)}?token=${ft}" target="_blank" rel="noopener"><img src="/api/files/mz_items/${x.id}/${encodeURIComponent(x.photo)}?thumb=240x240&token=${ft}" alt="фото" style="width:${sz||64}px;height:${sz||64}px;object-fit:cover;border-radius:8px"></a>`:`<div style="width:${sz||64}px;height:${sz||64}px;border-radius:8px;background:#eef1f5;display:flex;align-items:center;justify-content:center;font-size:${(sz||64)/2.4}px" title="нет фото">${MZS[x.section][1]}</div>`;
+const mzFiles=(col,r,f,ft)=>(Array.isArray(r[f])?r[f]:r[f]?[r[f]]:[]).map(n=>/\.pdf$/i.test(n)?`<a class="btn sm" href="/api/files/${col}/${r.id}/${encodeURIComponent(n)}?token=${ft}" target="_blank" rel="noopener">📄 PDF</a>`:`<a href="/api/files/${col}/${r.id}/${encodeURIComponent(n)}?token=${ft}" target="_blank" rel="noopener"><img src="/api/files/${col}/${r.id}/${encodeURIComponent(n)}?thumb=240x240&token=${ft}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:6px;margin:2px"></a>`).join("");
+async function mzItems(sec){return all("mz_items",sec?`section="${sec}"`:"","grp,name,size")}
+function mzBeep(){try{const C=window.AudioContext||window.webkitAudioContext;const c=new C();[0,0.25,0.5].forEach((d,i)=>{const o=c.createOscillator(),g=c.createGain();o.type="square";o.frequency.value=i===2?1320:880;g.gain.setValueAtTime(0.18,c.currentTime+d);g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+d+0.2);o.connect(g);g.connect(c.destination);o.start(c.currentTime+d);o.stop(c.currentTime+d+0.22)})}catch(_){}}
+async function mzNtf(){const ev=[];let low=[];try{low=(await all("mz_items","min_qty>0","section,name")).filter(mzLow)}catch(_){}
+  low.forEach(i=>ev.push({t:String(i.updated),kind:"mzlow",i}));
+  const today=new Date(Date.now()+180*60000).toISOString().slice(0,10);
+  try{(await all("mz_tasks",`status="open"&&due!=""&&due<="${today}"`,"due")).forEach(k=>ev.push({t:k.due+" 06:00:00.000Z",kind:"mztask",k}))}catch(_){}
+  try{const d14=new Date(Date.now()-14*86400000).toISOString().replace("T"," ");(await all("broadcasts",`created>="${d14}"`,"-created")).forEach(b=>ev.push({t:b.created,kind:"bc",b}))}catch(_){}
+  NTF.items=ev.sort((x,y)=>String(y.t).localeCompare(String(x.t)));NTF.loaded=true;
+  const key="vs_mz_low_"+S.user.id;let was=[];try{was=JSON.parse(localStorage.getItem(key)||"[]")}catch(_){}
+  const fresh=low.filter(i=>!was.includes(i.id));
+  if(fresh.length){mzBeep();toast(`⚠ Ниже минимума: ${fresh.slice(0,3).map(i=>i.name+(i.size?" "+i.size:"")).join(", ")}${fresh.length>3?" и ещё "+(fresh.length-3):""}`,"err");
+    try{if(window.Notification&&Notification.permission==="granted")new Notification("Склад Монтаж — ниже минимума",{body:fresh.map(i=>i.name).slice(0,5).join(", "),tag:"mzlow"})}catch(_){}}
+  try{localStorage.setItem(key,JSON.stringify(low.map(i=>i.id)))}catch(_){}
+  ntfPaint();return low}
+async function vMz(){if(!can.mz())return;const ft=await fileToken();
+  const all0=await mzItems("");if(S.route!=="mz")return;
+  const cnt={},lowN={};all0.forEach(x=>{cnt[x.section]=(cnt[x.section]||0)+1;if(mzLow(x))lowN[x.section]=(lowN[x.section]||0)+1});
+  const L=all0.filter(x=>x.section===MZ.sec&&(!MZ.low||mzLow(x))&&(!MZ.q||wmatch(MZ.q,x.search_lc||x.name)));const W=mzW();
+  $("#main").innerHTML=`<div class="row" style="align-items:center;gap:8px;flex-wrap:wrap"><h1 class="grow" style="margin:0">Склад Велесстрой Монтаж</h1>
+    ${"Notification" in window&&Notification.permission==="default"?`<button class="btn sm" id="mzntf">🔔 Включить уведомления</button>`:""}</div>
+   <div class="row noprint" style="gap:6px;flex-wrap:wrap;margin:10px 0">${Object.keys(MZS).map(k=>`<button class="btn ${MZ.sec===k?"p":""}" data-mzs="${k}">${MZS[k][1]} ${MZS[k][0]} <span class="muted" style="${MZ.sec===k?"color:#fff":""}">${cnt[k]||0}</span>${lowN[k]?` <span class="pill r">${lowN[k]}</span>`:""}</button>`).join("")}</div>
+   ${MZ.sec==="mat"?`<div class="banner yellow" style="margin-bottom:10px">🧱 <b>Оперативка и МПЗ</b> подключим, когда пришлёте свои таблицы — у вас они другого вида. Отправьте пример: «📖 Инструкция» → «Отправить пример таблицы». Пока материал можно вести здесь как остальные разделы.</div>`:""}
+   <div class="card noprint"><div class="row" style="gap:6px;flex-wrap:wrap;align-items:center"><input id="mzq" value="${esc(MZ.q)}" placeholder="🔎 наименование, размер, место, код" style="flex:1;min-width:200px">
+    <label class="row" style="gap:6px;align-items:center;white-space:nowrap"><input type="checkbox" id="mzlo" ${MZ.low?"checked":""}> только ниже минимума</label></div>
+    <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">${W?`<button class="btn acc" id="mzadd">＋ Новая позиция</button><button class="btn" id="mzimp">⬆ Загрузить таблицу</button>`:""}<button class="btn" id="mzrep">⬇ Отчёты Excel</button></div></div>
+   <div id="mzl">${L.length?L.map(x=>{const lo=mzLow(x);return `<div class="card" style="display:flex;gap:10px;align-items:center;padding:10px;margin-top:8px;${lo?"border-left:5px solid var(--r)":""}">
+     ${mzThumb(x,ft)}<a href="#/mzitem/${x.id}" style="flex:1;min-width:0;color:inherit;text-decoration:none">${x.grp?`<div class="muted" style="font-size:12px">${esc(x.grp)}</div>`:""}<b>${esc(x.name)}</b>${x.size?` <span class="pill gr">${esc(x.size)}</span>`:""}
+      <div class="muted">${x.place?"📍 "+esc(x.place)+" · ":""}${num(x.min_qty)>0?"мин. "+fmtQ(x.min_qty)+" "+esc(x.unit||""):"минимум не задан"}${x.code?" · "+esc(x.code):""}</div></a>
+     <div style="text-align:right;white-space:nowrap"><b style="font-size:20px;color:${lo?"var(--r)":"inherit"}">${fmtQ(x.qty)}</b> ${esc(x.unit||"")}${lo?`<div><span class="pill r">НИЖЕ МИНИМУМА</span></div>`:""}</div>
+     ${W?`<div class="noprint" style="display:flex;flex-direction:column;gap:4px"><button class="btn sm g" data-mzm="in" data-id="${x.id}" title="Приход">＋</button><button class="btn sm" data-mzm="out" data-id="${x.id}" title="Выдача" style="background:#fff3e0">−</button></div>`:""}</div>`}).join(""):`<div class="card empty" style="margin-top:8px">${cnt[MZ.sec]?"Ничего не найдено":"В разделе пока нет позиций — добавьте или загрузите таблицу"}</div>`}</div>`;
+  document.querySelectorAll("[data-mzs]").forEach(b=>b.onclick=()=>{MZ.sec=b.dataset.mzs;vMz()});
+  let t=0;$("#mzq").oninput=e=>{clearTimeout(t);t=setTimeout(()=>{MZ.q=e.target.value.trim();vMz().then(()=>{const q=$("#mzq");if(q){q.focus();q.setSelectionRange(q.value.length,q.value.length)}})},400)};
+  $("#mzlo").onchange=e=>{MZ.low=e.target.checked;vMz()};
+  const nb=$("#mzntf");if(nb)nb.onclick=()=>Notification.requestPermission().then(()=>vMz());
+  const ad=$("#mzadd");if(ad)ad.onclick=()=>mzItemForm(null,MZ.sec,()=>vMz());
+  const im=$("#mzimp");if(im)im.onclick=()=>mzImportForm();
+  $("#mzrep").onclick=()=>mzReports();
+  document.querySelectorAll("[data-mzm]").forEach(b=>b.onclick=()=>mzMoveForm(all0.find(x=>x.id===b.dataset.id),b.dataset.mzm,()=>vMz()))}
+function mzItemForm(x,sec,done){const it=x||{section:sec,unit:"шт"};
+  modal(`<h3>${x?"Позиция":"Новая позиция"} — ${MZS[it.section][1]} ${MZS[it.section][0]}</h3>
+   <label class="f">Раздел</label><select id="mis">${Object.keys(MZS).map(k=>`<option value="${k}" ${k===it.section?"selected":""}>${MZS[k][0]}</option>`).join("")}</select>
+   <label class="f">Группа (например: Опалубка стеновая, Спецодежда лето)</label><input id="mig" data-sug="mz_grp" value="${esc(it.grp||"")}">
+   <label class="f">Наименование *</label><input id="min" value="${esc(it.name||"")}" placeholder="например: Щит опалубки 3000×1200">
+   <div class="g2x"><div><label class="f">Размер / марка / диаметр</label><input id="miz" value="${esc(it.size||"")}" placeholder="d12, 104-108/170-176, 3000×1200"></div><div><label class="f">Ед. изм.</label><input id="miu" data-sug="mz_unit" value="${esc(it.unit||"")}"></div></div>
+   <div class="g2x"><div><label class="f">Минимальный остаток (сигнал)</label><input id="mim" inputmode="decimal" value="${num(it.min_qty)>0?fmtQ(it.min_qty):""}" placeholder="0 — без сигнала"></div><div><label class="f">Место на складе</label><input id="mip" data-sug="mz_place" value="${esc(it.place||"")}"></div></div>
+   <label class="f">Код / инв. № / артикул</label><input id="mic" value="${esc(it.code||"")}">
+   <label class="f">Примечание</label><input id="mio" value="${esc(it.note||"")}">
+   <label class="f">Фото позиции</label><label class="btn acc" style="display:inline-flex">📷 ${x&&x.photo?"Заменить фото":"Сфотографировать / выбрать"}<input type="file" id="miph" accept="image/*" hidden></label> <span class="muted" id="miphn"></span>
+   <div class="row" style="margin-top:12px"><button class="btn p grow" id="mok">СОХРАНИТЬ</button><button class="btn" data-close>Отмена</button></div>`,box=>{sugAttach(box);let ph=null;
+   $("#miph",box).onchange=async e=>{const f=e.target.files[0];if(f){ph=await shrinkImg(f,2000).catch(()=>f);$("#miphn",box).textContent="📷 фото выбрано"}};
+   $("#mok",box).onclick=e=>act(e.target,async()=>{const fd=new FormData();const v=s=>$(s,box).value.trim();if(!v("#min"))throw new Error("Укажите наименование.");
+     fd.append("section",v("#mis"));fd.append("grp",v("#mig"));fd.append("name",v("#min"));fd.append("size",v("#miz"));fd.append("unit",v("#miu"));fd.append("place",v("#mip"));fd.append("code",v("#mic"));fd.append("note",v("#mio"));
+     fd.append("min_qty",String(num(v("#mim").replace(",","."))||0));if(ph)fd.append("photo",ph);if(!x)fd.append("created_by",S.user.id);
+     await api(x?"PATCH":"POST","/api/collections/mz_items/records"+(x?"/"+x.id:""),fd,true);closeModal();await done()},"Сохранено")})}
+function mzMoveForm(x,kind,done){const k=MZK[kind];const arm=x.section==="arm"&&kind==="in";
+  modal(`<h3>${k[2]} ${k[0]}: ${esc(x.name)}${x.size?" · "+esc(x.size):""}</h3><div class="muted">На складе: <b>${fmtQ(x.qty)} ${esc(x.unit||"")}</b>${num(x.min_qty)>0?" · минимум "+fmtQ(x.min_qty):""}</div>
+   ${arm?`<div class="banner yellow" style="margin-top:6px">Арматура: приход сохраняется <b>только с фото груза и фото/сканом накладной</b>.</div>`:""}
+   <label class="f">${kind==="count"?"Фактически на складе":"Количество"}, ${esc(x.unit||"")} *</label><input id="mvq" inputmode="decimal">
+   ${kind==="out"||kind==="ret"?`<label class="f">${kind==="out"?"Кому выдано *":"Кто вернул"} (бригада / ФИО)</label><input id="mvw" data-sug="mz_who">`:""}
+   ${kind==="in"?`<label class="f">№ накладной${arm?" *":""}</label><input id="mvd"><label class="f">Накладная (фото / скан / PDF)${arm?" *":""}</label><label class="btn" style="display:inline-flex">📄 Добавить накладную<input type="file" id="mvdf" accept="image/*,application/pdf" multiple hidden></label> <span class="muted" id="mvdn"></span>`:""}
+   <label class="f">Фото${arm?" груза *":" (по желанию)"}</label><label class="btn acc" style="display:inline-flex">📷 Сфотографировать / выбрать<input type="file" id="mvp" accept="image/*" multiple hidden></label> <span class="muted" id="mvpn"></span>
+   <label class="f">${kind==="wo"?"Причина списания *":"Примечание"}</label><input id="mvn">
+   <div class="row" style="margin-top:12px"><button class="btn ${kind==="wo"?"r":"p"} grow" id="mok">${k[0].toUpperCase()}</button><button class="btn" data-close>Отмена</button></div>`,box=>{sugAttach(box);let ph=[],dc=[];
+   $("#mvp",box).onchange=async e=>{ph=[];for(const f of e.target.files)ph.push(await shrinkImg(f,2000).catch(()=>f));$("#mvpn",box).textContent=ph.length?`📷 ${ph.length} фото`:""};
+   const df=$("#mvdf",box);if(df)df.onchange=async e=>{dc=[];for(const f of e.target.files)dc.push(/pdf/i.test(f.type)?f:await shrinkImg(f,2600).catch(()=>f));$("#mvdn",box).textContent=dc.length?`📄 ${dc.length}`:""};
+   $("#mok",box).onclick=e=>act(e.target,async()=>{const fd=new FormData();fd.append("item",x.id);fd.append("kind",kind);fd.append("qty",$("#mvq",box).value.replace(",","."));fd.append("created_by",S.user.id);
+     const w=$("#mvw",box);if(w)fd.append("who",w.value.trim());const d=$("#mvd",box);if(d)fd.append("doc_no",d.value.trim());fd.append("note",$("#mvn",box).value.trim());
+     ph.forEach(f=>fd.append("photos",f));dc.forEach(f=>fd.append("doc_files",f));
+     await api("POST","/api/collections/mz_moves/records",fd,true);closeModal();await done();mzNtf()},k[0]+" записан")})}
+async function vMzItem(id){if(!can.mz())return;const x=await api("GET","/api/collections/mz_items/records/"+id);const M=await all("mz_moves",`item="${id}"`,"-created");const ft=await fileToken();if(!S.route.startsWith("mzitem"))return;
+  const W=mzW();const lo=mzLow(x);
+  $("#main").innerHTML=`<div class="row noprint"><a class="btn sm" href="#/mz">← ${MZS[x.section][0]}</a></div>
+   <div class="card" style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">${mzThumb(x,ft,160)}<div style="flex:1;min-width:220px">${x.grp?`<div class="muted">${esc(x.grp)}</div>`:""}<h1 style="margin:2px 0">${esc(x.name)}${x.size?` <span class="pill gr">${esc(x.size)}</span>`:""}</h1>
+    <div style="font-size:26px;margin:6px 0"><b style="color:${lo?"var(--r)":"inherit"}">${fmtQ(x.qty)}</b> ${esc(x.unit||"")} ${lo?'<span class="pill r">НИЖЕ МИНИМУМА</span>':""}</div>
+    <div class="muted">${num(x.min_qty)>0?"Минимум: "+fmtQ(x.min_qty)+" "+esc(x.unit||""):"Минимум не задан"}${x.place?" · 📍 "+esc(x.place):""}${x.code?" · код "+esc(x.code):""}</div>${x.note?`<div class="muted">${esc(x.note)}</div>`:""}
+    ${W?`<div class="row noprint" style="gap:6px;flex-wrap:wrap;margin-top:10px">${Object.keys(MZK).map(k=>`<button class="btn sm ${k==="in"?"g":k==="wo"?"r":""}" data-mzk="${k}">${MZK[k][2]} ${MZK[k][0]}</button>`).join("")}<button class="btn sm" id="mzed">✎ Изменить / фото</button>${num(x.qty)===0?`<button class="btn sm" id="mzdel">🗑 Убрать позицию</button>`:""}</div>`:""}</div></div>
+   <h2>Движение (${M.length})</h2>${M.map(m=>`<div class="card" style="padding:10px;margin-top:6px"><span class="pill ${MZK[m.kind][1]}">${MZK[m.kind][0].toUpperCase()}</span> <b>${m.kind==="count"?"= "+fmtQ(m.qty):(m.kind==="in"||m.kind==="ret"?"+":"−")+fmtQ(m.qty)} ${esc(x.unit||"")}</b> → остаток <b>${fmtQ(m.balance)}</b>
+     <span class="muted"> · ${dt(m.created)} · ${esc(uname(m.created_by))}</span>${m.who?`<div>👷 ${esc(m.who)}</div>`:""}${m.doc_no?`<div>📄 Накладная № ${esc(m.doc_no)}</div>`:""}${m.note?`<div class="muted">${esc(m.note)}</div>`:""}
+     <div>${mzFiles("mz_moves",m,"doc_files",ft)}${mzFiles("mz_moves",m,"photos",ft)}</div></div>`).join("")||'<div class="card empty">Движения пока не было</div>'}`;
+  document.querySelectorAll("[data-mzk]").forEach(b=>b.onclick=()=>mzMoveForm(x,b.dataset.mzk,()=>vMzItem(id)));
+  const ed=$("#mzed");if(ed)ed.onclick=()=>mzItemForm(x,x.section,()=>vMzItem(id));
+  const dl=$("#mzdel");if(dl)dl.onclick=()=>{if(confirm("Убрать позицию из списка?"))act(dl,async()=>{await api("POST","/api/vs/mz/item/remove",{id});location.hash="#/mz"},"Позиция убрана")}}
+/* --- загрузка таблицы: любой лист, где есть «Наименование» и количество (Остаток / Количество / Факт); СИЗ — все листы с размерами --- */
+async function mzParse(f){const x=await readXlsx(f);const out=[];
+  for(const sh of x.sheets){const rows=await x.rows(sh);let hi=-1,H=[];
+    for(let i=0;i<Math.min(rows.length,20);i++){const r=(rows[i]||[]).map(c=>String(c==null?"":c).replace(/\s+/g," ").trim().toLowerCase());if(r.some(c=>/наименование/.test(c))&&r.some(c=>/^(остаток|количество|кол-во|факт|наличие)/.test(c))){hi=i;H=r;break}}
+    if(hi<0)continue;const fi=re=>H.findIndex(h=>re.test(h));
+    const ci={name:fi(/наименование/),size:fi(/^размер|марка|диаметр/),unit:fi(/^ед/),qty:H.findIndex(h=>/^остаток/.test(h))>=0?H.findIndex(h=>/^остаток/.test(h)):fi(/^(количество|кол-во|факт|наличие)/),min:fi(/мин/),grp:fi(/^(группа|сезон|уточнение|вид)/),place:fi(/^место/),code:fi(/^(код|инв|артикул)/)};
+    let g="";for(let i=hi+1;i<rows.length;i++){const r=rows[i]||[];const v=k=>ci[k]>=0?r[ci[k]]:"";const nm=xlStr(v("name"));if(ci.grp>=0&&xlStr(v("grp")))g=xlStr(v("grp"));if(!nm)continue;
+      const q=v("qty");out.push({sheet:sh.name,grp:g||"",name:nm,size:xlStr(v("size")),unit:xlStr(v("unit")),qty:q===""||q==null?"":typeof q==="number"?q:xlStr(q),min:v("min")===""?"":v("min"),place:xlStr(v("place")),code:xlStr(v("code"))})}}
+  return out}
+function mzImportForm(){modal(`<h3>⬆ Загрузить таблицу</h3><div class="muted">Excel (.xlsx) — первая строка с заголовками: <b>Наименование</b>, Размер, Ед., <b>Остаток</b> (или Количество / Факт), Мин. остаток, Место, Группа, Код. Можно несколько листов (как в таблице СИЗ — все листы с размерами). Позиции с тем же наименованием и размером обновятся, новые добавятся, остаток станет как в таблице (запишется «пересчёт»).</div>
+   <label class="f">Раздел</label><select id="mzis">${Object.keys(MZS).map(k=>`<option value="${k}" ${k===MZ.sec?"selected":""}>${MZS[k][0]}</option>`).join("")}</select>
+   <label class="btn acc" style="display:inline-flex;margin-top:10px">📂 Выбрать файл<input type="file" id="mzif" accept=".xlsx" hidden></label><div id="mzip" class="muted" style="margin-top:8px"></div>
+   <div class="row" style="margin-top:12px"><button class="btn p grow" id="mok" disabled>ЗАГРУЗИТЬ</button><button class="btn" data-close>Отмена</button></div>`,box=>{let R=[],fn="";
+   $("#mzif",box).onchange=e=>{const f=e.target.files[0];if(!f)return;fn=f.name;act(null,async()=>{R=await mzParse(f);const sh=[...new Set(R.map(r=>r.sheet))];
+     $("#mzip",box).innerHTML=R.length?`Найдено строк: <b>${R.length}</b> (листы: ${sh.map(esc).join(", ")})<br>Например: ${R.slice(0,3).map(r=>esc(r.name+(r.size?" "+r.size:"")+" — "+(r.qty===""?"?":r.qty))).join("; ")}`:"Не нашёл строк — проверьте заголовки (нужны «Наименование» и «Остаток»/«Количество»).";$("#mok",box).disabled=!R.length})};
+   $("#mok",box).onclick=e=>act(e.target,async()=>{const sec=$("#mzis",box).value;let s={created:0,updated:0,counted:0};
+     for(let i=0;i<R.length;i+=1000){$("#mzip",box).textContent=`Загружаю ${Math.min(i+1000,R.length)} из ${R.length}…`;const j=await api("POST","/api/vs/mz/import",{section:sec,rows:R.slice(i,i+1000),file_name:fn});s.created+=j.created;s.updated+=j.updated;s.counted+=j.counted}
+     closeModal();MZ.sec=sec;await vMz();await mzNtf();toast(`Новых позиций: ${s.created}, обновлено: ${s.updated}, остаток изменён: ${s.counted}`,"ok")})})}
+function mzTemplate(sec){const T=XS.cC;const ex={arm:[["Арматура А500С","d12","т",12.5,5,"Площадка 1","",""],["Арматура А240","d8","т",3,1,"Площадка 1","",""]],
+  scaf:[["Опалубка стеновая","Щит 3000×1200","шт",120,40,"Площадка 2",""],["Леса рамные","Рама 2000×1000","шт",300,100,"Площадка 3",""]],
+  tool:[["Электроинструмент","Перфоратор Makita HR2470","","шт",6,2,"Контейнер 1","ИНВ-0123"],["Ручной инструмент","Кувалда 5 кг","","шт",10,3,"Контейнер 1",""]],
+  cons:[["Сварка","Электроды УОНИ 13/55","d3","кг",80,20,"Контейнер 2",""],["Абразив","Круг отрезной","125×1,2","шт",500,100,"Контейнер 2",""]],
+  siz:[["Спецодежда лето","Костюм Рабочий (лето)","104-108/170-176","компл",49,20,"Склад СИЗ",""],["Средства защиты головы","Каска для рабочих оранжевая","","шт",273,100,"Склад СИЗ",""]],
+  mat:[["","Бетон В25","","м3",0,"","",""],["","Песок строительный","","т",12,5,"Площадка 4",""]]}[sec]||[];
+  const H=["Группа","Наименование","Размер","Ед.","Остаток","Мин. остаток","Место","Код / инв. №"];
+  const rows=[[{v:`Пример таблицы — ${MZS[sec][0]} (Склад Велесстрой Монтаж)`,s:XS.title}],[{v:"Заполняйте с 4-й строки. Обязательно: Наименование и Остаток. Одинаковое наименование + размер = одна позиция.",s:T}],[],H.map(v=>({v,s:XS.head}))];
+  ex.forEach(r=>{const a=sec==="arm"||sec==="scaf"?["",...r]:r;rows.push(a.slice(0,8).map((v,i)=>({v,s:i===4||i===5?XS.cN:T})))});
+  saveBlob(xlsxBlob([{name:MZS[sec][0].slice(0,30),cols:[22,40,18,8,10,12,16,14],rows,merges:["A1:H1","A2:H2"],freeze:4}]),`Primer_${sec}.xlsx`)}
+async function mzReports(){const d=new Date(Date.now()+180*60000);const iso=x=>x.toISOString().slice(0,10);if(!MZ.from){MZ.to=iso(d);MZ.from=iso(new Date(d.getTime()-7*864e5))}
+  modal(`<h3>⬇ Отчёты Excel</h3>
+   <button class="btn p" id="mzr1" style="width:100%;margin-top:6px">📊 Остатки по всем разделам (ниже минимума — красным)</button>
+   <div class="g2x" style="margin-top:12px"><div><label class="f">С</label><input id="mzf" type="date" value="${MZ.from}"></div><div><label class="f">По</label><input id="mzt" type="date" value="${MZ.to}"></div></div>
+   <button class="btn" id="mzr2" style="width:100%;margin-top:6px">🔁 Движение за период + выдано по бригадам</button>
+   <div class="row" style="margin-top:12px"><button class="btn grow" data-close>Закрыть</button></div>`,box=>{
+   $("#mzr1",box).onclick=e=>act(e.target,async()=>{const I=await mzItems("");const T=XS.cC;const sheets=[];
+     const low=I.filter(mzLow);const H=["Раздел","Группа","Наименование","Размер","Ед.","Остаток","Мин.","Не хватает","Место","Код","Фото"];
+     const mk=(title,list)=>{const r=[[{v:title,s:XS.title}],[{v:"На "+dt(new Date().toISOString())+" · позиций: "+list.length,s:T}],[],H.map(v=>({v,s:XS.head}))];
+       list.forEach(x=>{const lo=mzLow(x);r.push([{v:MZS[x.section][0],s:T},{v:x.grp,s:T},{v:x.name,s:T},{v:x.size,s:T},{v:x.unit,s:T},{v:num(x.qty),s:lo?XS.cR:XS.cN},{v:num(x.min_qty)||"",s:XS.cN},{v:lo?Math.round((num(x.min_qty)-num(x.qty))*1000)/1000:"",s:lo?XS.cR:XS.cN},{v:x.place,s:T},{v:x.code,s:T},{v:x.photo?"есть":"нет",s:x.photo?XS.cG:T}])});return r};
+     sheets.push({name:"Ниже минимума",cols:[16,22,44,16,7,10,8,11,16,12,7],rows:mk("НИЖЕ МИНИМУМА — заказать / пополнить",low),merges:["A1:K1"],freeze:4});
+     Object.keys(MZS).forEach(k=>{const l=I.filter(x=>x.section===k);if(l.length)sheets.push({name:MZS[k][0].slice(0,30),cols:[16,22,44,16,7,10,8,11,16,12,7],rows:mk("Остатки — "+MZS[k][0],l),merges:["A1:K1"],freeze:4})});
+     saveBlob(xlsxBlob(sheets),`Sklad_Montazh_ostatki_${iso(d)}.xlsx`)});
+   $("#mzr2",box).onclick=e=>act(e.target,async()=>{const a=$("#mzf",box).value,b=$("#mzt",box).value;if(!a||!b||b<a)throw new Error("Проверьте даты.");MZ.from=a;MZ.to=b;
+     const Mv=await all("mz_moves",`created>="${a} 00:00:00"&&created<="${b} 23:59:59"`,"created","item");if(!Mv.length)throw new Error("За эти дни движения нет.");const T=XS.cC;
+     const KS={in:XS.cG,out:XS.sY,ret:XS.cC,wo:XS.cR,count:T};
+     const r1=[[{v:`Движение ${dmy(a)} – ${dmy(b)}`,s:XS.title}],[],["Дата","Раздел","Наименование","Размер","Операция","Кол-во","Ед.","Остаток после","Кому / кто","Накладная","Фото","Примечание","Записал"].map(v=>({v,s:XS.head}))];
+     Mv.forEach(m=>{const x=(m.expand||{}).item||{};r1.push([{v:dt(m.created),s:T},{v:MZS[x.section]?MZS[x.section][0]:"",s:T},{v:x.name,s:T},{v:x.size,s:T},{v:MZK[m.kind][0],s:KS[m.kind]},{v:num(m.qty),s:XS.cN},{v:x.unit,s:T},{v:num(m.balance),s:XS.cN},{v:m.who,s:T},{v:m.doc_no+((m.doc_files||[]).length?" (скан)":""),s:T},{v:(m.photos||[]).length||"",s:XS.cN},{v:m.note,s:T},{v:uname(m.created_by),s:T}])});
+     const G={};Mv.filter(m=>m.kind==="out").forEach(m=>{const x=(m.expand||{}).item||{};const k=(m.who||"—")+"|"+x.id;(G[k]=G[k]||{who:m.who||"—",x,q:0,n:0});G[k].q+=num(m.qty);G[k].n++});
+     const r2=[[{v:`Выдано по бригадам ${dmy(a)} – ${dmy(b)}`,s:XS.title}],[],["Кому","Раздел","Наименование","Размер","Выдано","Ед.","Раз"].map(v=>({v,s:XS.head}))];
+     Object.values(G).sort((p,q)=>p.who.localeCompare(q.who,"ru")).forEach(g=>r2.push([{v:g.who,s:T},{v:MZS[g.x.section]?MZS[g.x.section][0]:"",s:T},{v:g.x.name,s:T},{v:g.x.size,s:T},{v:Math.round(g.q*1000)/1000,s:XS.cN},{v:g.x.unit,s:T},{v:g.n,s:XS.cN}]));
+     saveBlob(xlsxBlob([{name:"Движение",cols:[16,14,40,14,11,9,6,11,20,16,6,24,16],rows:r1,merges:["A1:M1"],freeze:3},{name:"Выдано по бригадам",cols:[24,14,40,14,10,6,6],rows:r2,merges:["A1:G1"],freeze:3}]),`Sklad_Montazh_dvizhenie_${a}_${b}.xlsx`)})})}
+/* --- задачи: люди, техника, срок, фото результата --- */
+async function vMzTasks(){if(!can.mz())return;const L=await all("mz_tasks","",'status,due,-created').catch(()=>[]);const TP=await all("mz_topics","","title").catch(()=>[]);const ft=await fileToken();if(S.route!=="mztasks")return;
+  const today=new Date(Date.now()+180*60000).toISOString().slice(0,10);const W=mzW();const tn=id=>{const t=TP.find(x=>x.id===id);return t?t.title:""};
+  const card=k=>{const late=k.status==="open"&&k.due&&k.due<today;return `<div class="card" style="padding:10px;margin-top:8px;${late?"border-left:5px solid var(--r)":k.status==="done"?"opacity:.75":""}">
+    <div class="row" style="gap:8px;align-items:flex-start"><div style="flex:1;min-width:0"><b>${esc(k.title)}</b> ${k.status==="done"?'<span class="pill g">ВЫПОЛНЕНО</span>':late?'<span class="pill r">ПРОСРОЧЕНО</span>':'<span class="pill y">В РАБОТЕ</span>'}
+     <div class="muted">${k.due?"⏰ до "+dmy(k.due)+" · ":""}${k.place?"📍 "+esc(k.place)+" · ":""}${k.topic?"☰ "+esc(tn(k.topic))+" · ":""}${esc(uname(k.created_by))}, ${dt(k.created)}</div>
+     ${k.people?`<div>👷 ${esc(k.people)}</div>`:""}${k.tech?`<div>🚜 ${esc(k.tech)}</div>`:""}${k.note?`<div class="muted">${esc(k.note)}</div>`:""}${k.result?`<div>✅ ${esc(k.result)} <span class="muted">${esc(k.done_at?dt(k.done_at):"")}</span></div>`:""}
+     <div>${mzFiles("mz_tasks",k,"photos",ft)}</div></div>
+     ${W&&k.status==="open"?`<button class="btn sm g" data-mtd="${k.id}">✔ Выполнено</button>`:""}${W?`<button class="btn sm" data-mte="${k.id}">✎</button>`:""}</div></div>`};
+  const op=L.filter(k=>k.status!=="done"),dn=L.filter(k=>k.status==="done").slice(0,30);
+  $("#main").innerHTML=`<div class="row" style="align-items:center"><h1 class="grow">Задачи — люди и техника</h1>${W?`<button class="btn acc" id="mtn">＋ Задача</button>`:""}</div>
+   <h2>В работе (${op.length})</h2>${op.map(card).join("")||'<div class="card empty">Нет задач в работе</div>'}<h2>Выполнено</h2>${dn.map(card).join("")||'<div class="card empty">—</div>'}`;
+  const n=$("#mtn");if(n)n.onclick=()=>mzTaskForm(null,TP,vMzTasks);
+  document.querySelectorAll("[data-mte]").forEach(b=>b.onclick=()=>mzTaskForm(L.find(k=>k.id===b.dataset.mte),TP,vMzTasks));
+  document.querySelectorAll("[data-mtd]").forEach(b=>b.onclick=()=>{const k=L.find(x=>x.id===b.dataset.mtd);modal(`<h3>✔ Выполнено: ${esc(k.title)}</h3><label class="f">Результат</label><textarea id="mtr" placeholder="что сделано"></textarea>
+    <label class="f">Фото результата</label><label class="btn acc" style="display:inline-flex">📷 Добавить фото<input type="file" id="mtp" accept="image/*" multiple hidden></label> <span class="muted" id="mtpn"></span>
+    <div class="row" style="margin-top:12px"><button class="btn g grow" id="mok">ВЫПОЛНЕНО</button><button class="btn" data-close>Отмена</button></div>`,box=>{let ph=[];
+    $("#mtp",box).onchange=async e=>{ph=[];for(const f of e.target.files)ph.push(await shrinkImg(f,2000).catch(()=>f));$("#mtpn",box).textContent=ph.length?`📷 ${ph.length}`:""};
+    $("#mok",box).onclick=e=>act(e.target,async()=>{const fd=new FormData();fd.append("status","done");fd.append("result",$("#mtr",box).value.trim());fd.append("done_at",new Date().toISOString().replace("T"," "));ph.forEach(f=>fd.append("photos+",f));
+      await api("PATCH","/api/collections/mz_tasks/records/"+k.id,fd,true);closeModal();vMzTasks()},"Задача выполнена")})})}
+function mzTaskForm(k,TP,done){const t=k||{};const topicOpts=TP.map(x=>`<option value="${x.id}" ${t.topic===x.id?"selected":""}>${x.parent?"— ":""}${esc(x.title)}</option>`).join("");
+  modal(`<h3>${k?"Задача":"Новая задача"}</h3><label class="f">Что сделать *</label><input id="mtt" value="${esc(t.title||"")}" placeholder="например: Разгрузить арматуру, перенести щиты на секцию 2">
+   <label class="f">Люди (через запятую)</label><input id="mtpp" data-sug="mz_people" value="${esc(t.people||"")}" placeholder="бригада Иванова, стропальщик Петров">
+   <label class="f">Техника</label><input id="mtte" data-sug="mz_tech" value="${esc(t.tech||"")}" placeholder="кран КС-45717, погрузчик">
+   <div class="g2x"><div><label class="f">Где</label><input id="mtpl" data-sug="mz_place" value="${esc(t.place||"")}"></div><div><label class="f">Срок</label><input id="mtdu" type="date" value="${esc(t.due||"")}"></div></div>
+   <label class="f">Тема</label><select id="mttp"><option value="">— без темы —</option>${topicOpts}</select>
+   <label class="f">Подробности</label><textarea id="mtno">${esc(t.note||"")}</textarea>
+   <div class="row" style="margin-top:12px"><button class="btn p grow" id="mok">СОХРАНИТЬ</button><button class="btn" data-close>Отмена</button></div>`,box=>{sugAttach(box);
+   $("#mok",box).onclick=e=>act(e.target,async()=>{const v=s=>$(s,box).value.trim();if(!v("#mtt"))throw new Error("Напишите, что сделать.");
+     const d={title:v("#mtt"),people:v("#mtpp"),tech:v("#mtte"),place:v("#mtpl"),due:v("#mtdu"),topic:v("#mttp"),note:v("#mtno")};if(!k){d.status="open";d.created_by=S.user.id}
+     await api(k?"PATCH":"POST","/api/collections/mz_tasks/records"+(k?"/"+k.id:""),d);closeModal();done()},"Сохранено")})}
+/* --- темы и подтемы: переписка с фото --- */
+async function vMzTopics(){if(!can.mz())return;const TP=await all("mz_topics","","-updated").catch(()=>[]);if(S.route!=="mztopics")return;const W=mzW();
+  const top=TP.filter(t=>!t.parent),sub=p=>TP.filter(t=>t.parent===p);
+  $("#main").innerHTML=`<div class="row" style="align-items:center"><h1 class="grow">Темы и подтемы</h1>${W?`<button class="btn acc" id="mtpn">＋ Тема</button>`:""}</div>
+   ${top.map(t=>`<div class="card" style="padding:10px;margin-top:8px"><a href="#/mztopic/${t.id}" style="color:inherit"><b>☰ ${esc(t.title)}</b></a> ${t.status==="closed"?'<span class="pill gr">ЗАКРЫТА</span>':""}<span class="muted"> · ${dt(t.updated)}</span>
+     ${sub(t.id).map(s=>`<div style="margin:6px 0 0 18px"><a href="#/mztopic/${s.id}">↳ ${esc(s.title)}</a> ${s.status==="closed"?'<span class="pill gr">ЗАКРЫТА</span>':""}</div>`).join("")}</div>`).join("")||'<div class="card empty">Тем пока нет</div>'}`;
+  const n=$("#mtpn");if(n)n.onclick=()=>mzTopicForm(null,vMzTopics)}
+function mzTopicForm(parent,done){modal(`<h3>${parent?"Подтема к «"+esc(parent.title)+"»":"Новая тема"}</h3><label class="f">Название *</label><input id="mtpt"><label class="f">Описание</label><textarea id="mtpd"></textarea>
+   <div class="row" style="margin-top:12px"><button class="btn p grow" id="mok">СОЗДАТЬ</button><button class="btn" data-close>Отмена</button></div>`,box=>{
+   $("#mok",box).onclick=e=>act(e.target,async()=>{const t=$("#mtpt",box).value.trim();if(!t)throw new Error("Напишите название.");
+     const r=await api("POST","/api/collections/mz_topics/records",{title:t,note:$("#mtpd",box).value.trim(),status:"open",parent:parent?parent.id:"",created_by:S.user.id});closeModal();done(r)},"Создано")})}
+async function vMzTopic(id){if(!can.mz())return;const t=await api("GET","/api/collections/mz_topics/records/"+id);const [P,SB,TK]=await Promise.all([all("mz_posts",`topic="${id}"`,"created"),all("mz_topics",`parent="${id}"`,"title"),all("mz_tasks",`topic="${id}"`,"status,due")]);
+  const par=t.parent?await api("GET","/api/collections/mz_topics/records/"+t.parent).catch(()=>null):null;const ft=await fileToken();if(!S.route.startsWith("mztopic"))return;const W=mzW();
+  $("#main").innerHTML=`<div class="row noprint"><a class="btn sm" href="${par?"#/mztopic/"+par.id:"#/mztopics"}">← ${par?esc(par.title):"Темы"}</a></div>
+   <h1>${par?`<span class="muted">${esc(par.title)} ›</span> `:""}${esc(t.title)} ${t.status==="closed"?'<span class="pill gr">ЗАКРЫТА</span>':""}</h1>${t.note?`<div class="muted">${esc(t.note)}</div>`:""}
+   ${W?`<div class="row noprint" style="gap:6px;margin:8px 0;flex-wrap:wrap">${!t.parent?`<button class="btn sm" id="mtsub">＋ Подтема</button>`:""}<button class="btn sm" id="mttask">＋ Задача по теме</button><button class="btn sm" id="mtcl">${t.status==="closed"?"Открыть снова":"Закрыть тему"}</button></div>`:""}
+   ${SB.length?`<h3>Подтемы</h3>${SB.map(s=>`<div><a href="#/mztopic/${s.id}">↳ ${esc(s.title)}</a> ${s.status==="closed"?'<span class="pill gr">ЗАКРЫТА</span>':""}</div>`).join("")}`:""}
+   ${TK.length?`<h3>Задачи</h3>${TK.map(k=>`<div>${k.status==="done"?"✅":"⏳"} ${esc(k.title)}${k.due?` <span class="muted">до ${dmy(k.due)}</span>`:""}</div>`).join("")}`:""}
+   <h3>Сообщения</h3>${P.map(p=>`<div class="card" style="padding:10px;margin-top:6px"><div class="muted">${esc(uname(p.created_by))} · ${dt(p.created)}</div><div style="white-space:pre-wrap">${esc(p.text)}</div><div>${mzFiles("mz_posts",p,"photos",ft)}</div></div>`).join("")||'<div class="muted">Пока нет</div>'}
+   ${W?`<div class="card noprint" style="margin-top:10px"><textarea id="mpt" placeholder="Написать… (что сделано, что нужно, вопросы)"></textarea><div class="row" style="gap:6px;margin-top:6px"><label class="btn">📷 Фото / PDF<input type="file" id="mpp" accept="image/*,application/pdf" multiple hidden></label><span class="muted" id="mppn"></span><button class="btn p grow" id="mps">ОТПРАВИТЬ</button></div></div>`:""}`;
+  if(!W)return;let ph=[];
+  $("#mpp").onchange=async e=>{ph=[];for(const f of e.target.files)ph.push(/pdf/i.test(f.type)?f:await shrinkImg(f,2000).catch(()=>f));$("#mppn").textContent=ph.length?`📎 ${ph.length}`:""};
+  $("#mps").onclick=e=>act(e.target,async()=>{const tx=$("#mpt").value.trim();if(!tx&&!ph.length)throw new Error("Напишите текст или добавьте фото.");const fd=new FormData();fd.append("topic",id);fd.append("text",tx);fd.append("created_by",S.user.id);ph.forEach(f=>fd.append("photos",f));
+    await api("POST","/api/collections/mz_posts/records",fd,true);await api("PATCH","/api/collections/mz_topics/records/"+id,{note:t.note});vMzTopic(id)},"Отправлено");
+  const sb=$("#mtsub");if(sb)sb.onclick=()=>mzTopicForm(t,r=>{location.hash="#/mztopic/"+r.id});
+  $("#mttask").onclick=async()=>{const TP=await all("mz_topics","","title");mzTaskForm({topic:id},TP,()=>vMzTopic(id))};
+  $("#mtcl").onclick=e=>act(e.target,async()=>{await api("PATCH","/api/collections/mz_topics/records/"+id,{status:t.status==="closed"?"open":"closed"});vMzTopic(id)})}
+/* --- инструкция для начальника склада --- */
+function vMzHelp(){if(!can.mz())return;const W=mzW();
+  const sec=(k,txt)=>`<div class="card" style="margin-top:8px"><h3 style="margin-top:0">${MZS[k][1]} ${MZS[k][0]}</h3><div>${txt}</div><button class="btn sm" data-mzt="${k}" style="margin-top:6px">⬇ Пример таблицы</button></div>`;
+  $("#main").innerHTML=`<h1>📖 Инструкция — Склад Велесстрой Монтаж</h1>
+   <div class="card"><h3 style="margin-top:0">Как это устроено</h3><ol style="margin:0;padding-left:20px;line-height:1.6">
+    <li><b>Позиция</b> — то, что лежит на складе: наименование, размер/марка, единица, <b>фото</b>, место, <b>минимальный остаток</b>.</li>
+    <li><b>Остаток</b> программа считает сама по движению: <b>＋ Приход</b>, <b>− Выдача</b> (кому — бригада/ФИО), <b>↩ Возврат</b> (леса, опалубка, инструмент вернулись), <b>✕ Списание</b> (с причиной), <b>= Пересчёт</b> (инвентаризация).</li>
+    <li>К каждой операции — <b>фото</b>, к приходу — <b>накладная</b> (фото/скан/PDF). <b>Арматура: приход без фото груза и накладной не сохраняется.</b></li>
+    <li><b>Минимальный остаток</b>: как только остаток стал меньше — 🔔 со звуком и позиция красная. Включите уведомления кнопкой «🔔 Включить уведомления» на странице склада.</li>
+    <li><b>Таблица</b>: «⬆ Загрузить таблицу» — позиции добавятся/обновятся, остаток станет как в таблице (запишется «пересчёт»). Удобно для начального остатка и сверки.</li>
+    <li><b>Задачи</b> — кто (люди), чем (техника), где, к какому сроку; по выполнении — результат и фото. Просрочено — красным и в 🔔.</li>
+    <li><b>Темы и подтемы</b> — обсуждение по участку/вопросу с фото и документами; к теме можно привязать задачи.</li>
+    <li><b>Отчёты Excel</b>: остатки по разделам (ниже минимума — отдельный лист), движение за период, выдано по бригадам.</li></ol></div>
+   <h2>Что присылать каждое утро</h2><div class="card"><ol style="margin:0;padding-left:20px;line-height:1.6"><li><b>Оперативка</b> и <b>МПЗ</b> (остатки 1С) — пока пришлите пример (ниже), подключим загрузку под ваш вид.</li>
+    <li><b>СИЗ</b> — ваша таблица по размерам (листы «Размерный ряд…», «Прочее» и т.д.) → «⬆ Загрузить таблицу», раздел СИЗ. Программа сама найдёт листы с колонками «Наименование товара», «Размер», «Остаток».</li>
+    <li>Если вели учёт в Excel — таблицы по арматуре, лесам/опалубке, инструменту, расходникам по примерам ниже. Дальше — движение прямо в программе.</li></ol></div>
+   <h2>Разделы и примеры таблиц</h2>
+   ${sec("arm","Марка и диаметр в «Размер» (d12, d16). Ед. — т или м. Приход — только с фото и накладной.")}
+   ${sec("scaf","Каждый элемент отдельно: щиты, стойки, балки, рамы, ригели, замки, домкраты — с размером. Выдача на участок/бригаду, возврат — когда вернули.")}
+   ${sec("tool","Электро- и ручной инструмент. Инвентарный № — в «Код». Выдача под бригаду/ФИО, возврат. Фото — чтобы все одинаково называли.")}
+   ${sec("cons","Электроды, круги, диски, крепёж, смазка. Минимальный остаток — чтобы не закончилось внезапно.")}
+   ${sec("siz","Наименование + размер (104-108/170-176, 42). Группа — Спецодежда лето/зима, Средства защиты головы и т.п.")}
+   ${sec("mat","Оперативка и МПЗ — подключим под ваш вид. Пока можно вести материал вручную.")}
+   ${W?`<h2>Отправить пример таблицы</h2><div class="card"><div class="muted">Оперативка, МПЗ, PDF заявки — то, что у вас отличается. Мы посмотрим и подключим.</div>
+    <div class="g2x"><div><label class="f">Что это</label><select id="msk"><option>Оперативка</option><option>МПЗ (остатки 1С)</option><option>PDF заявки</option><option>Другое</option></select></div><div><label class="f">Комментарий</label><input id="msn"></div></div>
+    <label class="btn acc" style="display:inline-flex;margin-top:8px">📤 Выбрать файл и отправить<input type="file" id="msf" hidden></label></div>`:""}
+   <h2>Что можно добавить дальше</h2><div class="card"><ul style="margin:0;padding-left:20px;line-height:1.6"><li>QR-наклейки на стеллажи и инструмент — сканируешь телефоном и сразу «выдать/вернуть».</li><li>Карточка бригады: что за ней числится (инструмент, леса), с напоминанием вернуть.</li><li>Заявка на пополнение одним нажатием из листа «Ниже минимума».</li><li>Ежедневный отчёт руководителю в 8:00 автоматически.</li><li>Инвентаризация с телефона по местам хранения.</li></ul></div>`;
+  document.querySelectorAll("[data-mzt]").forEach(b=>b.onclick=()=>mzTemplate(b.dataset.mzt));
+  const sf=$("#msf");if(sf)sf.onchange=e=>{const f=e.target.files[0];e.target.value="";if(!f)return;act(null,async()=>{const fd=new FormData();fd.append("kind",$("#msk").value);fd.append("note",$("#msn").value.trim());fd.append("file",f);fd.append("created_by",S.user.id);
+    await api("POST","/api/collections/mz_samples/records",fd,true)},"Пример отправлен — спасибо!")}}
+
 /* ----- 1.9.31: ПЛАН ПОГРУЗКИ — где лежит, чем грузить, на какую машину; порядок: по местам, сначала кран/КМУ, потом погрузчик, потом вручную ----- */
 const LOAD_BASE=["КМУ (кран-манипулятор)","Погрузчик (вилочный)","Вилочник (рохля)","Вручную (стропальщики)"];
 const ldKey=m=>lcq(m).replace(/\s+/g," ").trim();
@@ -1896,7 +2130,7 @@ const qtyUnit=(q,u)=>{const n=numQ(q);return ((n==null?String(q==null?"":q).trim
 can.skk=()=>["admin","skk"].includes(role());can.upd=()=>["admin","manager","storekeeper","skk"].includes(role());
 /* ---------- 1.9: роли, оперативка, поставщики, новый приход, «Задачи и согласования» ---------- */
 can.skkView=()=>["skk","skk_view"].includes(role());
-can.coord=()=>role()==="coord";can.linkOnly=()=>!!(S.user&&S.user.scope);can.sklad=()=>!!(S.user&&S.user.scope==="sklad");can.zay=()=>!!(S.user&&S.user.scope==="zay");can.skkLink=()=>["admin","manager","skk","storekeeper"].includes(role())&&!can.linkOnly();
+can.coord=()=>role()==="coord";can.linkOnly=()=>!!(S.user&&S.user.scope);can.sklad=()=>!!(S.user&&S.user.scope==="sklad");can.zay=()=>!!(S.user&&S.user.scope==="zay");can.mz=()=>!!(S.user&&S.user.scope==="mz");can.skkLink=()=>["admin","manager","skk","storekeeper"].includes(role())&&!can.linkOnly();
 can.oper=()=>["admin","manager","storekeeper","skk"].includes(role());
 can.sup=()=>["admin","manager","skk"].includes(role());
 can.boss=()=>["admin","manager"].includes(role());
@@ -2799,9 +3033,9 @@ async function vSkk(_id,changed){
 // 1.9.10: ссылка на «Склад / СКК» — кому угодно; человек по ссылке видит только эту страницу (УПД, акты, оперативка, МПЗ)
 async function skkLinkModal(pre){
   // 1.9.12: две ссылки — «Склад / СКК» (УПД, акты СКК) и «Склад» (новый приход, оперативка, МПЗ, журнал актов); друг другу не мешают
-  const SC=[["skk","Склад / СКК — УПД, акты СКК, оперативка, МПЗ",["admin","manager","skk"]],["sklad","Склад — новый приход (УПД, фото груза), оперативка, МПЗ, журнал актов",["admin","manager","storekeeper"]],["zay","Склад: заявки — ресурсы склада, поиск (оперативка, МПЗ, журнал актов), свои заявки с проверкой на акт",["admin","manager","storekeeper"]]].filter(x=>x[2].includes(role()));
-  const SCN={skk:"СКК",sklad:"СКЛАД",zay:"ЗАЯВКИ"};
-  const draw=async()=>{const j=await api("GET","/api/vs/skk/links");const url=(t,sc)=>location.origin+"/?k="+t+(sc==="zay"?"#/requests":"#/skk");
+  const SC=[["skk","Склад / СКК — УПД, акты СКК, оперативка, МПЗ",["admin","manager","skk"]],["sklad","Склад — новый приход (УПД, фото груза), оперативка, МПЗ, журнал актов",["admin","manager","storekeeper"]],["zay","Склад: заявки — ресурсы склада, поиск (оперативка, МПЗ, журнал актов), свои заявки с проверкой на акт",["admin","manager","storekeeper"]],["mz","Склад Велесстрой Монтаж — свой склад подрядчика (арматура, леса и опалубка, инструмент, расходники, СИЗ, задачи, темы)",["admin","manager"]]].filter(x=>x[2].includes(role()));
+  const SCN={skk:"СКК",sklad:"СКЛАД",zay:"ЗАЯВКИ",mz:"МОНТАЖ"};
+  const draw=async()=>{const j=await api("GET","/api/vs/skk/links");const url=(t,sc)=>location.origin+"/?k="+t+(sc==="zay"?"#/requests":sc==="mz"?"#/mz":"#/skk");
     return `<h3>🔗 Ссылка на страницу</h3><div class="muted">Человек открывает ссылку — без пароля и регистрации — и видит <b>только выбранную страницу</b>. Остальные разделы ему недоступны, на работу программы он не влияет.</div>
      ${location.protocol!=="https:"&&!/^(localhost|127\.)/.test(location.hostname)?`<div class="banner yellow" style="margin-top:6px;font-size:14px">Программа открыта по http — без интернета на телефоне работать не будет. Нужен адрес https (на сервере: bash install.sh auto).</div>`:""}
      <label class="f" for="sks">Страница</label><select id="sks">${SC.map(x=>`<option value="${x[0]}" ${pre===x[0]?"selected":""}>${esc(x[1])}</option>`).join("")}</select>
@@ -2811,12 +3045,12 @@ async function skkLinkModal(pre){
      <h3 style="margin-top:14px">Выданные ссылки (${j.links.length})</h3>${j.links.map(l=>`<div class="card" style="padding:10px;margin-top:6px"><b>${esc(l.name)}</b> <span class="pill y">${SCN[l.scope]||"СКК"}</span> <span class="pill ${l.mode==="work"?"b":"gr"}">${l.mode==="work"?"РАБОТА":"ПРОСМОТР"}</span>
        <div class="muted">выдал ${esc(l.by)} ${dt(l.created)} · открывали ${l.views} раз${l.last_open?" · последний раз "+dt(l.last_open):""}</div>
        <input readonly value="${esc(url(l.token,l.scope))}" style="margin-top:6px"><div class="row" style="margin-top:6px;gap:6px"><button class="btn sm" data-skcp="${esc(url(l.token,l.scope))}">📋 Копировать</button>
-       <a class="btn sm" target="_blank" rel="noopener" href="https://t.me/share/url?url=${encodeURIComponent(url(l.token,l.scope))}&text=${encodeURIComponent("ВЕЛЕССТРОЙ — "+({sklad:"Склад",zay:"Склад: заявки"}[l.scope]||"Склад / СКК"))}">Telegram</a>
+       <a class="btn sm" target="_blank" rel="noopener" href="https://t.me/share/url?url=${encodeURIComponent(url(l.token,l.scope))}&text=${encodeURIComponent("ВЕЛЕССТРОЙ — "+({sklad:"Склад",zay:"Склад: заявки",mz:"Склад Велесстрой Монтаж"}[l.scope]||"Склад / СКК"))}">Telegram</a>
        <a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent("ВЕЛЕССТРОЙ: "+url(l.token,l.scope))}">WhatsApp</a><button class="btn sm" data-skoff="${l.id}">Отключить</button></div></div>`).join("")||'<div class="muted">Пока нет</div>'}
      <div class="row" style="margin-top:12px"><button class="btn" data-close>Закрыть</button></div>`};
   const bind=box=>{const re=async()=>{box.querySelector(".box").innerHTML=await draw();bind(box)};
     $("#skc",box).onclick=e=>act(e.target,async()=>{const r=await api("POST","/api/vs/skk/links/create",{name:$("#skn",box).value,mode:$("#skm",box).value,scope:$("#sks",box).value});await re();
-      const u=location.origin+"/?k="+r.token+(r.scope==="zay"?"#/requests":"#/skk");try{await navigator.clipboard.writeText(u)}catch(_){}},"Ссылка создана и скопирована");
+      const u=location.origin+"/?k="+r.token+(r.scope==="zay"?"#/requests":r.scope==="mz"?"#/mz":"#/skk");try{await navigator.clipboard.writeText(u)}catch(_){}},"Ссылка создана и скопирована");
     box.querySelectorAll("[data-skcp]").forEach(b=>b.onclick=async()=>{try{await navigator.clipboard.writeText(b.dataset.skcp);toast("Скопировано")}catch(_){prompt("Ссылка:",b.dataset.skcp)}});
     box.querySelectorAll("[data-skoff]").forEach(b=>b.onclick=()=>{if(!confirm("Отключить ссылку? Человек больше не сможет войти."))return;act(b,async()=>{await api("POST","/api/vs/skk/links/off",{id:b.dataset.skoff});await re()},"Ссылка отключена")})};
   modal(await draw(),bind)}
@@ -3793,14 +4027,19 @@ const USR={showHidden:false};
 function vUsers(){
   const UA=S.data.users||[];const nh=UA.filter(u=>u.hidden).length;const U=UA.filter(u=>USR.showHidden||!u.hidden);   // 1.9.29: скрытые — не в списке
   $("#main").innerHTML=`<h1>Управление пользователями</h1>
-  <div class="row noprint" style="margin-bottom:10px"><button class="btn acc" id="un">＋ Новый пользователь</button><a class="btn" href="#/fields">⚙ Поля форм (настройки)</a>${can.admin()?`<a class="btn" href="#/backup">💾 Бэкап на компьютер${!bkLast()||Date.now()-bkLast()>7*864e5?' <span class="pill r">ПОРА</span>':""}</a>`:""}</div>
+  <div class="row noprint" style="margin-bottom:10px"><button class="btn acc" id="un">＋ Новый пользователь</button>${can.admin()||role()==="manager"?`<button class="btn" id="umz">🔗 Ссылка «Склад Велесстрой Монтаж»</button>`:""}${can.admin()?`<button class="btn" id="umzs">📥 Примеры таблиц от «Монтажа»</button>`:""}<a class="btn" href="#/fields">⚙ Поля форм (настройки)</a>${can.admin()?`<a class="btn" href="#/backup">💾 Бэкап на компьютер${!bkLast()||Date.now()-bkLast()>7*864e5?' <span class="pill r">ПОРА</span>':""}</a>`:""}</div>
   ${nh?`<label class="row noprint" style="margin-bottom:8px;gap:6px;align-items:center"><input type="checkbox" id="ushh" ${USR.showHidden?"checked":""}> Показать убранных (${nh})</label>`:""}
   <div class="card tw"><table><tr><th>Имя</th><th>Логин</th><th>Роль</th><th>Группа (задачи)</th><th>Статус</th><th></th></tr>
   ${U.map(u=>`<tr><td><b>${esc(u.name)}</b>${u.warehouse?`<div class="muted">${esc(u.warehouse)}</div>`:""}</td><td>${esc(u.username||u.email)}</td><td>${esc(T.roles[u.role]||u.role)}</td><td>${esc(TGR[u.tgroup]||"")}</td>
    <td>${u.active?`<span class="pill g">АКТИВЕН</span>`:`<span class="pill gr">ОТКЛЮЧЁН</span>`}${u.demo?` <span class="pill y">ТЕСТ</span>`:""}${u.hidden?` <span class="pill gr">УБРАН</span>`:""}</td><td style="white-space:nowrap"><button class="btn sm" data-ue="${u.id}">Изменить</button>${can.admin()&&u.id!==S.user.id?(u.hidden?` <button class="btn sm" data-uback="${u.id}" title="Вернуть в список (останется отключённым)">↩ Вернуть</button>`:` <button class="btn sm" data-urm="${u.id}" title="Убрать из списка" aria-label="Убрать пользователя">🗑</button>`):""}</td></tr>`).join("")}</table></div>
   <h2>Тестовые данные</h2><div class="card"><div class="muted">Создаёт 4 тестовые учётные записи (sklad1, sklad2, ruk1, view1 — пароль Test12345), 3 правила из примеров ТЗ, технику и работников. Удаление убирает тестовые ресурсы и отключает тестовые учётки и правила; история приёмок и журнал сохраняются.</div>
    <div class="row" style="margin-top:10px"><button class="btn" id="dc">Создать тестовые данные</button><button class="btn r" id="dr">Удалить тестовые данные</button></div></div>`;
-  $("#un").onclick=()=>userForm(null);
+  $("#un").onclick=()=>userForm(null);{const m=$("#umz");if(m)m.onclick=()=>skkLinkModal("mz")}
+  {const m=$("#umzs");if(m)m.onclick=()=>act(m,async()=>{const L=await all("mz_samples","","-created");const ft=await fileToken();
+    modal(`<h3>📥 Примеры таблиц от «Склад Велесстрой Монтаж»</h3><div class="muted">Что прислал начальник склада (Оперативка, МПЗ, PDF заявки…) — скачайте и передайте для подключения.</div>
+     ${L.map(x=>`<div class="card" style="padding:10px;margin-top:6px"><b>${esc(x.kind||"Файл")}</b> <span class="muted">${dt(x.created)} · ${esc(uname(x.created_by))}</span>${x.note?`<div>${esc(x.note)}</div>`:""}
+      <a class="btn sm" href="/api/files/mz_samples/${x.id}/${encodeURIComponent(x.file)}?token=${ft}&download=1">⬇ ${esc(x.file)}</a></div>`).join("")||'<div class="muted" style="margin-top:8px">Пока ничего не присылали</div>'}
+     <div class="row" style="margin-top:12px"><button class="btn grow" data-close>Закрыть</button></div>`)})}
   document.querySelectorAll("[data-ue]").forEach(b=>b.onclick=()=>userForm(b.dataset.ue));
   const sh=$("#ushh");if(sh)sh.onchange=()=>{USR.showHidden=sh.checked;vUsers()};
   document.querySelectorAll("[data-urm]").forEach(b=>b.onclick=()=>{const u=UA.find(x=>x.id===b.dataset.urm);
