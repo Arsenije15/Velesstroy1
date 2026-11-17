@@ -1228,6 +1228,7 @@ function shipCard(sh,curId,files,ft,WS){const ss=SHS[sh.status];const rs=jarr(sh
     <div class="muted">${sh.sent_at?"Отправил "+esc(uname(sh.sent_by))+" "+dt(sh.sent_at):""}${sh.delivered_at?" · Доставлено "+dt(sh.delivered_at)+" ("+esc(uname(sh.delivered_by))+")":""}${sh.status==="sent"?" · в пути до ~"+tm(new Date(new Date(String(sh.sent_at).replace(" ","T")).getTime()+num(sh.hours)*3600000).toISOString()):""}</div>
     ${jarr(sh.overrides).map(o=>`<div class="pill o" style="white-space:normal;margin-top:4px">⚠ обход: ${esc((o.rules||[]).join("; "))} — ${esc(o.reason)} (${esc(o.name)})</div>`).join("")}
     <div style="margin-top:8px">${photoStrip(ph,ft)}</div>
+    ${ln.length&&sh.status!=="cancelled"?`<div class="row noprint" style="margin-top:8px"><button class="btn sm acc" data-shplan="${sh.id}">🗺 План погрузки${ln.some(l=>l.place||l.load)?"":" — заполнить"}</button></div>`:""}
     ${WS&&sh.status!=="cancelled"?`<div class="row noprint" style="margin-top:8px"><button class="btn sm" data-shx="pass" data-sh="${sh.id}">🛡 Пропуск для охраны</button>
       ${live?`<button class="btn sm" data-shx="share" data-sh="${sh.id}">🔗 Ссылка получателю</button>`:""}<button class="btn sm" data-shx="strop" data-sh="${sh.id}">📋 Задача</button>${live||(sh.status==="delivered"&&can.manage())?`<button class="btn sm" data-shx="edit" data-sh="${sh.id}">✏ Изменить</button>`:""}</div>`:""}
     ${WS&&live?`<div class="row noprint" style="margin-top:10px">
@@ -1243,6 +1244,7 @@ function bindShip(curId,refresh){
     <div class="row" style="margin-top:14px"><button class="btn p grow" id="mok">ДОБАВИТЬ</button><button class="btn" data-close>Отмена</button></div>`,
     box=>{sugAttach(box);$("#mok",box).onclick=e=>act(e.target,async()=>{const v=$("#stn",box).value.trim();if(!v)throw new Error("Напишите название этапа.");
       await api("POST","/api/vs/shipment/step",{shipment:b.dataset.sta,add:v});closeModal();await refresh()},"Этап добавлен")}));
+  document.querySelectorAll("[data-shplan]").forEach(b=>b.onclick=()=>{const sh=shOf(b.dataset.shplan);if(sh)shipPlan(sh,refresh)});
   document.querySelectorAll("[data-shx]").forEach(b=>b.onclick=()=>{const sh=shOf(b.dataset.sh);if(!sh)return;const a=b.dataset.shx;
     if(a==="pass")passForm(sh);else if(a==="share")shareForm(sh);else if(a==="edit")shipEditForm(sh,refresh);else stropForm(sh)});
   document.querySelectorAll("[data-sha]").forEach(b=>b.onclick=()=>{const a=b.dataset.sha,sh=shOf(b.dataset.sh);
@@ -1282,7 +1284,8 @@ async function deliverForm(sh,done){
 }
 // Подготовить отгрузку: позиции из одной или нескольких заявок, свои этапы, техника и люди
 async function shipmentForm(reqId,done){
-  await sugFresh(["vehicle","driver","hours","steps_tpl","step"]);
+  await sugFresh(["vehicle","driver","hours","steps_tpl","step","ship_place","ship_load"]);
+  const MEM=await ldMem();const meta=new Map();   // 1.9.31: где лежит / чем грузить / вес / машина — по позиции
   let items=[];try{items=await all("request_items",'request.status="open"',"sort")}catch(e){toast(e.message,"err");return}
   const reqs={};(S.data.requests||[]).filter(x=>x.status==="open").forEach(r=>reqs[r.id]=r);
   const miss=[...new Set(items.map(i=>i.request).filter(x=>!reqs[x]))];
@@ -1298,6 +1301,7 @@ async function shipmentForm(reqId,done){
   const stepRow=v=>`<div class="row" data-step style="margin-top:6px;flex-wrap:nowrap"><input data-sn data-sug="step" value="${esc(v)}" placeholder="Этап"><button type="button" class="btn sm" data-sdel>✕</button></div>`;
   modal(`<h3>Подготовить отгрузку</h3><div class="muted">Одна машина — позиции из одной или нескольких заявок. Начальник увидит сразу. Для отправки нужно фото погрузки.</div>
    <label class="f">Машина (марка, госномер) *</label><input id="shv" data-sug="vehicle" data-chips placeholder="например: КАМАЗ А123ВС 93">
+   <label class="f">Ещё машины (если всё не влезет в одну) — через запятую</label><input id="shv2" placeholder="например: Манипулятор Е555КХ 93">
    <label class="f">Водитель</label><input id="shd" data-sug="driver" data-chips>
    <label class="f">Время в пути, часов</label><input id="shh" inputmode="decimal" data-sug="hours" data-prefill>
    <h3 style="margin-top:14px">Позиции на машине <span class="muted" id="shc"></span></h3>
@@ -1315,24 +1319,106 @@ async function shipmentForm(reqId,done){
       const chosen=items.filter(i=>sel.has(i.id)),other=items.filter(i=>!sel.has(i.id)&&match(i)&&(q||!reqId||i.request===reqId)).slice(0,60);
       const row=i=>{const r=reqs[i.request],on=sel.has(i.id);return `<div class="line"><input type="checkbox" data-li="${i.id}" ${on?"checked":""} aria-label="${esc(i.material)}">
         <div style="flex:1;min-width:0"><b>№ ${esc(r.number)}</b> · ${esc(i.material)}<div class="muted">${esc(r.object||"")} · осталось ${fmtQ(rest(i))} из ${fmtQ(i.qty_ordered)} ${esc(i.unit)}</div></div>
-        ${on?`<input data-lq="${i.id}" inputmode="decimal" value="${fmtQ(sel.get(i.id))}" style="width:90px;min-height:40px"><span class="muted">${esc(i.unit)}</span>`:""}</div>`};
+        ${on?`<input data-lq="${i.id}" inputmode="decimal" value="${fmtQ(sel.get(i.id))}" style="width:90px;min-height:40px"><span class="muted">${esc(i.unit)}</span>`:""}</div>${on?planInputs(i.id,metaOf(i),cars()):""}`};
       $("#shl",box).innerHTML=(chosen.map(row).join("")+other.map(row).join(""))||`<div class="muted">${items.length?"Ничего не найдено":"Нет открытых заявок"}</div>`;
       $("#shc",box).textContent=sel.size?"· выбрано "+sel.size:"";
       if(!q&&reqId&&!other.length&&!chosen.length)$("#shl",box).innerHTML=`<div class="muted">В этой заявке нечего отгружать — найдите позиции других заявок.</div>`;
       box.querySelectorAll("[data-li]").forEach(c=>c.onchange=()=>{const it=items.find(x=>x.id===c.dataset.li);if(c.checked)sel.set(it.id,rest(it)||num(it.qty_ordered));else sel.delete(it.id);draw()});
-      box.querySelectorAll("[data-lq]").forEach(c=>c.oninput=()=>sel.set(c.dataset.lq,c.value))};
+      box.querySelectorAll("[data-lq]").forEach(c=>c.oninput=()=>sel.set(c.dataset.lq,c.value));
+      planBind(box,meta);sugAttach($("#shl",box))};
+    const cars=()=>[$("#shv",box).value.trim()||"Машина 1",...$("#shv2",box).value.split(",").map(x=>x.trim()).filter(Boolean)];
+    const metaOf=i=>{if(!meta.has(i.id)){const m=MEM.get(ldKey(i.material))||{};meta.set(i.id,{place:m.place||"",load:m.load||"",weight:m.weight||"",car:1})}return meta.get(i.id)};
+    const updCars=()=>{const cs=cars();box.querySelectorAll("#shl [data-pl]").forEach(r=>{const id=r.dataset.pl;const m=meta.get(id)||{};if(m.car>cs.length)m.car=1;let sl=r.querySelector("select[data-pf=car]");
+      if(cs.length<2){if(sl)sl.remove();return}
+      if(!sl){sl=document.createElement("select");sl.dataset.pf="car";sl.style.cssText="flex:1;min-width:110px;min-height:38px";r.appendChild(sl);sl.addEventListener("change",()=>{const x=meta.get(id)||{};x.car=+sl.value;meta.set(id,x)})}
+      sl.innerHTML=cs.map((c,k)=>`<option value="${k+1}" ${+m.car===k+1?"selected":""}>🚚 ${esc(c)}</option>`).join("")})};
+    $("#shv2",box).addEventListener("input",updCars);$("#shv",box).addEventListener("input",updCars);   // 1.9.31: без перерисовки — не теряется ввод
     draw();let qt=null;$("#shq",box).oninput=()=>{clearTimeout(qt);qt=setTimeout(draw,200)};
     const bindS=()=>box.querySelectorAll("[data-sdel]").forEach(b=>b.onclick=()=>b.closest("[data-step]").remove());bindS();
     $("#shsa",box).onclick=()=>{$("#shs",box).insertAdjacentHTML("beforeend",stepRow(""));bindS();sugAttach(box);const l=box.querySelectorAll("[data-sn]");l[l.length-1].focus()};
     sugAttach(box);if(!$("#shh",box).value)$("#shh",box).value="4";
     $("#mok",box).onclick=e=>act(e.target,async()=>{
       const res=[...box.querySelectorAll("[data-res]:checked")].map(c=>c.dataset.res);
-      const lines=[...sel.entries()].map(([item,qty])=>({item,qty:String(qty).replace(",",".")}));
+      const lines=[...sel.entries()].map(([item,qty])=>Object.assign({item,qty:String(qty).replace(",",".")},meta.get(item)||{}));
       const steps=[...box.querySelectorAll("[data-sn]")].map(x=>x.value.trim()).filter(Boolean);
       if(!lines.length&&!reqId)throw new Error("Выберите хотя бы одну позицию.");
-      await api("POST","/api/vs/shipment/create",{request:lines.length?"":reqId,lines,steps,vehicle:$("#shv",box).value,driver:$("#shd",box).value,hours:$("#shh",box).value,note:$("#shn",box).value,resources:res});
+      await api("POST","/api/vs/shipment/create",{request:lines.length?"":reqId,lines,steps,cars:cars(),vehicle:$("#shv",box).value,driver:$("#shd",box).value,hours:$("#shh",box).value,note:$("#shn",box).value,resources:res});
       closeModal();await done()},"Отгрузка подготовлена")});
 }
+/* ----- 1.9.31: ПЛАН ПОГРУЗКИ — где лежит, чем грузить, на какую машину; порядок: по местам, сначала кран/КМУ, потом погрузчик, потом вручную ----- */
+const LOAD_BASE=["КМУ (кран-манипулятор)","Погрузчик (вилочный)","Вилочник (рохля)","Вручную (стропальщики)"];
+const ldKey=m=>lcq(m).replace(/\s+/g," ").trim();
+async function ldMem(){const m=new Map();try{(await all("load_memory","","")).forEach(x=>m.set(x.key,x))}catch(_){}return m}
+const ldOpts=()=>[...new Set([...(S.data.resources||[]).filter(x=>x.category==="crane").map(x=>x.name),...LOAD_BASE,...sugList("ship_load")])];
+const ldPri=t=>{const l=lcq(t);return !l?9:/кму|манипул/.test(l)?2:/кран|автокран|башен/.test(l)?1:/погруз|вилоч|рохл|штабел/.test(l)?3:/вруч|строп|руками/.test(l)?4:(S.data.resources||[]).some(x=>x.category==="crane"&&lcq(x.name)===l)?1:5};
+const ldIcon=t=>({1:"🏗",2:"🚛",3:"🚜",4:"✋",5:"•",9:"?"})[ldPri(t)];
+function planInputs(id,m,cars){return `<div class="row" data-pl="${id}" style="gap:6px;flex-wrap:wrap;margin:-2px 0 8px 30px;padding:6px;background:var(--bg2,#f6f7f9);border-radius:8px">
+  <input data-pf="place" data-sug="ship_place" value="${esc(m.place)}" placeholder="📍 Где лежит" style="flex:2;min-width:140px;min-height:38px">
+  <input data-pf="load" list="ldl" value="${esc(m.load)}" placeholder="🏗 Чем грузить" style="flex:2;min-width:140px;min-height:38px">
+  <input data-pf="weight" value="${esc(m.weight)}" placeholder="вес / длина" style="flex:1;min-width:90px;min-height:38px">
+  ${cars.length>1?`<select data-pf="car" style="flex:1;min-width:110px;min-height:38px">${cars.map((c,k)=>`<option value="${k+1}" ${+m.car===k+1?"selected":""}>🚚 ${esc(c)}</option>`).join("")}</select>`:""}</div>
+`}
+function planBind(box,meta){let dl=document.getElementById("ldl");if(!dl){dl=document.createElement("datalist");dl.id="ldl";document.body.appendChild(dl)}dl.innerHTML=ldOpts().map(o=>`<option value="${esc(o)}">`).join("");box.querySelectorAll("[data-pl]").forEach(r=>{const id=r.dataset.pl;r.querySelectorAll("[data-pf]").forEach(inp=>{const f=()=>{const m=meta.get(id)||{};m[inp.dataset.pf]=inp.dataset.pf==="car"?+inp.value:inp.value.trim();meta.set(id,m)};inp.addEventListener("input",f);inp.addEventListener("change",f)})})}
+function planGroups(sh){const cars=jarr(sh.cars).length?jarr(sh.cars).slice():[sh.vehicle];cars[0]=sh.vehicle||cars[0];const ln=jarr(sh.lines);
+  return cars.map((c,k)=>{const L=ln.filter(l=>(+l.car||1)===k+1||(k===0&&(+l.car||1)>cars.length));const P={};
+    L.forEach(l=>{const p=l.place||"Место не указано";(P[p]=P[p]||[]).push(l)});
+    const places=Object.keys(P).map(p=>({place:p,lines:P[p].sort((a,b)=>ldPri(a.load)-ldPri(b.load)||String(a.material).localeCompare(String(b.material),"ru")),pri:Math.min(...P[p].map(l=>ldPri(l.load)))}))
+      .sort((a,b)=>(a.place==="Место не указано")-(b.place==="Место не указано")||a.pri-b.pri||a.place.localeCompare(b.place,"ru"));
+    return {car:c,k:k+1,lines:L,places}}).filter(g=>g.lines.length)}
+function planNeeds(sh){const now=new Date();const N={};jarr(sh.lines).forEach(l=>{const t=l.load||"Не указано";(N[t]=N[t]||{load:t,places:new Set(),n:0}).n++;N[t].places.add(l.place||"Место не указано")});
+  return Object.values(N).sort((a,b)=>ldPri(a.load)-ldPri(b.load)).map(x=>{const r=(S.data.resources||[]).find(y=>y.category==="crane"&&lcq(y.name)===lcq(x.load));let busy="";
+    if(r){const i=resInfo(r,now);if(r.unavailable)busy="недоступен";else if(i.st!=="free")busy=(stLabel(r,i.st)[0]||"занят")+(i.cur.length?" — "+i.cur[0].purpose:"")}
+    return Object.assign(x,{places:[...x.places],busy,res:r})})}
+function planHtml(sh){const G=planGroups(sh),N=planNeeds(sh);const nums=shipNums(sh);
+  return `<div class="pl"><h2 style="margin:0 0 4px">План погрузки — ${esc(sh.vehicle)}${G.length>1?` и ещё ${G.length-1} маш.`:""}</h2>
+   <div class="muted">Заявки № ${nums.map(esc).join(", ")} · ${jarr(sh.lines).length} поз.${sh.driver?" · водитель "+esc(sh.driver):""} · ${dt(new Date().toISOString())}</div>
+   <h3 style="margin:10px 0 4px">Что нужно</h3><table class="tbl"><tr><th>Чем грузить</th><th>Позиций</th><th>Где</th><th>Статус</th></tr>
+   ${N.map(x=>`<tr><td><b>${ldIcon(x.load)} ${esc(x.load)}</b></td><td style="text-align:center">${x.n}</td><td>${x.places.map(esc).join(", ")}</td><td>${x.busy?`<span class="pill r">⚠ ${esc(x.busy)}</span>`:x.res?`<span class="pill g">свободен</span>`:""}</td></tr>`).join("")}</table>
+   ${G.map(g=>`<h3 style="margin:14px 0 4px">🚚 ${G.length>1?"Машина "+g.k+": ":""}${esc(g.car)} — ${g.lines.length} поз.</h3>
+    ${g.places.map((p,pi)=>`<div style="margin:6px 0 2px"><b>${pi+1}. 📍 ${esc(p.place)}</b></div><table class="tbl"><tr><th style="width:26%">Чем грузить</th><th>Материал</th><th style="width:14%">Кол-во</th><th style="width:12%">Вес / длина</th><th style="width:12%">Заявка</th></tr>
+     ${p.lines.map(l=>`<tr><td>${ldIcon(l.load)} ${esc(l.load||"—")}</td><td>${esc(l.material)}</td><td style="white-space:nowrap"><b>${fmtQ(l.qty)} ${esc(l.unit)}</b></td><td>${esc(l.weight||"")}</td><td>№ ${esc(l.number)}</td></tr>`).join("")}</table>`).join("")}`).join("")}
+   <div class="muted" style="margin-top:8px">Порядок: идём по местам сверху вниз; на каждом месте сначала кран / КМУ (тяжёлое и длинное — вниз), потом погрузчик, в конце вручную.</div></div>`}
+function planText(sh){const G=planGroups(sh),N=planNeeds(sh);const L=[`План погрузки — ${sh.vehicle}`,`Заявки № ${shipNums(sh).join(", ")}`,"","Нужно: "+N.map(x=>`${x.load} (${x.n})${x.busy?" ⚠ "+x.busy:""}`).join("; ")];
+  G.forEach(g=>{L.push("",`🚚 ${G.length>1?"Машина "+g.k+": ":""}${g.car}`);g.places.forEach((p,pi)=>{L.push(`${pi+1}. ${p.place}`);p.lines.forEach(l=>L.push(`   - ${l.load||"—"}: ${l.material} — ${fmtQ(l.qty)} ${l.unit}${l.weight?" ("+l.weight+")":""}, № ${l.number}`))})});
+  return L.join("\n")}
+async function shipPlan(sh,refresh){await sugFresh(["ship_place","ship_load"]);const W=can.write()&&!can.linkOnly()&&(sh.status==="preparing"||sh.status==="sent");
+  const meta=new Map();jarr(sh.lines).forEach(l=>meta.set(l.item,{place:l.place||"",load:l.load||"",weight:l.weight||"",car:+l.car||1}));
+  let cars=jarr(sh.cars).length?jarr(sh.cars).slice():[sh.vehicle];cars[0]=sh.vehicle||cars[0];
+  if(W&&jarr(sh.lines).some(l=>!l.place&&!l.load)){const MEM=await ldMem();jarr(sh.lines).forEach(l=>{const m=meta.get(l.item),x=MEM.get(ldKey(l.material));if(x&&!m.place&&!m.load){m.place=x.place||"";m.load=x.load||"";m.weight=m.weight||x.weight||""}})}
+  modal(`<h3>🗺 План погрузки — ${esc(sh.vehicle)}</h3>
+   ${W?`<div class="muted">Укажите, где лежит каждая позиция и чем её грузить. Запоминается по материалу — в следующий раз подставится само.</div>
+   <label class="f">Машины (первая — основная), через запятую</label><input id="plc" value="${esc(cars.join(", "))}">
+   <div id="pll" style="max-height:44vh;overflow:auto;margin-top:6px"></div>`:""}
+   <div id="plv" style="margin-top:10px"></div>
+   <div class="row noprint" style="margin-top:12px;gap:6px;flex-wrap:wrap">${W?`<button class="btn p" id="pls">💾 Сохранить план</button>`:""}<button class="btn" id="plp">🖨 Печать / PDF</button><button class="btn" id="plx">⬇ Excel</button><button class="btn" id="plm">💬 Отправить текстом</button><button class="btn" data-close>Закрыть</button></div>`,box=>{
+   const cur=()=>{const s2=Object.assign({},sh,{cars,lines:jarr(sh.lines).map(l=>Object.assign({},l,meta.get(l.item)||{}))});return s2};
+   const view=()=>{$("#plv",box).innerHTML=planHtml(cur())};
+   const draw=()=>{const pl=$("#pll",box);if(!pl)return;pl.innerHTML=jarr(sh.lines).map(l=>`<div class="line"><div style="flex:1;min-width:0"><b>№ ${esc(l.number)}</b> · ${esc(l.material)} — <b>${fmtQ(l.qty)} ${esc(l.unit)}</b></div></div>${planInputs(l.item,meta.get(l.item),cars)}`).join("");
+     planBind(pl,meta);sugAttach(pl);pl.querySelectorAll("[data-pf]").forEach(i=>i.addEventListener("change",view))};
+   draw();view();
+   const pc=$("#plc",box);if(pc)pc.onchange=()=>{cars=pc.value.split(",").map(x=>x.trim()).filter(Boolean);if(!cars.length)cars=[sh.vehicle];meta.forEach(m=>{if(m.car>cars.length)m.car=1});draw();view()};
+   const ps=$("#pls",box);if(ps)ps.onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/shipment/plan",{shipment:sh.id,cars,lines:[...meta.entries()].map(([item,m])=>Object.assign({item},m))});
+     sh.cars=cars;sh.lines=cur().lines;view();if(refresh)await refresh()},"План сохранён");
+   $("#plp",box).onclick=()=>planPrint(cur());
+   $("#plx",box).onclick=e=>act(e.target,async()=>planExcel(cur()));
+   $("#plm",box).onclick=async()=>{const t=planText(cur());if(MOB&&navigator.share){navigator.share({title:"План погрузки",text:t}).catch(()=>{});return}
+     try{await navigator.clipboard.writeText(t)}catch(_){const ta=document.createElement("textarea");ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove()}toast("План скопирован — вставьте в MAX / WhatsApp (Ctrl+V)","ok")}})}
+function planPrint(sh){let box=$("#prt");if(box)box.remove();box=document.createElement("div");box.id="prt";
+  box.innerHTML=`<div class="pfbar noprint"><button class="btn acc" id="pfGo">🖨 Печать / сохранить в PDF</button><button class="btn" id="pfX">Закрыть</button></div><div class="pfpage">${planHtml(sh)}</div>`;
+  document.body.appendChild(box);let st=$("#prtcss");if(!st){st=document.createElement("style");st.id="prtcss";document.head.appendChild(st)}
+  st.textContent=`@page{size:A4 portrait;margin:12mm}#prt{position:fixed;inset:0;z-index:95;background:#4b5563;overflow:auto;padding:8px}.pfbar{position:sticky;top:0;display:flex;gap:8px;padding:6px 0 10px;z-index:2}
+   .pfpage{background:#fff;color:#000;width:210mm;min-height:297mm;margin:0 auto;padding:12mm;box-shadow:0 4px 20px rgba(0,0,0,.4)}.pfpage .tbl{width:100%;border-collapse:collapse}.pfpage .tbl th,.pfpage .tbl td{border:1px solid #888;padding:4px 6px;font-size:12px;color:#000;background:#fff}.pfpage .tbl th{background:#e5e7eb}
+   @media print{body.printing>*:not(#prt){display:none!important}#prt{position:static;background:#fff;padding:0;overflow:visible}.pfbar{display:none!important}.pfpage{width:auto;min-height:0;margin:0;padding:0;box-shadow:none}}`;
+  document.body.classList.add("printing");$("#pfX").onclick=()=>{box.remove();document.body.classList.remove("printing")};$("#pfGo").onclick=()=>window.print()}
+function planExcel(sh){const G=planGroups(sh),N=planNeeds(sh);const T=XS.cC;
+  const r=[[{v:`План погрузки — ${sh.vehicle}`,s:XS.title}],[{v:`Заявки № ${shipNums(sh).join(", ")} · ${jarr(sh.lines).length} поз.${sh.driver?" · водитель "+sh.driver:""} · ${dt(new Date().toISOString())}`,s:T}],[],
+    [{v:"ЧТО НУЖНО",s:XS.lbl}],["Чем грузить","Позиций","Где","Статус"].map(v=>({v,s:XS.head}))];
+  N.forEach(x=>r.push([{v:x.load,s:T},{v:x.n,s:XS.cN},{v:x.places.join(", "),s:T},{v:x.busy?"⚠ "+x.busy:x.res?"свободен":"",s:x.busy?XS.cR:x.res?XS.cG:T}]));
+  r.push([]);r.push(["Машина","№","Где лежит","Чем грузить","Материал","Кол-во","Ед.","Вес / длина","Заявка №"].map(v=>({v,s:XS.head})));
+  G.forEach(g=>g.places.forEach((p,pi)=>p.lines.forEach(l=>{const pr=ldPri(l.load);const ss=pr<=2?XS.sY:pr===3?XS.cG:pr===4?T:XS.cR;
+    r.push([{v:g.car,s:T},{v:pi+1,s:XS.cN},{v:p.place,s:p.place==="Место не указано"?XS.cR:T},{v:l.load||"не указано",s:ss},{v:l.material,s:T},{v:num(l.qty),s:XS.cN},{v:l.unit,s:T},{v:l.weight||"",s:T},{v:l.number,s:T}])})));
+  saveBlob(xlsxBlob([{name:"План погрузки",cols:[24,5,24,24,50,10,7,12,12],rows:r,merges:["A1:I1","A2:I2"],freeze:0}]),`Plan_pogruzki_${String(sh.vehicle).replace(/[^\wА-Яа-я]+/g,"_").slice(0,30)}.xlsx`)}
+
 function shipmentsBoard(){
   const L=(S.data.shipments||[]).filter(x=>x.status==="preparing"||x.status==="sent");
   return L.length?L.map(sh=>{const r=(S.data.requests||[]).find(x=>x.id===sh.request)||{};const ss=SHS[sh.status];const rs=jarr(sh.resource_ids);const ln=jarr(sh.lines);

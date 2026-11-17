@@ -134,6 +134,29 @@ function conflictText(L, tx, res, s, e, excludeId) {
 }
 
 // ---------- 1.3: память ручного ввода (подсказки для всех) ----------
+// 1.9.31: план погрузки по позиции — где лежит, чем грузить, вес/длина, № машины
+function planOf(L, x) {
+  const o = { place: L.str(x && x.place).slice(0, 200), load: L.str(x && x.load).slice(0, 100), weight: L.str(x && x.weight).slice(0, 60) };
+  const c = parseInt(x && x.car, 10); o.car = c >= 1 && c <= 20 ? c : 1; return o;
+}
+function carsOf(L, arr, vehicle) {
+  const c = (Array.isArray(arr) ? arr : []).map((x) => L.str(x).slice(0, 200)).filter(Boolean).slice(0, 20);
+  if (!c.length || c[0] !== vehicle) { if (c.length) c[0] = vehicle; else c.push(vehicle); }
+  return c;
+}
+function planRemember(L, tx, l) {
+  if (!l.place && !l.load && !l.weight) return;
+  const key = lc(l.material).replace(/\s+/g, " ").trim().slice(0, 600); if (!key) return;
+  try {
+    let r = null; try { r = tx.findFirstRecordByFilter("load_memory", "key = {:k}", { k: key }); } catch (_) {}
+    if (!r) { r = new Record(tx.findCollectionByNameOrId("load_memory")); r.set("key", key); }
+    r.set("material", String(l.material).slice(0, 1000));
+    if (l.place) r.set("place", l.place); if (l.load) r.set("load", l.load); if (l.weight) r.set("weight", l.weight);
+    tx.save(r);
+  } catch (_) {}
+  if (l.place) remember(tx, "ship_place", l.place);
+  if (l.load) remember(tx, "ship_load", l.load);
+}
 function remember(app, field, value) {
   const v = String(value === undefined || value === null ? "" : value).replace(/[ \t\r]+/g, " ").replace(/ *\n */g, "\n").trim();
   if (!field || !v || v.length > 500) return;
@@ -186,12 +209,14 @@ function createShipment(L, tx, a, b) {
     if (!(q > 0)) throw new BadRequestError("Заявка № " + r.getString("number") + ", «" + it.getString("material") + "»: укажите количество больше нуля.");
     const ex = lines.filter((x) => x.item === it.id)[0];
     if (ex) { ex.qty = Math.round((ex.qty + q) * 1000) / 1000; return; }
-    lines.push({ item: it.id, request: r.id, number: r.getString("number"), material: it.getString("material"), unit: it.getString("unit"), qty: q });
+    lines.push(Object.assign({ item: it.id, request: r.id, number: r.getString("number"), material: it.getString("material"), unit: it.getString("unit"), qty: q }, planOf(L, ln)));
   });
   if (!reqs.length) throw new BadRequestError("Добавьте хотя бы одну позицию из заявки.");
   const names = ids.map((id) => tx.findRecordById("resources", id).getString("name"));
   const s = new Record(tx.findCollectionByNameOrId("request_shipments"));
   s.set("request", reqs[0]); s.set("requests", reqs); s.set("lines", lines);
+  s.set("cars", carsOf(L, b.cars, vehicle));
+  lines.forEach((l) => planRemember(L, tx, l));
   s.set("steps", steps.map((n) => ({ name: n, at: "", by: "", by_name: "" })));
   s.set("status", "preparing"); s.set("vehicle", vehicle); s.set("driver", L.str(b.driver));
   s.set("resource_ids", ids); s.set("reservation_ids", []); s.set("hours", Math.round(hours * 10) / 10); s.set("note", L.str(b.note));
@@ -208,4 +233,4 @@ function createShipment(L, tx, a, b) {
   return s;
 }
 
-module.exports = { OVR_ROLES, guard, deny, check, ovrSave, conflictText, remember, REMEMBER, rememberRecord, jsonArr, shipRequests, createShipment, SEARCH, lc, searchText, SIGNS, cyr, keyOf, updKeys, updSearchKeys, updKeysField, supplierKey, supplierMatch, isOpenStatus, findActs };
+module.exports = { planOf, carsOf, planRemember, OVR_ROLES, guard, deny, check, ovrSave, conflictText, remember, REMEMBER, rememberRecord, jsonArr, shipRequests, createShipment, SEARCH, lc, searchText, SIGNS, cyr, keyOf, updKeys, updSearchKeys, updKeysField, supplierKey, supplierMatch, isOpenStatus, findActs };
