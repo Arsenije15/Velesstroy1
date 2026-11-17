@@ -3687,17 +3687,24 @@ function tplForm(id){
 }
 
 /* ---------- ПОЛЬЗОВАТЕЛИ ---------- */
+const USR={showHidden:false};
 function vUsers(){
-  const U=S.data.users||[];
+  const UA=S.data.users||[];const nh=UA.filter(u=>u.hidden).length;const U=UA.filter(u=>USR.showHidden||!u.hidden);   // 1.9.29: скрытые — не в списке
   $("#main").innerHTML=`<h1>Управление пользователями</h1>
   <div class="row noprint" style="margin-bottom:10px"><button class="btn acc" id="un">＋ Новый пользователь</button><a class="btn" href="#/fields">⚙ Поля форм (настройки)</a>${can.admin()?`<a class="btn" href="#/backup">💾 Бэкап на компьютер${!bkLast()||Date.now()-bkLast()>7*864e5?' <span class="pill r">ПОРА</span>':""}</a>`:""}</div>
+  ${nh?`<label class="row noprint" style="margin-bottom:8px;gap:6px;align-items:center"><input type="checkbox" id="ushh" ${USR.showHidden?"checked":""}> Показать убранных (${nh})</label>`:""}
   <div class="card tw"><table><tr><th>Имя</th><th>Логин</th><th>Роль</th><th>Группа (задачи)</th><th>Статус</th><th></th></tr>
   ${U.map(u=>`<tr><td><b>${esc(u.name)}</b>${u.warehouse?`<div class="muted">${esc(u.warehouse)}</div>`:""}</td><td>${esc(u.username||u.email)}</td><td>${esc(T.roles[u.role]||u.role)}</td><td>${esc(TGR[u.tgroup]||"")}</td>
-   <td>${u.active?`<span class="pill g">АКТИВЕН</span>`:`<span class="pill gr">ОТКЛЮЧЁН</span>`}${u.demo?` <span class="pill y">ТЕСТ</span>`:""}</td><td><button class="btn sm" data-ue="${u.id}">Изменить</button></td></tr>`).join("")}</table></div>
+   <td>${u.active?`<span class="pill g">АКТИВЕН</span>`:`<span class="pill gr">ОТКЛЮЧЁН</span>`}${u.demo?` <span class="pill y">ТЕСТ</span>`:""}${u.hidden?` <span class="pill gr">УБРАН</span>`:""}</td><td style="white-space:nowrap"><button class="btn sm" data-ue="${u.id}">Изменить</button>${can.admin()&&u.id!==S.user.id?(u.hidden?` <button class="btn sm" data-uback="${u.id}" title="Вернуть в список (останется отключённым)">↩ Вернуть</button>`:` <button class="btn sm" data-urm="${u.id}" title="Убрать из списка" aria-label="Убрать пользователя">🗑</button>`):""}</td></tr>`).join("")}</table></div>
   <h2>Тестовые данные</h2><div class="card"><div class="muted">Создаёт 4 тестовые учётные записи (sklad1, sklad2, ruk1, view1 — пароль Test12345), 3 правила из примеров ТЗ, технику и работников. Удаление убирает тестовые ресурсы и отключает тестовые учётки и правила; история приёмок и журнал сохраняются.</div>
    <div class="row" style="margin-top:10px"><button class="btn" id="dc">Создать тестовые данные</button><button class="btn r" id="dr">Удалить тестовые данные</button></div></div>`;
   $("#un").onclick=()=>userForm(null);
   document.querySelectorAll("[data-ue]").forEach(b=>b.onclick=()=>userForm(b.dataset.ue));
+  const sh=$("#ushh");if(sh)sh.onchange=()=>{USR.showHidden=sh.checked;vUsers()};
+  document.querySelectorAll("[data-urm]").forEach(b=>b.onclick=()=>{const u=UA.find(x=>x.id===b.dataset.urm);
+    if(!confirm(`Убрать пользователя «${u.name}» (${u.username||u.email})?\n\nЕсли он ещё ничего не делал в программе — удалится совсем.\nЕсли у него есть заявки, акты, отгрузки и т.п. — учётка будет отключена и скрыта из списка, а вся его история останется.`))return;
+    act(b,async()=>{const r=await api("POST","/api/vs/user/remove",{id:u.id});await load(["users"]);vUsers();toast(r.deleted?`«${u.name}» удалён`:`«${u.name}» отключён и убран из списка (в истории: ${r.refs} записей — сохранены)`,"ok")})});
+  document.querySelectorAll("[data-uback]").forEach(b=>b.onclick=()=>act(b,async()=>{await api("POST","/api/vs/user/remove",{id:b.dataset.uback,restore:true});await load(["users"]);vUsers()},"Возвращён в список (учётка отключена — включите в «Изменить»)"));
   $("#dc").onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/demo",{action:"create"});await load(Object.keys(LOAD));vUsers()},"Тестовые данные созданы");
   $("#dr").onclick=e=>{if(confirm("Удалить тестовые ресурсы и отключить тестовые учётки?"))act(e.target,async()=>{await api("POST","/api/vs/demo",{action:"remove"});await load(Object.keys(LOAD));vUsers()},"Тестовые данные удалены")};
 }
