@@ -128,6 +128,11 @@ td.r{text-align:right;font-variant-numeric:tabular-nums}
   .modal{align-items:center}.modal .box{border-radius:14px}
   #toast{bottom:24px}
 }
+.modal .box.wide{max-width:900px}
+.mzr{display:grid;gap:6px;align-items:center;margin-bottom:6px;padding:6px;background:#f6f7f9;border-radius:8px}.mzr input{min-width:0;width:100%}.mzr .u{white-space:nowrap}
+.mzr.i{grid-template-columns:22px minmax(0,1fr) 92px 34px minmax(0,.7fr) 36px}.mzr.p{grid-template-columns:22px minmax(0,1.6fr) minmax(0,.7fr) 60px 84px minmax(0,.8fr) 36px}.mzr .w{grid-column:1/-1}
+@media(max-width:700px){.mzr .nn{display:none}.mzr.i{grid-template-columns:minmax(0,1fr) 84px 30px 36px}.mzr.i .it{grid-column:1/-1;grid-row:1}.mzr.i .q{grid-column:2;grid-row:2}.mzr.i .u{grid-column:3;grid-row:2}.mzr.i .n{grid-column:1;grid-row:2}.mzr.i .x{grid-column:4;grid-row:2}
+ .mzr.p{grid-template-columns:minmax(0,1fr) 56px 80px 36px}.mzr.p .it{grid-column:1/-1;grid-row:1}.mzr.p .sz{grid-column:1;grid-row:2}.mzr.p .un{grid-column:2;grid-row:2}.mzr.p .q{grid-column:3;grid-row:2}.mzr.p .x{grid-column:4;grid-row:2}.mzr.p .n{grid-column:1/-1;grid-row:3}}
 @media print{
   header,nav,.noprint,#toast,.netbar{display:none!important}
   body{background:#fff}main{padding:0}.card{border:0;padding:0}.print-only{display:block}
@@ -1408,13 +1413,14 @@ function mzItemForm(x,sec,done){const it=x||{section:sec,unit:"шт"};
    <label class="f">Наименование *</label><input id="min" value="${esc(it.name||"")}" placeholder="например: Щит опалубки 3000×1200">
    <div class="g2x"><div><label class="f">Размер / марка / диаметр</label><input id="miz" value="${esc(it.size||"")}" placeholder="d12, 104-108/170-176, 3000×1200"></div><div><label class="f">Ед. изм.</label><input id="miu" data-sug="mz_unit" value="${esc(it.unit||"")}"></div></div>
    <div class="g2x"><div><label class="f">Минимальный остаток (сигнал)</label><input id="mim" inputmode="decimal" value="${num(it.min_qty)>0?fmtQ(it.min_qty):""}" placeholder="0 — без сигнала"></div><div><label class="f">Место на складе</label><input id="mip" data-sug="mz_place" value="${esc(it.place||"")}"></div></div>
+   <label class="f" id="minpw" style="display:${it.section==="mat"?"flex":"none"};gap:8px;align-items:center"><input type="checkbox" id="minp" ${it.nonproj?"checked":""} style="width:auto"> Непроектный материал — Монтаж закупает сам (попадает в заявку на закупку)</label>
    <label class="f">Код / инв. № / артикул</label><input id="mic" value="${esc(it.code||"")}">
    <label class="f">Примечание</label><input id="mio" value="${esc(it.note||"")}">
    <label class="f">Фото позиции</label><label class="btn acc" style="display:inline-flex">📷 ${x&&x.photo?"Заменить фото":"Сфотографировать / выбрать"}<input type="file" id="miph" accept="image/*" hidden></label> <span class="muted" id="miphn"></span>
-   <div class="row" style="margin-top:12px"><button class="btn p grow" id="mok">СОХРАНИТЬ</button><button class="btn" data-close>Отмена</button></div>`,box=>{sugAttach(box);let ph=null;
+   <div class="row" style="margin-top:12px"><button class="btn p grow" id="mok">СОХРАНИТЬ</button><button class="btn" data-close>Отмена</button></div>`,box=>{sugAttach(box);let ph=null;$("#mis",box).addEventListener("change",()=>{$("#minpw",box).style.display=$("#mis",box).value==="mat"?"flex":"none"});
    $("#miph",box).onchange=async e=>{const f=e.target.files[0];if(f){ph=await shrinkImg(f,2000).catch(()=>f);$("#miphn",box).textContent="📷 фото выбрано"}};
    $("#mok",box).onclick=e=>act(e.target,async()=>{const fd=new FormData();const v=s=>$(s,box).value.trim();if(!v("#min"))throw new Error("Укажите наименование.");
-     fd.append("section",v("#mis"));fd.append("grp",v("#mig"));fd.append("name",v("#min"));fd.append("size",v("#miz"));fd.append("unit",v("#miu"));fd.append("place",v("#mip"));fd.append("code",v("#mic"));fd.append("note",v("#mio"));
+     fd.append("section",v("#mis"));fd.append("grp",v("#mig"));fd.append("name",v("#min"));fd.append("size",v("#miz"));fd.append("unit",v("#miu"));fd.append("place",v("#mip"));fd.append("code",v("#mic"));fd.append("note",v("#mio"));fd.append("nonproj",v("#mis")==="mat"&&$("#minp",box).checked?"true":"false");
      fd.append("min_qty",String(num(v("#mim").replace(",","."))||0));if(ph)fd.append("photo",ph);if(!x)fd.append("created_by",S.user.id);
      await api(x?"PATCH":"POST","/api/collections/mz_items/records"+(x?"/"+x.id:""),fd,true);closeModal();await done()},"Сохранено")})}
 function mzMoveForm(x,kind,done){const k=MZK[kind];const arm=x.section==="arm"&&kind==="in";
@@ -1439,13 +1445,30 @@ async function vMzItem(id){if(!can.mz())return;const x=await api("GET","/api/col
     <div style="font-size:26px;margin:6px 0"><b style="color:${lo?"var(--r)":"inherit"}">${fmtQ(x.qty)}</b> ${esc(x.unit||"")} ${lo?'<span class="pill r">НИЖЕ МИНИМУМА</span>':""}</div>
     <div class="muted">${num(x.min_qty)>0?"Минимум: "+fmtQ(x.min_qty)+" "+esc(x.unit||""):"Минимум не задан"}${x.place?" · 📍 "+esc(x.place):""}${x.code?" · код "+esc(x.code):""}</div>${x.note?`<div class="muted">${esc(x.note)}</div>`:""}
     ${W?`<div class="row noprint" style="gap:6px;flex-wrap:wrap;margin-top:10px">${Object.keys(MZK).map(k=>`<button class="btn sm ${k==="in"?"g":k==="wo"?"r":""}" data-mzk="${k}">${MZK[k][2]} ${MZK[k][0]}</button>`).join("")}<button class="btn sm p" id="mziss1">📤 В накладную</button><button class="btn sm" id="mzed">✎ Изменить / фото</button>${num(x.qty)===0?`<button class="btn sm" id="mzdel">🗑 Убрать позицию</button>`:""}</div>`:""}</div></div>
+   ${mzBuy(x)?"":`<div class="card" id="mzsup" style="margin-top:10px"><b>🏗 Снабжение от Велесстроя</b> <span class="muted">— ${x.section==="mat"?"проектный материал":MZS[x.section][0].toLowerCase()} не закупается, приходит по заявкам</span><div class="muted" style="margin-top:6px">Загрузка…</div></div>`}
    <h2>Движение (${M.length})</h2>${M.map(m=>`<div class="card" style="padding:10px;margin-top:6px"><span class="pill ${MZK[m.kind][1]}">${MZK[m.kind][0].toUpperCase()}</span> <b>${m.kind==="count"?"= "+fmtQ(m.qty):(m.kind==="in"||m.kind==="ret"?"+":"−")+fmtQ(m.qty)} ${esc(x.unit||"")}</b> → остаток <b>${fmtQ(m.balance)}</b>
      <span class="muted"> · ${dt(m.created)} · ${esc(uname(m.created_by))}</span>${m.who?`<div>👷 ${esc(m.who)}</div>`:""}${m.doc_no?`<div>📄 Накладная № ${esc(m.doc_no)}</div>`:""}${m.note?`<div class="muted">${esc(m.note)}</div>`:""}
      ${m.doc?`<div>📤 <a href="#/mzdoc/${m.doc}">Накладная на выдачу</a></div>`:""}<div>${mzFiles("mz_moves",m,"doc_files",ft)}${mzFiles("mz_moves",m,"photos",ft)}</div></div>`).join("")||'<div class="card empty">Движения пока не было</div>'}`;
   document.querySelectorAll("[data-mzk]").forEach(b=>b.onclick=()=>mzMoveForm(x,b.dataset.mzk,()=>vMzItem(id)));
   const ed=$("#mzed");if(ed)ed.onclick=()=>mzItemForm(x,x.section,()=>vMzItem(id));
   {const b=$("#mziss1");if(b)b.onclick=()=>mzIssueForm([{item:id}])}
+  if(!mzBuy(x))mzSupply(x)
   const dl=$("#mzdel");if(dl)dl.onclick=()=>{if(confirm("Убрать позицию из списка?"))act(dl,async()=>{await api("POST","/api/vs/mz/item/remove",{id});location.hash="#/mz"},"Позиция убрана")}}
+async function mzSupply(x){const box=$("#mzsup");if(!box)return;let r;try{r=await api("GET","/api/vs/mz/supply/"+x.id)}catch(e){box.querySelector(".muted:last-child").textContent="Не удалось получить данные: "+e.message;return}
+  if(!$("#mzsup"))return;const u=esc(x.unit||"");
+  box.innerHTML=`<div class="row" style="align-items:center;gap:8px;flex-wrap:wrap"><b class="grow">🏗 Снабжение от Велесстроя</b><button class="btn sm" id="supx">⬇ Excel</button></div>
+   <div class="muted">${x.section==="mat"?"Проектный материал":MZS[x.section][0]} Монтаж не закупает — получает по заявкам со склада Велесстроя.</div>
+   <div class="row" style="gap:10px;flex-wrap:wrap;margin:10px 0">
+    <div class="card" style="flex:1;min-width:150px;padding:10px"><div class="muted">Остаток в МПЗ Велесстроя</div><div style="font-size:22px"><b>${fmtQ(r.mpz_qty)}</b></div><div class="muted">${r.mpz.length} строк${r.mpz[0]&&r.mpz[0].period?" · "+esc(r.mpz[0].period):""}</div></div>
+    <div class="card" style="flex:1;min-width:150px;padding:10px"><div class="muted">Заказано Монтажом по заявкам</div><div style="font-size:22px"><b>${fmtQ(r.ordered)}</b></div><div class="muted">${r.req.length} строк заявок</div></div>
+    <div class="card" style="flex:1;min-width:150px;padding:10px"><div class="muted">Выдано Монтажу</div><div style="font-size:22px"><b style="color:var(--g)">${fmtQ(r.issued)}</b></div><div class="muted">не выдано: ${fmtQ(Math.max(0,r.ordered-r.issued))}</div></div></div>
+   ${r.mpz.length?`<details><summary>МПЗ: ${r.mpz.length} строк</summary><div class="tw"><table><tr><th>Наименование (1С)</th><th>Код</th><th>Склад</th><th>Остаток</th></tr>${r.mpz.map(m=>`<tr><td>${esc(m.name)}</td><td>${esc(m.code)}</td><td>${esc(m.warehouse)}</td><td><b>${fmtQ(m.qty)}</b> ${esc(m.unit)}</td></tr>`).join("")}</table></div></details>`:'<div class="muted">В последней выгрузке МПЗ такой позиции не найдено.</div>'}
+   ${r.req.length?`<details open><summary>Заявки Монтажа: ${r.req.length}</summary><div class="tw"><table><tr><th>Заявка</th><th>Дата</th><th>Материал в заявке</th><th>Заказано</th><th>Выдано</th><th>Объект</th></tr>${r.req.map(q=>`<tr><td>№ ${esc(q.number)}</td><td>${dmy(q.date)}</td><td>${esc(q.material)}</td><td>${fmtQ(q.ordered)} ${esc(q.unit)}</td><td><b style="color:${q.issued>=q.ordered?"var(--g)":"inherit"}">${fmtQ(q.issued)}</b>${q.issued_at?` <span class="muted">${dmy(q.issued_at)}</span>`:""}</td><td class="muted">${esc(q.object)}</td></tr>`).join("")}</table></div></details>`:'<div class="muted">Заявок Монтажа на эту позицию не найдено.</div>'}`;
+  $("#supx").onclick=()=>{const T=XS.cC;const rr=[[{v:`Снабжение: ${x.name}${x.size?" "+x.size:""}`,s:XS.title}],[{v:`Остаток в МПЗ: ${fmtQ(r.mpz_qty)} · заказано по заявкам: ${fmtQ(r.ordered)} · выдано: ${fmtQ(r.issued)} · не выдано: ${fmtQ(Math.max(0,r.ordered-r.issued))}`,s:T}],[],
+     ["Заявка","Дата","Материал в заявке","Ед.","Заказано","Выдано","Дата выдачи","Объект","Получатель"].map(v=>({v,s:XS.head}))];
+    r.req.forEach(q=>rr.push([{v:q.number,s:T},{v:dmy(q.date),s:T},{v:q.material,s:T},{v:q.unit,s:T},{v:q.ordered,s:XS.cN},{v:q.issued,s:q.issued>=q.ordered?XS.cG:XS.sY},{v:q.issued_at?dmy(q.issued_at):"",s:T},{v:q.object,s:T},{v:q.recipient,s:T}]));
+    const mm=[[{v:"Остатки МПЗ Велесстроя",s:XS.title}],[],["Наименование (1С)","Код","Склад","Ед.","Остаток"].map(v=>({v,s:XS.head}))];r.mpz.forEach(m=>mm.push([{v:m.name,s:T},{v:m.code,s:T},{v:m.warehouse,s:T},{v:m.unit,s:T},{v:m.qty,s:XS.cN}]));
+    saveBlob(xlsxBlob([{name:"По заявкам",cols:[12,11,44,7,11,11,12,26,28],rows:rr,merges:["A1:I1","A2:I2"],freeze:4},{name:"МПЗ",cols:[50,14,26,7,12],rows:mm,merges:["A1:E1"],freeze:3}]),`Snabzhenie_${(x.name+" "+(x.size||"")).trim().replace(/[^\wа-яё]+/gi,"_")}.xlsx`)}}
 /* --- загрузка таблицы: любой лист, где есть «Наименование» и количество (Остаток / Количество / Факт); СИЗ — все листы с размерами --- */
 async function mzParse(f){const x=await readXlsx(f);const out=[];
   for(const sh of x.sheets){const rows=await x.rows(sh);let hi=-1,H=[];
@@ -1568,7 +1591,7 @@ function vMzHelp(){if(!can.mz())return;const W=mzW();
     <li><b>Темы и подтемы</b> — обсуждение по участку/вопросу с фото и документами; к теме можно привязать задачи.</li>
     <li><b>Отчёты Excel</b>: остатки по разделам (ниже минимума — отдельный лист), движение за период, выдано по бригадам.</li>
     <li><b>📤 Выдача по накладной</b> — несколько позиций одному получателю за раз: программа подсказывает получателей, работы и позиции (начните писать — «арм», «щит», «электр…»), проверяет остаток и оформляет <b>накладную</b> (PDF на подпись и Excel). Номер — сам (ВН-0001…).</li>
-    <li><b>🛒 Заявка на закупку</b> — что нужно купить; кнопка «Добавить всё, что ниже минимума». Готовый документ — PDF и Excel на подпись (Составил / Согласовал / Утвердил), статус «Отправлена» / «Подписана», к нему — скан с подписями.</li>
+    <li><b>🛒 Заявка на закупку</b> — только <b>расходники, инструмент и непроектный материал</b> (у материала — отметка «Непроектный» в карточке). Арматура, проектный материал, СИЗ, леса и опалубка не закупаются: в их карточке блок «Снабжение от Велесстроя» — остаток в МПЗ и сколько Монтаж заказал и получил по заявкам (с Excel). Что нужно купить; кнопка «Добавить всё, что ниже минимума». Готовый документ — PDF и Excel на подпись (Составил / Согласовал / Утвердил), статус «Отправлена» / «Подписана», к нему — скан с подписями.</li>
     <li><b>Журнал</b> — весь приход и расход за период с фильтрами (раздел, операция, кому) и поиском; вкладка «Числится за получателями» — что сейчас на руках у каждой бригады.</li>
     <li><b>Поиск</b> на странице «Склад» ищет сразу по всем разделам.</li>
     <li><b>Пример данных</b> — придуманные позиции, выдачи и документы с пометкой «ПРИМЕР», чтобы было видно, как всё выглядит. Исчезают сами при первой загрузке вашей таблицы (или кнопкой «Убрать пример сейчас»).</li></ol></div>
@@ -1591,6 +1614,7 @@ function vMzHelp(){if(!can.mz())return;const W=mzW();
     await api("POST","/api/collections/mz_samples/records",fd,true)},"Пример отправлен — спасибо!")}}
 
 /* ===================== 1.9.33: «Склад Велесстрой Монтаж» — пример данных, выдача по накладной, заявка на закупку, журнал ===================== */
+const mzBuy=x=>x&&(x.section==="cons"||x.section==="tool"||(x.section==="mat"&&x.nonproj));   // 1.9.34: что Монтаж закупает сам
 const MZD={kind:"issue",q:""};const MZJ={from:"",to:"",sec:"",kind:"",who:"",q:"",tab:"moves"};
 const mzItemLabel=x=>`${x.name}${x.size?" "+x.size:""} · ${MZS[x.section][0]} · остаток ${fmtQ(x.qty)} ${x.unit||""}`;
 async function mzDemoEnsure(){if(!mzW())return null;try{let st=await api("GET","/api/vs/mz/demo");if(!st.seeded){await api("POST","/api/vs/mz/demo",{action:"seed"});st=await api("GET","/api/vs/mz/demo")}return st}catch(_){return null}}
@@ -1604,12 +1628,12 @@ async function mzIssueForm(pre){const I=await mzItems("");await sugFresh(["mz_wh
    <datalist id="ildl">${I.map(x=>`<option value="${esc(mzItemLabel(x))}">`).join("")}</datalist>
    <div id="irows" style="margin-top:10px"></div><button class="btn sm" id="iadd">＋ Ещё позиция</button>
    <label class="f">Примечание</label><input id="inote">
-   <div class="row" style="margin-top:12px"><button class="btn p grow" id="mok">ВЫДАТЬ И ОФОРМИТЬ НАКЛАДНУЮ</button><button class="btn" data-close>Отмена</button></div>`,box=>{sugAttach(box);
-   const draw=()=>{$("#irows",box).innerHTML=rows.map((r,i)=>{const x=I.find(y=>y.id===r.item);return `<div class="row" style="gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px;padding:6px;background:#f6f7f9;border-radius:8px">
-     <span class="muted" style="width:20px">${i+1}.</span><input data-ii="${i}" list="ildl" value="${x?esc(mzItemLabel(x)):""}" placeholder="🔎 начните писать: арматура d12, щит, электроды…" style="flex:3;min-width:220px">
-     <input data-iq="${i}" inputmode="decimal" value="${esc(r.qty)}" placeholder="кол-во" style="width:90px"><span class="muted" style="min-width:34px">${x?esc(x.unit||""):""}</span>
-     <input data-in="${i}" data-sug="mz_lnote" value="${esc(r.note)}" placeholder="примечание" style="flex:1;min-width:110px"><button class="btn sm" data-ix="${i}" aria-label="Убрать строку">✕</button>
-     ${x&&num(r.qty)>num(x.qty)?`<div class="pill r" style="width:100%">На складе только ${fmtQ(x.qty)} ${esc(x.unit||"")}</div>`:""}</div>`}).join("");
+   <div class="row" style="margin-top:12px"><button class="btn p grow" id="mok">ВЫДАТЬ И ОФОРМИТЬ НАКЛАДНУЮ</button><button class="btn" data-close>Отмена</button></div>`,box=>{sugAttach(box);box.querySelector(".box").classList.add("wide");
+   const draw=()=>{$("#irows",box).innerHTML=rows.map((r,i)=>{const x=I.find(y=>y.id===r.item);return `<div class="mzr i">
+     <span class="muted nn">${i+1}.</span><input class="it" data-ii="${i}" list="ildl" value="${x?esc(mzItemLabel(x)):""}" placeholder="🔎 начните писать: арматура d12, щит, электроды…">
+     <input class="q" data-iq="${i}" inputmode="decimal" value="${esc(r.qty)}" placeholder="кол-во"><span class="muted u">${x?esc(x.unit||""):""}</span>
+     <input class="n" data-in="${i}" data-sug="mz_lnote" value="${esc(r.note)}" placeholder="примечание"><button class="btn sm x" data-ix="${i}" aria-label="Убрать строку">✕</button>
+     ${x&&num(r.qty)>num(x.qty)?`<div class="pill r w">На складе только ${fmtQ(x.qty)} ${esc(x.unit||"")}</div>`:""}</div>`}).join("");
      sugAttach($("#irows",box));
      box.querySelectorAll("[data-ii]").forEach(inp=>inp.onchange=()=>{const x=byL.get(inp.value);rows[+inp.dataset.ii].item=x?x.id:"";setTimeout(()=>{draw();const q=box.querySelector(`[data-iq="${inp.dataset.ii}"]`);if(q&&x)q.focus()})});   // перерисовка — после blur, иначе «node … no longer a child»
      box.querySelectorAll("[data-iq]").forEach(inp=>inp.onchange=()=>{rows[+inp.dataset.iq].qty=inp.value.replace(",",".");setTimeout(draw)});
@@ -1621,21 +1645,23 @@ async function mzIssueForm(pre){const I=await mzItems("");await sugFresh(["mz_wh
      const r=await api("POST","/api/vs/mz/issue",{who:$("#iwho",box).value.trim(),basis:$("#ibas",box).value.trim(),note:$("#inote",box).value.trim(),lines:L});
      closeModal();location.hash="#/mzdoc/"+r.id;mzNtf()},"Выдано, накладная оформлена")})}
 /* --- заявка на закупку: что нужно → документ на подпись (PDF / Excel) --- */
-async function mzPurchaseForm(){const I=await mzItems("");await sugFresh(["mz_pbasis","mz_org","mz_unit"]);const byL=new Map(I.map(x=>[mzItemLabel(x),x]));let rows=[{}];
+async function mzPurchaseForm(){const I=(await mzItems("")).filter(mzBuy);await sugFresh(["mz_pbasis","mz_org","mz_unit"]);const byL=new Map(I.map(x=>[mzItemLabel(x),x]));let rows=[{}];
   const d5=new Date(Date.now()+180*60000+5*864e5).toISOString().slice(0,10);
   modal(`<h3>🛒 Заявка на закупку</h3><div class="muted">Впишите, что нужно купить. Позицию со склада выберите из подсказки — подставятся размер, единица и остаток; новое — пишите как есть. После сохранения — Excel и PDF на подпись.</div>
+   <div class="banner yellow" style="margin-top:8px">Закупаются только <b>расходники, инструмент и непроектный материал</b>. Арматура, проектный материал, СИЗ, леса и опалубка приходят по заявкам со склада Велесстроя — их остаток в МПЗ и что выдано видно в карточке позиции.</div>
    <div class="g2x"><div><label class="f">Для чего / основание</label><input id="pbas" data-sug="mz_pbasis" placeholder="Пополнение до минимума, секция 3"></div><div><label class="f">Нужно к дате</label><input id="pneed" type="date" value="${d5}"></div></div>
    <label class="f">Организация (в шапку документа)</label><input id="porg" data-sug="mz_org" placeholder="ООО «ВелесстройМонтаж»">
    <datalist id="pldl">${I.map(x=>`<option value="${esc(mzItemLabel(x))}">`).join("")}</datalist>
    <div class="row" style="gap:6px;margin-top:10px;flex-wrap:wrap"><button class="btn sm acc" id="plow">⚠ Добавить всё, что ниже минимума</button><button class="btn sm" id="padd">＋ Строка</button></div>
    <div id="prows" style="margin-top:8px"></div>
    <label class="f">Примечание</label><input id="pnote">
-   <div class="row" style="margin-top:12px"><button class="btn p grow" id="mok">СОХРАНИТЬ ЗАЯВКУ</button><button class="btn" data-close>Отмена</button></div>`,box=>{sugAttach(box);
-   const draw=()=>{$("#prows",box).innerHTML=rows.map((r,i)=>`<div class="row" style="gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px;padding:6px;background:#f6f7f9;border-radius:8px">
-     <span class="muted" style="width:20px">${i+1}.</span><input data-pn="${i}" list="pldl" value="${esc(r.name||"")}" placeholder="наименование" style="flex:3;min-width:200px">
-     <input data-ps="${i}" value="${esc(r.size||"")}" placeholder="размер / марка" style="width:120px"><input data-pu="${i}" data-sug="mz_unit" value="${esc(r.unit||"")}" placeholder="ед." style="width:70px">
-     <input data-pq="${i}" inputmode="decimal" value="${esc(r.qty||"")}" placeholder="кол-во" style="width:90px">${r.stock!==undefined&&r.stock!==""?`<span class="muted">на складе ${fmtQ(r.stock)}</span>`:""}
-     <input data-pt="${i}" value="${esc(r.note||"")}" placeholder="для чего" style="flex:1;min-width:110px"><button class="btn sm" data-px="${i}" aria-label="Убрать строку">✕</button></div>`).join("");
+   <div class="row" style="margin-top:12px"><button class="btn p grow" id="mok">СОХРАНИТЬ ЗАЯВКУ</button><button class="btn" data-close>Отмена</button></div>`,box=>{sugAttach(box);box.querySelector(".box").classList.add("wide");
+   const draw=()=>{$("#prows",box).innerHTML=rows.map((r,i)=>`<div class="mzr p">
+     <span class="muted nn">${i+1}.</span><input class="it" data-pn="${i}" list="pldl" value="${esc(r.name||"")}" placeholder="наименование">
+     <input class="sz" data-ps="${i}" value="${esc(r.size||"")}" placeholder="размер / марка"><input class="un" data-pu="${i}" data-sug="mz_unit" value="${esc(r.unit||"")}" placeholder="ед.">
+     <input class="q" data-pq="${i}" inputmode="decimal" value="${esc(r.qty||"")}" placeholder="кол-во">
+     <input class="n" data-pt="${i}" value="${esc(r.note||"")}" placeholder="для чего"><button class="btn sm x" data-px="${i}" aria-label="Убрать строку">✕</button>
+     ${r.stock!==undefined&&r.stock!==""&&r.stock!==null?`<div class="muted w" style="font-size:12px">на складе сейчас: ${fmtQ(r.stock)} ${esc(r.unit||"")}</div>`:""}</div>`).join("");
      sugAttach($("#prows",box));
      const sync=()=>box.querySelectorAll("[data-pn]").forEach(inp=>{const i=+inp.dataset.pn;const g=s=>box.querySelector(`[data-${s}="${i}"]`).value.trim();rows[i]=Object.assign(rows[i],{size:g("ps"),unit:g("pu"),qty:g("pq").replace(",","."),note:g("pt")})});
      box.querySelectorAll("[data-pn]").forEach(inp=>inp.onchange=()=>{sync();const i=+inp.dataset.pn,x=byL.get(inp.value);if(x)rows[i]={item:x.id,name:x.name,size:x.size,unit:x.unit,stock:x.qty,qty:rows[i].qty,note:rows[i].note};else rows[i].name=inp.value.trim();setTimeout(draw)});

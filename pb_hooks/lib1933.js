@@ -44,10 +44,15 @@ function issue(tx, a, b, opt) {
   });
   return doc;
 }
+// 1.9.34: закупает Монтаж только расходники, инструмент и непроектный материал; арматура, проектный материал, СИЗ, леса/опалубка — по заявкам Велесстроя
+const BUY = ["cons", "tool"];
+function canBuy(it) { const s = it.getString("section"); return BUY.indexOf(s) >= 0 || (s === "mat" && it.getBool("nonproj")); }
 function purchase(tx, a, b, opt) {
   const lines = (Array.isArray(b.lines) ? b.lines : []).map((l) => ({ item: String(l.item || ""), name: String(l.name || "").trim().slice(0, 500), size: String(l.size || "").slice(0, 100), unit: String(l.unit || "").slice(0, 30), qty: M.num(l.qty), stock: M.num(l.stock), note: String(l.note || "").slice(0, 300) })).filter((l) => l.name && l.qty > 0);
   if (!lines.length) throw new BadRequestError("Добавьте хотя бы одну строку: наименование и количество.");
-  lines.forEach((l) => { if (!(l.stock >= 0)) l.stock = ""; });
+  lines.forEach((l) => { if (!(l.stock >= 0)) l.stock = "";
+    if (l.item) { let it = null; try { it = tx.findRecordById("mz_items", l.item); } catch (_) {}
+      if (it && !canBuy(it)) throw new BadRequestError("«" + it.getString("name") + (it.getString("size") ? " " + it.getString("size") : "") + "» — проектный материал / не закупается Монтажом: он приходит по заявкам со склада Велесстроя. В заявку на закупку — только расходники, инструмент и непроектный материал."); } });
   const doc = new Record(tx.findCollectionByNameOrId("mz_docs"));
   doc.set("kind", "purchase"); doc.set("number", nextNo(tx, "purchase")); doc.set("doc_date", String(b.doc_date || new Date(Date.now() + 3 * 3600000).toISOString().slice(0, 10)).slice(0, 10));
   doc.set("need_by", String(b.need_by || "").slice(0, 10)); doc.set("basis", String(b.basis || "").slice(0, 300)); doc.set("org", String(b.org || "").slice(0, 200)); doc.set("note", String(b.note || "").slice(0, 2000));
@@ -77,7 +82,8 @@ const DEMO = {
     ["Абразив", "Круг отрезной", "125×1,2", "шт", 100, 420, "Контейнер 2"], ["Вязка", "Проволока вязальная", "1,2 мм", "кг", 50, 36, "Контейнер 2"], ["Фиксаторы", "Фиксатор «стульчик»", "30 мм", "шт", 2000, 10500, "Контейнер 2"],
     ["Фиксаторы", "Фиксатор «звёздочка»", "25 мм", "шт", 2000, 4800, "Контейнер 2"], ["Крепёж", "Анкер-болт", "12×100", "шт", 200, 640, "Контейнер 2"], ["Химия", "Пена монтажная", "750 мл", "шт", 24, 30, "Контейнер 2"], ["Химия", "Смазка для опалубки (эмульсол)", "", "л", 100, 60, "Контейнер 2"]],
   mat: [["Нерудные", "Песок строительный", "", "т", 10, 26, "Площадка 6"], ["Нерудные", "Щебень", "20-40", "т", 15, 40, "Площадка 6"], ["Вяжущие", "Цемент М500", "мешок 50 кг", "шт", 40, 32, "Склад 1"],
-    ["Стеновые", "Кирпич М150", "", "шт", 2000, 5600, "Площадка 6"], ["Утеплитель", "Пеноплэкс", "50 мм", "м3", 5, 12, "Склад 1"], ["Гидроизоляция", "Техноэласт ЭПП", "рулон 10 м2", "шт", 20, 26, "Склад 1"]],
+    ["Стеновые", "Кирпич М150", "", "шт", 2000, 5600, "Площадка 6"], ["Утеплитель", "Пеноплэкс", "50 мм", "м3", 5, 12, "Склад 1"], ["Гидроизоляция", "Техноэласт ЭПП", "рулон 10 м2", "шт", 20, 26, "Склад 1"],
+    ["Временные работы (непроектный)", "Плёнка укрывная", "200 мкм, рулон 3×100 м", "рул", 4, 2, "Склад 1", "", true], ["Временные работы (непроектный)", "Доска обрезная (ограждения, настилы)", "50×150×6000", "м3", 2, 3.5, "Площадка 6", "", true]],
 };
 const WHO = ["Бригада Иванова (монолит, секция 2)", "Бригада Ахмедова (опалубка)", "Бригада Петрова (арматурщики)", "Участок №3 — кладка", "ООО «СтройМонолит» (субподряд)"];
 function demoSeed(tx, a) {
@@ -87,8 +93,8 @@ function demoSeed(tx, a) {
   const now = Date.now(); const ids = {}; let k = 0;
   const setCreated = (col, id, ms) => tx.db().newQuery("UPDATE " + col + " SET created = {:c}, updated = {:c} WHERE id = {:id}").bind({ c: fmt(new Date(ms)), id: id }).execute();
   Object.keys(DEMO).forEach((sec) => DEMO[sec].forEach((r) => {
-    const [grp, name, size, unit, mn, q0, place, code] = r;
-    const it = new Record(ic); it.set("section", sec); it.set("grp", grp); it.set("name", name); it.set("size", size); it.set("unit", unit); it.set("min_qty", mn); it.set("place", place); it.set("code", code || "");
+    const [grp, name, size, unit, mn, q0, place, code, nonproj] = r;
+    const it = new Record(ic); it.set("section", sec); it.set("grp", grp); it.set("name", name); it.set("size", size); it.set("unit", unit); it.set("min_qty", mn); it.set("place", place); it.set("code", code || ""); it.set("nonproj", !!nonproj);
     it.set("qty", 0); it.set("demo", true); it.set("created_by", a.id); M.prep(it);
     try { tx.findFirstRecordByFilter("mz_items", "key = {:k}", { k: it.getString("key") }); return; } catch (_) {}
     tx.save(it);
@@ -125,11 +131,56 @@ function demoSeed(tx, a) {
   ret("tool", "Вибратор глубинный", "", "ret", 1, WHO[0], "Вернули после бетонирования", 4);
   ret("cons", "Круг отрезной", "125×1,2", "wo", 20, "", "Брак партии — круги крошатся", 6);
   // заявка на закупку — то, что ниже минимума
-  const low = tx.findRecordsByFilter("mz_items", "demo = true && min_qty > 0", "section,name", 0, 0).filter((x) => x.getFloat("qty") < x.getFloat("min_qty")).slice(0, 8);
+  const low = tx.findRecordsByFilter("mz_items", "demo = true && min_qty > 0", "section,name", 0, 0).filter((x) => x.getFloat("qty") < x.getFloat("min_qty") && canBuy(x)).slice(0, 8);
   if (low.length) { const pd = purchase(tx, a, { basis: "Пополнение до минимума — секции 2–3", need_by: new Date(now + 5 * 86400000 + 3 * 3600000).toISOString().slice(0, 10),
     lines: low.map((x) => ({ item: x.id, name: x.getString("name"), size: x.getString("size"), unit: x.getString("unit"), stock: x.getFloat("qty"), qty: Math.ceil((x.getFloat("min_qty") * 2 - x.getFloat("qty")) * 10) / 10, note: "ниже минимума" })) }, { demo: true });
   setCreated("mz_docs", pd.id, now - 3600000); }
   st.seeded = new Date().toISOString(); stateSet(tx, st);
   return { items: Object.keys(ids).length };
 }
-module.exports = { nextNo, issue, purchase, demoClear, demoSeed, stateGet };
+// 1.9.34: снабжение проектного материала — остаток МПЗ Велесстроя и сколько Монтаж взял по заявкам
+const SUP_DEF = "онтаж";   // получатель в заявке содержит «…онтаж» (Монтаж / монтаж; без первой буквы — фильтр БД чувствителен к регистру кириллицы)
+function supPattern(tx) { try { const r = tx.findFirstRecordByFilter("org_settings", "key = 'mz_supply'"); const d = JSON.parse(r.getString("data") || "{}"); return String(d.recipient || SUP_DEF); } catch (_) { return SUP_DEF; } }
+const LAT = { a: "а", c: "с", e: "е", o: "о", p: "р", x: "х", k: "к", m: "м", t: "т", b: "в", h: "н", y: "у" };
+function nrm(s) { return M.lc(s).replace(/[acekmhoptxyb]/g, (ch) => LAT[ch]); }   // А500С латиницей и кириллицей — одно и то же
+function toks(name, size) {
+  const t = nrm(name).replace(/[«»"'(),.;:]/g, " ").split(/\s+/).filter((w) => w.length >= 3).slice(0, 4);
+  const z = nrm(size).replace(/^(d|ф|ø|д)\s*/, "").replace(/[\s]+/g, " ").trim();
+  return { words: t, size: z };
+}
+function hit(text, k) {
+  const s = nrm(text);
+  if (!k.words.every((w) => s.indexOf(w.length > 5 ? w.slice(0, w.length - 2) : w) >= 0)) return false;   // окончания: «арматура / арматуры»
+  if (!k.size) return true;
+  if (!/^\d+([.,]\d+)?$/.test(k.size)) return true;   // «мешок 50 кг», «3000×1200» — в 1С пишут по-разному, не отсекаем
+  return new RegExp("(^|[^\\d.,])(d|ф|ø|д|диам\\.?\\s*)?\\s*" + k.size.replace(/[.,]/, "[.,]") + "(?![\\d]|[.,]\\d)").test(s);
+}
+function supply(tx, it) {
+  const k = toks(it.getString("name"), it.getString("size")); const out = { mpz: [], req: [], mpz_qty: 0, ordered: 0, issued: 0, pattern: supPattern(tx) };
+  if (!k.words.length) return out;
+  const cyr = k.words.filter((w) => /^[а-я]+$/.test(w)); const w0 = (cyr.length ? cyr : k.words).slice().sort((a, b) => b.length - a.length)[0]; const w0s = w0.length > 5 ? w0.slice(0, w0.length - 2) : w0;
+  tx.findRecordsByFilter("mpz_stock", "search_lc ~ {:w}", "name", 300, 0, { w: w0s }).forEach((r) => {
+    if (!hit(r.getString("name") + " " + r.getString("quality"), k)) return;
+    out.mpz.push({ name: r.getString("name"), code: r.getString("code"), warehouse: r.getString("warehouse"), unit: r.getString("unit"), qty: r.getFloat("qty_end"), period: r.getString("period") });
+    out.mpz_qty += r.getFloat("qty_end");
+  });
+  const pat = out.pattern;
+  const reqs = tx.findRecordsByFilter("requests", "recipient ~ {:p} && status != 'cancelled'", "-req_date", 2000, 0, { p: pat });
+  const byId = {}; reqs.forEach((r) => byId[r.id] = r);
+  const ids = Object.keys(byId);
+  for (let i = 0; i < ids.length; i += 50) {
+    const part = ids.slice(i, i + 50); const f = part.map((_, j) => "request = {:r" + j + "}").join(" || "); const pr = {}; part.forEach((id, j) => pr["r" + j] = id);
+    tx.findRecordsByFilter("request_items", f, "", 0, 0, pr).forEach((x) => {
+      if (!hit(x.getString("material"), k)) return;
+      const r = byId[x.getString("request")];
+      out.req.push({ number: r.getString("number"), date: r.getString("req_date").slice(0, 10), object: r.getString("object"), recipient: r.getString("recipient"), status: r.getString("status"),
+        material: x.getString("material"), unit: x.getString("unit"), ordered: x.getFloat("qty_ordered"), issued: x.getFloat("qty_issued"), issued_at: x.getString("issued_at").slice(0, 10) });
+      out.ordered += x.getFloat("qty_ordered"); out.issued += x.getFloat("qty_issued");
+    });
+  }
+  out.req.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  ["mpz_qty", "ordered", "issued"].forEach((n) => out[n] = Math.round(out[n] * 1000) / 1000);
+  out.mpz = out.mpz.slice(0, 100); out.req = out.req.slice(0, 300);
+  return out;
+}
+module.exports = { canBuy, supply, nextNo, issue, purchase, demoClear, demoSeed, stateGet };

@@ -31,6 +31,13 @@ routerAdd("POST", "/api/vs/mz/demo", (e) => {
   });
   return e.json(200, out);
 }, $apis.requireAuth("users"));
+// 1.9.34: проектный материал (арматура, материал, СИЗ…) — сколько есть в МПЗ Велесстроя и сколько Монтаж взял по заявкам
+routerAdd("GET", "/api/vs/mz/supply/{id}", (e) => {
+  const M = require(`${__hooks}/lib1932.js`), D = require(`${__hooks}/lib1933.js`);
+  M.mzUser(e);
+  let it; try { it = $app.findRecordById("mz_items", e.request.pathValue("id")); } catch (_) { throw new NotFoundError("Позиция не найдена."); }
+  return e.json(200, D.supply($app, it));
+}, $apis.requireAuth("users"));
 // подсказки: что уже вписывали (кому, основание, место, группа, люди, техника) — предлагаются при следующем вводе
 onRecordAfterCreateSuccess((e) => { const X = require(`${__hooks}/lib_ext.js`); X.remember($app, "mz_who", e.record.getString("who")); return e.next(); }, "mz_moves");
 onRecordAfterCreateSuccess((e) => { const X = require(`${__hooks}/lib_ext.js`); ["grp", "place", "unit"].forEach((f) => X.remember($app, "mz_" + f, e.record.getString(f))); return e.next(); }, "mz_items");
@@ -39,6 +46,6 @@ onRecordAfterCreateSuccess((e) => { const X = require(`${__hooks}/lib_ext.js`);
   String(e.record.getString("people")).split(",").forEach((p) => X.remember($app, "mz_people", p.trim()));
   X.remember($app, "mz_tech", e.record.getString("tech")); X.remember($app, "mz_place", e.record.getString("place")); return e.next(); }, "mz_tasks");
 onRecordAfterCreateSuccess((e) => { const X = require(`${__hooks}/lib_ext.js`); const r = e.record;
-  if (r.getString("kind") === "issue") { X.remember($app, "mz_who", r.getString("who")); X.remember($app, "mz_basis", r.getString("basis")); (r.get("lines") || []).forEach((l) => X.remember($app, "mz_lnote", l.note)); }
+  if (r.getString("kind") === "issue") { X.remember($app, "mz_who", r.getString("who")); X.remember($app, "mz_basis", r.getString("basis")); let ls = []; try { ls = JSON.parse(r.getString("lines") || "[]") || []; } catch (_) {} ls.forEach((l) => X.remember($app, "mz_lnote", l.note)); }
   else X.remember($app, "mz_pbasis", r.getString("basis"));
   X.remember($app, "mz_org", r.getString("org")); return e.next(); }, "mz_docs");
