@@ -46,6 +46,8 @@ routerAdd("POST", "/api/vs/mz/import", (e) => {
   const rows = (Array.isArray(b.rows) ? b.rows : []).slice(0, 5000);
   const out = { created: 0, updated: 0, counted: 0 };
   $app.runInTransaction((tx) => {
+    // 1.9.33: первая настоящая таблица убирает пример данных
+    try { const D = require(`${__hooks}/lib1933.js`); const st = D.stateGet(tx).d; if (st.seeded && !st.cleared) { D.demoClear(tx); out.demo_cleared = true; } } catch (err) { if (err && err.message && err.message.indexOf("mz_") >= 0) throw err; }
     const col = tx.findCollectionByNameOrId("mz_items"), mc = tx.findCollectionByNameOrId("mz_moves");
     rows.forEach((r) => {
       const name = String(r.name || "").replace(/\s+/g, " ").trim().slice(0, 500); if (!name) return;
