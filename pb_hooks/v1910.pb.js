@@ -88,7 +88,7 @@ routerUse((e) => {
     const p = e.request.url.path;
     let okp = true;
     if (p.indexOf("/api/vs/") === 0) okp = /^\/api\/vs\/(mz|pub)(\/|$)/.test(p);
-    else if (p.indexOf("/api/collections/") === 0) okp = /^\/api\/collections\/(users|mz_items|mz_moves|mz_tasks|mz_topics|mz_posts|mz_samples|mz_docs|suggestions|broadcasts)\//.test(p);
+    else if (p.indexOf("/api/collections/") === 0) okp = /^\/api\/collections\/(users|mz_items|mz_moves|mz_tasks|mz_topics|mz_posts|mz_samples|mz_docs|mz_norms|suggestions|broadcasts)\//.test(p);
     if (!okp) throw new ForbiddenError("По этой ссылке доступен только «Склад Велесстрой Монтаж».");
   } else if (sc === "zay") {
     // 1.9.15: «Склад: заявки» — ресурсы склада (как в программе), поиск (оперативка, МПЗ, журнал актов) и свои заявки (с проверкой на акт)

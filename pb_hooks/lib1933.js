@@ -64,6 +64,7 @@ function demoClear(tx) {
   const st = stateGet(tx).d;
   tx.findRecordsByFilter("mz_moves", "demo = true", "", 0, 0).forEach((r) => tx.delete(r));
   tx.findRecordsByFilter("mz_docs", "demo = true", "", 0, 0).forEach((r) => tx.delete(r));
+  try { tx.findRecordsByFilter("mz_norms", "demo = true", "", 0, 0).forEach((r) => tx.delete(r)); } catch (_) {}   // 1.9.37
   tx.findRecordsByFilter("mz_items", "demo = true", "", 0, 0).forEach((r) => tx.delete(r));
   st.cleared = new Date().toISOString(); stateSet(tx, st);
 }

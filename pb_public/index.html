@@ -381,7 +381,7 @@ async function boot(){
   shell();
   if(!net&&await offStart())return;   // 1.9.8: без интернета — заявки, отгрузка и фото груза из памяти телефона
   try{await load(can.zay()?["users","resources","reservations","requests","shipments","debt","suggestions"]:can.coord()||can.linkOnly()?["users"]:Object.keys(LOAD))}catch(e){toast(e.message,"err")}
-  rtStart();route();offAfterOnline();
+  rtStart();route();offAfterOnline();setTimeout(mornAuto,1500);   // 1.9.36: утренний туннель — раз в день
 }
 
 /* ---------- Каркас ---------- */
@@ -395,7 +395,7 @@ if(APPM&&window.VSApp){   // мост к телефону: сохранение 
   if(!navigator.share)try{navigator.share=d=>{VSApp.share([d&&d.title,d&&d.text,d&&d.url].filter(Boolean).join("\n"));return Promise.resolve()}}catch(_){}
 }
 function shell(){
-  const nav=can.mz()?[["mz","Склад","▦"],["mzjournal","Журнал","⇅"],["mzdocs","Документы","📄"],["mztasks","Задачи","✓"],["mztopics","Темы","☰"],["mzlang","Переводчик","🗣"],["mzhelp","Инструкция","📖"]]:appOn()?[["requests","Заявки","▤"],["find","Поиск","🔎"],["leftovers","Невыданное","📦"],...(zrOk()?[["zreg","Реестр","📒"]]:[])]:role()==="coord"?NAV.filter(n=>n[0]==="topics"):can.zay()?[["resources","Ресурсы склада","⚙"],["requests","Мои заявки","▤"],["skk","Поиск","🔎"]]:can.linkOnly()?NAV.filter(n=>n[0]==="skk").map(n=>[n[0],skkTitle(),n[2]]):can.skkView()?NAV.filter(n=>n[0]==="skk"||n[0]==="topics"):NAV.filter(n=>n[0]!=="users"||can.admin());   // СКК и наблюдатель — только склад; участник согласований — только темы
+  const nav=can.mz()?[["mz","Склад","▦"],["mzjournal","Журнал","⇅"],["mzdocs","Документы","📄"],["mztasks","Задачи","✓"],["mztopics","Темы","☰"],["mznorms","Нормативы","📐"],["mzlang","Переводчик","🗣"],["mzhelp","Инструкция","📖"]]:appOn()?[["requests","Заявки","▤"],["find","Поиск","🔎"],["leftovers","Невыданное","📦"],...(zrOk()?[["zreg","Реестр","📒"]]:[])]:role()==="coord"?NAV.filter(n=>n[0]==="topics"):can.zay()?[["resources","Ресурсы склада","⚙"],["requests","Мои заявки","▤"],["skk","Поиск","🔎"]]:can.linkOnly()?NAV.filter(n=>n[0]==="skk").map(n=>[n[0],skkTitle(),n[2]]):can.skkView()?NAV.filter(n=>n[0]==="skk"||n[0]==="topics"):NAV.filter(n=>n[0]!=="users"||can.admin());   // СКК и наблюдатель — только склад; участник согласований — только темы
   $("#app").innerHTML=`<header><div class="logo">ВЕЛЕС<b>СТРОЙ</b></div>
   <nav class="top">${nav.map(n=>`<a href="#/${n[0]}" data-n="${n[0]}">${n[1].toUpperCase()}</a>`).join("")}</nav>
   <div class="sp"></div><div class="who">${esc(S.user.name||S.user.username)}<br><span style="opacity:.75">${esc(T.roles[S.user.role]||"")}</span></div>
@@ -412,7 +412,7 @@ function route(){if(!S.user)return;if(S.off)return offRoute();const home=can.coo
   if(appOn()&&!/^#\/(requests|request|leftovers|find|zreg)(\/|$)/.test(location.hash)){location.hash="#/requests";return}   // 1.9.27: приложение — только заявки
   if(can.coord()&&!/^#\/(topics|topic)(\/|$)/.test(location.hash)){location.hash=home;return}
   if(can.zay()&&!/^#\/(resources|requests|request|skk|oper|mpz)(\/|$)/.test(location.hash)){location.hash="#/requests";return}   // 1.9.15: «Склад: заявки»
-  if(can.mz()){if(!/^#\/(mz|mzitem|mztasks|mztopics|mztopic|mzhelp|mzdocs|mzdoc|mzjournal|mzlang)(\/|$)/.test(location.hash)){location.hash="#/mz";return}}   // 1.9.32: «Склад Велесстрой Монтаж»
+  if(can.mz()){if(!/^#\/(mz|mzitem|mztasks|mztopics|mztopic|mzhelp|mzdocs|mzdoc|mzjournal|mzlang|mznorms)(\/|$)/.test(location.hash)){location.hash="#/mz";return}}   // 1.9.32: «Склад Велесстрой Монтаж»
   else if(can.linkOnly()&&!can.zay()&&!(can.sklad()?/^#\/(skk|upd|oper|mpz)(\/|$)/:/^#\/(skk|upd|updedit|skkact|skkactedit|oper|mpz)(\/|$)/).test(location.hash)){location.hash="#/skk";return}   // 1.9.10: по ссылке — только «Склад / СКК»
   if(can.skkView()&&!/^#\/(find|ureg|skk|upd|updedit|skkact|skkactedit|oper|mpz|topics|topic)(\/|$)/.test(location.hash)){location.hash=home;return}
   S.route=location.hash.slice(2);render(null,true)}
@@ -421,7 +421,7 @@ function render(changedCols,force){
   if(!S.user||!$("#main"))return;
   const [p,id]=S.route.split("/");
   document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("on",a.dataset.n===(p==="receipt"?"receive":p==="request"||p==="leftovers"?"requests":/^(upd|updedit|skkact|skkactedit|oper)$/.test(p)?"skk":p==="topic"?"topics":p)));
-  const V={map:vMap,tools:vTools,mzlang:vMzLang,mzdocs:vMzDocs,mzdoc:vMzDoc,mzjournal:vMzJournal,mz:vMz,mzitem:vMzItem,mztasks:vMzTasks,mztopics:vMzTopics,mztopic:vMzTopic,mzhelp:vMzHelp,ureg:vUreg,walk:vWalk,bc:vBc,zreg:vZreg,backup:vBackup,find:vFind,leftovers:vLeftovers,fields:vFields,home:vHome,receive:vReceive,receipt:vReceipt,requests:vRequests,request:vRequest,resources:vResources,history:vHistory,rules:vRules,users:vUsers,split:vSplit,report:vReport,mpz:vMpz,skk:vSkk,upd:vUpd,updedit:vUpdEdit,skkact:vSkkAct,skkactedit:vSkkActEdit,oper:vOper,topics:vTopics,topic:vTopic}[p]||vHome;
+  const V={mznorms:vMzNorms,map:vMap,tools:vTools,mzlang:vMzLang,mzdocs:vMzDocs,mzdoc:vMzDoc,mzjournal:vMzJournal,mz:vMz,mzitem:vMzItem,mztasks:vMzTasks,mztopics:vMzTopics,mztopic:vMzTopic,mzhelp:vMzHelp,ureg:vUreg,walk:vWalk,bc:vBc,zreg:vZreg,backup:vBackup,find:vFind,leftovers:vLeftovers,fields:vFields,home:vHome,receive:vReceive,receipt:vReceipt,requests:vRequests,request:vRequest,resources:vResources,history:vHistory,rules:vRules,users:vUsers,split:vSplit,report:vReport,mpz:vMpz,skk:vSkk,upd:vUpd,updedit:vUpdEdit,skkact:vSkkAct,skkactedit:vSkkActEdit,oper:vOper,topics:vTopics,topic:vTopic}[p]||vHome;
   if((p==="users"||p==="fields")&&!can.admin())return vHome();
   const key=S.route;if(key!==lastKey){window.scrollTo(0,0);lastKey=key;dirty.clear()}
   // Обновление пришло, пока человек вводит данные: сохраняем введённое, фокус и курсор
@@ -465,7 +465,7 @@ function vHome(){
   res.forEach(r=>{if(!c[r.category])return;const i=resInfo(r);c[r.category][i.st==="free"?0:1]++});
   const aps=(S.data.approvals||[]).filter(a=>can.manage()&&(a.approver_role!=="admin"||can.admin()));
   $("#main").innerHTML=`<h1>Главная</h1>${BC.last?`<div class="mysl noprint">💬 <i>${esc(BC.last.text)}</i><div class="muted">— ${esc(BC.last.author_name||"")}, ${dt(BC.last.created)}</div></div>`:""}${can.admin()&&!S.user.scope?`<a class="btn sm noprint" href="#/bc" style="margin-bottom:10px">📣 Сообщение / цитата всем</a> `:""}${can.write()&&!S.user.scope?`<a class="btn sm noprint" href="#/walk" style="margin-bottom:10px">🚶 Обход склада</a> `:""}${window.Notification&&Notification.permission==="default"?`<button class="btn sm noprint" id="hntf" style="margin-bottom:10px">🔔 Включить уведомления об актах СКК на этом устройстве</button>`:""}
-  ${can.write()?`<a class="btn acc big noprint" href="#/receive" style="margin-bottom:14px;text-decoration:none">＋ НОВАЯ ПРИЁМКА</a>`:""}
+  ${can.write()?`<div class="row noprint" style="gap:8px;flex-wrap:wrap;margin-bottom:14px"><button class="btn acc big grow" id="hmRecv" style="width:auto">＋ НОВАЯ ПРИЁМКА</button><button class="btn big grow" id="hmReq" style="width:auto">＋ НОВАЯ ЗАЯВКА</button><button class="btn big grow" id="hmMorn" style="width:auto">☀ Утро на складе</button></div>`:""}
   <div class="grid">
    <div class="kpi b" data-go="#/receive"><div class="n">${active}</div><div class="t">Активные приёмки</div></div>
    <div class="kpi y" data-go="#/receive"><div class="n">${waiting}</div><div class="t">Ждут согласования / решения</div></div>
@@ -482,6 +482,7 @@ function vHome(){
   ${can.manage()?`<h2>Ожидают вашего решения (${aps.length})</h2><div class="card list">${aps.length?aps.map(apRow).join(""):`<div class="empty">Нет запросов</div>`}</div>`:""}
   <h2>Открытые приёмки</h2><div class="card list">${openReceipts()}</div>`;
   {const hn=$("#hntf");if(hn)hn.onclick=()=>act(hn,async()=>{const p=await Notification.requestPermission();hn.remove();if(p!=="granted")throw new Error("Уведомления запрещены в настройках браузера")},"Уведомления включены")}
+  {const a=$("#hmRecv");if(a)a.onclick=()=>tunRecv();const b=$("#hmReq");if(b)b.onclick=()=>tunReq();const m=$("#hmMorn");if(m)m.onclick=()=>tunMorning()}
   document.querySelectorAll("[data-go]").forEach(el=>el.onclick=()=>{if(el.hasAttribute("data-debt"))RQ.status="debt";if(el.hasAttribute("data-ovr")){H.tab="ovr";H.page=1}location.hash=el.dataset.go});
   const hs=$("#hStrop");if(hs)hs.onclick=()=>stropForm(null);
   const sa=$("#shAny");if(sa)sa.onclick=()=>shipmentForm(null,async()=>{await load(["shipments","reservations"]);render(["shipments"])});
@@ -517,7 +518,8 @@ function rcRow(x){const s=T.rst[x.status]||[x.status,"gr"];
 function vReceive(){
   const sup=[...new Set((S.data.rules||[]).map(r=>r.supplier).concat((S.data.receipts||[]).map(r=>r.supplier)).filter(Boolean))];
   $("#main").innerHTML=`<h1>Приёмка материалов</h1>
-  ${can.write()?`<div class="card"><h2 style="margin-top:0">Новая приёмка</h2>
+  ${can.write()?`<button class="btn acc big noprint" id="rcTun" style="margin-bottom:12px">▶ НОВАЯ ПРИЁМКА — ПО ШАГАМ</button>`:""}
+  ${can.write()?`<div class="card"><h2 style="margin-top:0">Новая приёмка <span class="muted" style="font-size:14px;font-weight:400">— быстрая форма (всё сразу)</span></h2>
   <form id="nf"><label class="f">Номер УПД *</label><div class="row" style="gap:8px;flex-wrap:nowrap"><input id="nu" inputmode="text" required placeholder="например 12345" autocomplete="off" style="flex:1">
    <label class="btn acc" style="white-space:nowrap">📄 УПД<input type="file" id="nfu" accept="image/*,application/pdf" multiple hidden></label><label class="btn acc" style="white-space:nowrap">📷 Фото груза<input type="file" id="nfc" accept="image/*" capture="environment" multiple hidden></label></div>
    <div id="nfp" class="row" style="gap:6px;margin-top:6px"></div>
@@ -528,7 +530,7 @@ function vReceive(){
   <div class="muted" style="margin-top:8px">Укажите поставщика — ограничения могут быть заданы по поставщику, а не только по номеру УПД.</div>
   <div style="height:12px"></div><button class="btn p big" id="nb">ПРОВЕРИТЬ УПД</button></form></div>`:`<div class="banner gray">Роль «Просмотр»: создание приёмок недоступно</div>`}
   <h2>Открытые приёмки</h2><div class="card list">${openReceipts()}</div>`;
-  sugAttach($("#main"));
+  sugAttach($("#main"));{const t=$("#rcTun");if(t)t.onclick=()=>tunRecv()}
   // 1.9.12: фото / PDF УПД и фото груза — сразу при создании приёмки
   const NF={upd:[],cargo:[]};const nfp=()=>{const b=$("#nfp");if(b)b.innerHTML=[["upd","📄"],["cargo","📷"]].map(([k,ic])=>NF[k].map((f,i)=>`<span class="pill gr" style="gap:4px">${ic} ${esc(f.name.slice(0,22))} <a href="#" data-nfx="${k}:${i}" aria-label="Убрать">✕</a></span>`).join("")).join("");
     document.querySelectorAll("[data-nfx]").forEach(a=>a.onclick=ev=>{ev.preventDefault();const [k,i]=a.dataset.nfx.split(":");NF[k].splice(+i,1);nfp()})};
@@ -851,7 +853,7 @@ async function vRequests(){
    <div class="row" style="margin-top:10px"><button class="btn p" id="rqb">НАЙТИ</button><button class="btn" id="rqx">⬇ Экспорт списка в Excel</button></div></div>
   <div id="rql" class="card list"><div class="empty">Загрузка…</div></div>`;
   bindRqTabs();
-  const b=$("#rqNew");if(b)b.onclick=()=>requestForm();
+  const b=$("#rqNew");if(b)b.onclick=()=>can.zay()?requestForm():tunReq();   // 1.9.36: по шагам; обычная форма — кнопкой на первом шаге
   const bs=$("#rqShip");if(bs)bs.onclick=()=>shipmentForm(null,async()=>{await load(["shipments","reservations"]);location.hash="#/home"});
   const go=()=>{RQ.q=$("#rqq").value.trim();RQ.mat=$("#rqm").value.trim();RQ.from=$("#rqf").value;RQ.to=$("#rqt").value;RQ.page=1;vRequests()};
   $("#rqb").onclick=go;["#rqq","#rqm"].forEach(s=>$(s).onkeydown=e=>{if(e.key==="Enter")go()});
@@ -1166,7 +1168,7 @@ async function vRequest(id,changedCols){
   const rfp=$("#rfp");if(rfp)rfp.onchange=()=>act(null,async()=>{await uploadReqFiles(id,rfp.files,$("#rfk").value);await refresh()},"Фото загружено");
   const sn=$("#shNew");if(sn)sn.onclick=()=>shipmentForm(id,refresh);
   $("#rqxl").onclick=e=>act(e.target,()=>exportRequest(r,items,ships));
-  const cl=$("#rqclose");if(cl)cl.onclick=()=>{const short=items.filter(i=>itemState(i)!=="full");const hasPh=files.some(f=>f.kind==="close"&&f.request===id);
+  const cl=$("#rqclose");const oldClose=()=>{const short=items.filter(i=>itemState(i)!=="full");const hasPh=files.some(f=>f.kind==="close"&&f.request===id);
     const transit=ships.filter(x=>x.status==="preparing"||x.status==="sent");const over=items.filter(i=>overQ(i)>0);
     modal(`<h3>Закрыть заявку № ${esc(r.number)}</h3>
      ${transit.length?`<div class="banner red" style="font-size:15px">ЕСТЬ НЕЗАВЕРШЁННАЯ ОТГРУЗКА<small>Сначала отметьте доставку или отмените её.${M?" Руководитель может закрыть в обход, с объяснением.":""}</small></div>`:""}
@@ -1192,6 +1194,7 @@ async function vRequest(id,changedCols){
         const cm=$("#ccm",box).value;const lo=$("#cclo",box);const lit=[...box.querySelectorAll("[data-lo]:checked")].map(c=>c.dataset.lo);
         await api("POST","/api/vs/request/status",{request:id,action:"close",comment:cm,leftover:!!(lo&&lo.checked&&lit.length),leftover_items:lit});closeModal();await refresh()},"Заявка закрыта");
       const lo=$("#cclo",box);if(lo)lo.onchange=()=>{$("#ccli",box).style.opacity=lo.checked?1:.4}})};
+  if(cl)cl.onclick=()=>tunCloseReq(Object.assign({},r,{signs:sigsOf(r)}),items,files,ships,refresh,oldClose);   // 1.9.36: закрытие по шагам
   const reason=(title,action,cls,okMsg)=>modal(`<h3>${title}</h3><label class="f">Причина *</label><textarea id="ccm"></textarea>
     <div class="row" style="margin-top:14px"><button class="btn ${cls} grow" id="mok">${title.toUpperCase()}</button><button class="btn" data-close>Отмена</button></div>`,
     box=>{$("#mok",box).onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/request/status",{request:id,action,comment:$("#ccm",box).value});closeModal();await refresh()},okMsg)});
@@ -1594,6 +1597,8 @@ function vMzHelp(){if(!can.mz())return;const W=mzW();
     <li><b>🛒 Заявка на закупку</b> — только <b>расходники, инструмент и непроектный материал</b> (у материала — отметка «Непроектный» в карточке). Арматура, проектный материал, СИЗ, леса и опалубка не закупаются: в их карточке блок «Снабжение от Велесстроя» — остаток в МПЗ и сколько Монтаж заказал и получил по заявкам (с Excel). Что нужно купить; кнопка «Добавить всё, что ниже минимума». Готовый документ — PDF и Excel на подпись (Составил / Согласовал / Утвердил), статус «Отправлена» / «Подписана», к нему — скан с подписями.</li>
     <li><b>Журнал</b> — весь приход и расход за период с фильтрами (раздел, операция, кому) и поиском; вкладка «Числится за получателями» — что сейчас на руках у каждой бригады.</li>
     <li><b>Поиск</b> на странице «Склад» ищет сразу по всем разделам.</li>
+    <li><b>📐 Нормативы</b> — расход материала на единицу работ (введите вид работ и объём — программа посчитает, сколько нужно, сравнит с остатком и нехватку отправит в заявку на закупку) и нормы выдачи (сколько бригаде на 30 дней; при выдаче сверх нормы — предупреждение). Таблицу нормативов можно загрузить из Excel.</li>
+    <li><b>🗣 Переводчик</b> — готовые фразы для выдачи инструмента на узбекском, таджикском, киргизском, сербском и английском; «Показать крупно» — человеку на экране телефона.</li>
     <li><b>Пример данных</b> — придуманные позиции, выдачи и документы с пометкой «ПРИМЕР», чтобы было видно, как всё выглядит. Исчезают сами при первой загрузке вашей таблицы (или кнопкой «Убрать пример сейчас»).</li></ol></div>
    <h2>Что присылать каждое утро</h2><div class="card"><ol style="margin:0;padding-left:20px;line-height:1.6"><li><b>Оперативка</b> и <b>МПЗ</b> (остатки 1С) — пока пришлите пример (ниже), подключим загрузку под ваш вид.</li>
     <li><b>СИЗ</b> — ваша таблица по размерам (листы «Размерный ряд…», «Прочее» и т.д.) → «⬆ Загрузить таблицу», раздел СИЗ. Программа сама найдёт листы с колонками «Наименование товара», «Размер», «Остаток».</li>
@@ -1642,14 +1647,15 @@ async function mzIssueForm(pre){const I=await mzItems("");await sugFresh(["mz_wh
    draw();$("#iadd",box).onclick=()=>{rows.push({});draw();const l=box.querySelectorAll("[data-ii]");l[l.length-1].focus()};
    $("#mok",box).onclick=e=>act(e.target,async()=>{box.querySelectorAll("[data-iq]").forEach(inp=>rows[+inp.dataset.iq].qty=inp.value.replace(",","."));
      const L=rows.filter(r=>r.item&&num(r.qty)>0);if(!L.length)throw new Error("Выберите позицию из подсказки и укажите количество.");
+     {const ow=await mzNormWarn($("#iwho",box).value.trim(),L,I);if(ow.length&&!confirm("СВЕРХ НОРМЫ ВЫДАЧИ:\n"+ow.map(o=>`${o.it.name}${o.it.size?" "+o.it.size:""}: за ${o.D} дн. уже выдано ${fmtQ(o.got)} + сейчас ${fmtQ(o.add)} при норме ${fmtQ(o.n.qty)} ${o.n.unit||""}`).join("\n")+"\n\nВыдать всё равно?"))throw new Error("Выдача отменена — сверх нормы.")}
      const r=await api("POST","/api/vs/mz/issue",{who:$("#iwho",box).value.trim(),basis:$("#ibas",box).value.trim(),note:$("#inote",box).value.trim(),lines:L});
      closeModal();location.hash="#/mzdoc/"+r.id;mzNtf()},"Выдано, накладная оформлена")})}
 /* --- заявка на закупку: что нужно → документ на подпись (PDF / Excel) --- */
-async function mzPurchaseForm(){const I=(await mzItems("")).filter(mzBuy);await sugFresh(["mz_pbasis","mz_org","mz_unit"]);const byL=new Map(I.map(x=>[mzItemLabel(x),x]));let rows=[{}];
+async function mzPurchaseForm(pre,basis){const I=(await mzItems("")).filter(mzBuy);await sugFresh(["mz_pbasis","mz_org","mz_unit"]);const byL=new Map(I.map(x=>[mzItemLabel(x),x]));let rows=pre&&pre.length?pre.map(x=>Object.assign({},x)):[{}];   // 1.9.37: строки из расчёта по нормам
   const d5=new Date(Date.now()+180*60000+5*864e5).toISOString().slice(0,10);
   modal(`<h3>🛒 Заявка на закупку</h3><div class="muted">Впишите, что нужно купить. Позицию со склада выберите из подсказки — подставятся размер, единица и остаток; новое — пишите как есть. После сохранения — Excel и PDF на подпись.</div>
    <div class="banner yellow" style="margin-top:8px">Закупаются только <b>расходники, инструмент и непроектный материал</b>. Арматура, проектный материал, СИЗ, леса и опалубка приходят по заявкам со склада Велесстроя — их остаток в МПЗ и что выдано видно в карточке позиции.</div>
-   <div class="g2x"><div><label class="f">Для чего / основание</label><input id="pbas" data-sug="mz_pbasis" placeholder="Пополнение до минимума, секция 3"></div><div><label class="f">Нужно к дате</label><input id="pneed" type="date" value="${d5}"></div></div>
+   <div class="g2x"><div><label class="f">Для чего / основание</label><input id="pbas" data-sug="mz_pbasis" placeholder="Пополнение до минимума, секция 3" value="${esc(basis||"")}"></div><div><label class="f">Нужно к дате</label><input id="pneed" type="date" value="${d5}"></div></div>
    <label class="f">Организация (в шапку документа)</label><input id="porg" data-sug="mz_org" placeholder="ООО «ВелесстройМонтаж»">
    <datalist id="pldl">${I.map(x=>`<option value="${esc(mzItemLabel(x))}">`).join("")}</datalist>
    <div class="row" style="gap:6px;margin-top:10px;flex-wrap:wrap"><button class="btn sm acc" id="plow">⚠ Добавить всё, что ниже минимума</button><button class="btn sm" id="padd">＋ Строка</button></div>
@@ -1767,17 +1773,9 @@ async function vMzJournal(){if(!can.mz())return;const now=new Date(Date.now()+18
 /* ===================== 1.9.35: КАРТА СКЛАДА — схема зон + спутник, флажки «где лежит материал» ===================== */
 const MAPW=1600,MAPH=1000;
 // зоны по фотографиям площадки (примерно) — передвигаются и переименовываются в режиме «Зоны»
-const MAP_DEF=[
- {n:"Ангар № 1 «Велесстрой»",t:"hangar",x:520,y:380,w:420,h:180},{n:"Ангар № 2",t:"hangar",x:1010,y:380,w:360,h:170},
- {n:"Проезд (бетонные плиты)",t:"road",x:945,y:250,w:60,h:620},{n:"Въезд / КПП",t:"gate",x:925,y:900,w:100,h:60},
- {n:"Мешки: цемент, смеси",t:"open",x:520,y:300,w:200,h:70},{n:"Металлопрокат: профильные трубы",t:"open",x:520,y:575,w:240,h:70},
- {n:"Оборудование в ящиках, генераторы",t:"open",x:770,y:575,w:170,h:70},{n:"Металл, электрощиты (у ангара 2)",t:"open",x:1010,y:560,w:360,h:70},
- {n:"Бытовки (синие)",t:"cont",x:360,y:600,w:140,h:60},{n:"Морские контейнеры (красные)",t:"cont",x:330,y:680,w:330,h:60},
- {n:"Трубы ПВХ (на контейнерах)",t:"open",x:330,y:760,w:330,h:60},{n:"Утеплитель ТехноНИКОЛЬ",t:"open",x:100,y:300,w:400,h:230},
- {n:"Кабель на барабанах",t:"open",x:100,y:540,w:210,h:80},{n:"Контейнер CAPITAL (зелёный)",t:"cont",x:100,y:630,w:210,h:50},
- {n:"Топливозаправщик (навес)",t:"danger",x:60,y:110,w:170,h:100},{n:"Щебень, песок (кучи)",t:"bulk",x:260,y:70,w:420,h:170},
- {n:"Трубы стальные, металл на земле",t:"open",x:700,y:70,w:420,h:160},{n:"Площадка разгрузки",t:"unload",x:1150,y:70,w:300,h:160},
- {n:"Леса, опалубка (красные стойки)",t:"open",x:1150,y:250,w:300,h:110}];
+const MAP_DEF=[   // 1.9.36: участки — как обведено на спутниковом снимке (Яндекс Карты); названия и границы меняются в режиме «Зоны»
+ {n:"Участок 1",t:"open",x:36,y:85,w:219,h:746},{n:"Участок 2",t:"open",x:255,y:85,w:372,h:746},{n:"Участок 3",t:"open",x:627,y:85,w:382,h:746},
+ {n:"Участок 4",t:"open",x:1009,y:85,w:227,h:746},{n:"Участок 5 — верх",t:"open",x:1236,y:85,w:337,h:154},{n:"Участок 5 — середина",t:"open",x:1236,y:239,w:337,h:226},{n:"Участок 5 — низ",t:"open",x:1236,y:465,w:337,h:366}];
 const MZT={hangar:["Ангар","#1d4ed8"],cont:["Контейнер","#b45309"],open:["Открытое хранение","#64748b"],bulk:["Сыпучие","#a16207"],road:["Проезд","#94a3b8"],gate:["Въезд","#0f766e"],unload:["Разгрузка","#15803d"],danger:["Опасно","#dc2626"]};
 const FLC={red:"#dc2626",blue:"#2563eb",green:"#16a34a",orange:"#ea580c",purple:"#7c3aed",black:"#111827"};
 const MAPS={mode:"view",zoom:1,q:"",sat:true,op:.6,cfg:null,flags:[],zones:null,dirty:false,sel:-1,move:null,focus:""};
@@ -1793,7 +1791,7 @@ async function vMap(id,changed){if(role()===""||S.user.scope)return vHome();if(c
   if(!MAPS.cfg||!MAPS.zones||!S.mapLoaded){await mapLoad();S.mapLoaded=1}
   if(!S.route.startsWith("map"))return;const W=can.write();const ft=MAPS.cfg&&MAPS.cfg.bg||MAPS.flags.some(f=>(f.photo||[]).length)?await fileToken():"";
   const hit=f=>!MAPS.q||wmatch(MAPS.q,f.search_lc||f.material);const F=MAPS.flags.filter(hit);
-  const bg=MAPS.cfg&&MAPS.cfg.bg?`/api/files/smap_cfg/${MAPS.cfg.id}/${encodeURIComponent(MAPS.cfg.bg)}?token=${ft}`:"";
+  const bg=MAPS.cfg&&MAPS.cfg.bg?`/api/files/smap_cfg/${MAPS.cfg.id}/${encodeURIComponent(MAPS.cfg.bg)}?token=${ft}`:"/img/sklad_sat.jpg";   // 1.9.36: свой снимок ещё не загружен — скриншот с Яндекс Карт
   const md=MAPS.mode;
   $("#main").innerHTML=`<div class="row" style="align-items:center;gap:8px;flex-wrap:wrap"><h1 class="grow" style="margin:0">🗺 Карта склада</h1>
     <span class="muted">${MAPS.flags.length} флажков</span></div>
@@ -2044,6 +2042,337 @@ async function vTools(id,changed){if(role()===""||S.user.scope)return vHome();if
   document.querySelectorAll("[data-tt]").forEach(b=>b.onclick=()=>{location.hash="#/tools/"+b.dataset.tt});
   tab==="calc"?calcBind($("#calcbox")):langBind($("#langbox"))}
 async function vMzLang(id,changed){if(!can.mz())return;if(changed&&$("#langbox"))return;$("#main").innerHTML=`<h1>🗣 Переводчик</h1><div class="card" id="langbox">${langHtml()}</div>`;langBind($("#langbox"))}
+
+/* ===================== 1.9.36: «ТУННЕЛИ» — пошаговый ввод: на экране только текущий шаг, «Пропустить» на каждом ===================== */
+const TUNS={cur:null,paused:null};
+function tunnel(cfg){const c=cfg.c||{};let i=cfg.at||0;tunClose(true);
+  const o=document.createElement("div");o.id="tun";o.setAttribute("role","dialog");o.setAttribute("aria-label",cfg.title);
+  o.style.cssText="position:fixed;inset:0;z-index:45;background:var(--bg,#f3f4f6);overflow:auto;-webkit-overflow-scrolling:touch";
+  document.body.appendChild(o);document.body.style.overflow="hidden";
+  const vis=()=>cfg.steps.map((s,k)=>k).filter(k=>!cfg.steps[k].when||cfg.steps[k].when(c));
+  const T={cfg,c,get i(){return i}};TUNS.cur=T;
+  const paint=async()=>{const V=vis();if(!V.includes(i)){const nx=V.find(k=>k>i);i=nx==null?V[V.length-1]:nx}
+    const st=cfg.steps[i],pos=V.indexOf(i)+1,last=pos===V.length;
+    o.innerHTML=`<div style="max-width:760px;margin:0 auto;padding:14px 14px 120px">
+     <div class="row" style="align-items:center;gap:8px"><b class="grow" style="font-size:15px;color:var(--mut,#6b7280)">${esc(cfg.title)}</b>${cfg.pausable?`<button class="btn sm" id="tunpause">⏸ Свернуть</button>`:""}<button class="btn sm" id="tunx" aria-label="Выйти">✕ Выйти</button></div>
+     <div style="display:flex;gap:4px;margin:10px 0 4px" aria-hidden="true">${V.map((k,n)=>`<span style="flex:1;height:6px;border-radius:3px;background:${n<pos-1?"var(--g,#15803d)":n===pos-1?"var(--acc,#f59e0b)":"#d1d5db"}"></span>`).join("")}</div>
+     <div class="muted">Шаг ${pos} из ${V.length}</div>
+     <h1 style="margin:6px 0 10px">${esc(st.t)}</h1>${st.sub?`<div class="muted" style="margin:-4px 0 10px">${st.sub}</div>`:""}
+     <div id="tunb"><div class="muted">Загрузка…</div></div></div>
+     <div style="position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line,#e5e7eb);padding:10px 14px;z-index:46">
+      <div class="row" style="max-width:760px;margin:0 auto;gap:8px">${pos>1&&!st.noBack?`<button class="btn" id="tunbk">← Назад</button>`:""}
+       ${st.skip===false||last?"":`<button class="btn" id="tunsk">Пропустить →</button>`}
+       <button class="btn ${last?"g":"p"} grow big" id="tunok">${esc(st.ok||(last?(cfg.okLast||"ГОТОВО"):"ДАЛЬШЕ →"))}</button></div></div>`;
+    o.scrollTop=0;const box=$("#tunb",o);
+    try{box.innerHTML=await st.html(c,T);st.bind&&st.bind(box,c,T)}catch(e){box.innerHTML=`<div class="banner red">${esc(e.message)}</div>`}
+    sugAttach(box);
+    const go=async(dir,btn)=>{if(dir>0&&st.read)st.read(box,c);if(dir<0&&st.read)try{st.read(box,c)}catch(_){}
+      if(dir>0&&st.check){const er=st.check(c);if(er)throw new Error(er)}
+      if(dir>0&&st.save)await st.save(c,T);
+      if(dir>0&&last){await cfg.done(c,T);tunClose();return}
+      const V2=vis(),p2=V2.indexOf(i);const n=V2[p2+dir];if(n!=null){i=n;paint()}};
+    $("#tunok",o).onclick=e=>act(e.target,()=>go(1));
+    const sk=$("#tunsk",o);if(sk)sk.onclick=()=>{if(st.onSkip)st.onSkip(c);const V2=vis();const n=V2[V2.indexOf(i)+1];if(n!=null){i=n;paint()}};
+    const bk=$("#tunbk",o);if(bk)bk.onclick=()=>act(bk,()=>go(-1));
+    $("#tunx",o).onclick=()=>{if(cfg.exitAsk!==false&&!confirm(cfg.exitAsk||"Выйти? То, что ещё не сохранено, пропадёт."))return;tunClose();cfg.onExit&&cfg.onExit(c)};
+    const pz=$("#tunpause",o);if(pz)pz.onclick=()=>tunPause()};
+  T.paint=paint;T.go=k=>{i=k;paint()};T.next=()=>{const V2=vis();const n=V2[V2.indexOf(i)+1];if(n!=null){i=n;paint()}};
+  T.resume=()=>{document.body.appendChild(o);document.body.style.overflow="hidden";TUNS.cur=T;paint()};T.el=o;
+  paint();return T}
+function tunClose(silent){const o=$("#tun");if(o)o.remove();document.body.style.overflow="";TUNS.cur=null;if(!silent){const p=$("#tunpill");if(p&&!TUNS.paused)p.remove()}}
+function tunPause(){const T=TUNS.cur;if(!T)return;TUNS.paused=T;T.el.remove();document.body.style.overflow="";TUNS.cur=null;
+  let p=$("#tunpill");if(!p){p=document.createElement("button");p.id="tunpill";p.className="btn acc noprint";p.style.cssText="position:fixed;right:14px;bottom:90px;z-index:44;box-shadow:0 4px 14px rgba(0,0,0,.25)";document.body.appendChild(p)}
+  p.textContent="↩ "+T.cfg.title+": шаг продолжить";p.onclick=()=>{const t=TUNS.paused;TUNS.paused=null;p.remove();if(t)t.resume()}}
+function tunGo(href){tunPause();location.hash=href}   // перейти в раздел (например, загрузить таблицу) и потом вернуться в туннель
+const tunCard=(inner,st)=>`<div class="card" style="padding:12px;margin-top:8px${st?";"+st:""}">${inner}</div>`;
+const tunFiles=(id,label,cam,multi,acc)=>`<div class="row" style="gap:8px;flex-wrap:wrap">${cam?`<label class="btn acc big grow">📷 Сфотографировать<input type="file" id="${id}c" accept="image/*" capture="environment" ${multi?"multiple":""} hidden></label>`:""}<label class="btn big grow">${label}<input type="file" id="${id}f" accept="${acc||"image/*,application/pdf"}" ${multi?"multiple":""} hidden></label></div><div id="${id}n" class="muted" style="margin-top:6px"></div>`;
+function tunFileBind(box,id,arr,onPick){const n=$("#"+id+"n",box);const show=()=>{if(n)n.innerHTML=arr.length?arr.map((f,k)=>`<span class="pill gr" style="gap:4px;margin:2px">${/pdf/i.test(f.type)?"📄":"📷"} ${esc(f.name.slice(0,26))} <a href="#" data-tfx="${k}" aria-label="Убрать">✕</a></span>`).join(""):"Ничего не выбрано";
+  n&&n.querySelectorAll("[data-tfx]").forEach(a=>a.onclick=e=>{e.preventDefault();arr.splice(+a.dataset.tfx,1);show()})};
+  ["c","f"].forEach(s=>{const el=$("#"+id+s,box);if(el)el.onchange=()=>{arr.push(...el.files);el.value="";show();onPick&&onPick()}});show()}
+// подсказка места по флажкам на карте склада
+async function tunMapHints(names){let F=MAPS.flags&&MAPS.flags.length&&S.mapLoaded?MAPS.flags:null;if(!F){try{F=await all("smap_flags","","-updated")}catch(_){F=[]}}
+  return names.map(n=>{const w=qWords(n).filter(x=>x.length>=3).slice(0,3).join(" ");return w?F.filter(f=>wmatch(w,f.search_lc||f.material)).slice(0,3):[]})}
+
+/* ----- 1) Новая заявка: скан → шапка → позиции → где лежит → чем грузить → проверка ----- */
+async function tunReq(){await sugFresh(["object","recipient","material","unit","supplier","pick_place","pick_tool","ship_place","ship_load"]);
+  const c={files:[],items:[],date:new Date().toISOString().slice(0,10),handed:false};
+  const rowsHtml=()=>(c.items.length?c.items:[{}]).map((it,k)=>`<div class="card" data-tr style="padding:10px;margin-top:8px"><div class="row"><b class="grow">Позиция ${k+1}</b><button type="button" class="btn sm" data-trx="${k}" aria-label="Удалить позицию">✕</button></div>
+    <input data-k="material" data-sug="material" placeholder="Материал *" value="${esc(it.material||"")}">
+    <div class="row" style="gap:6px;margin-top:6px"><input data-k="qty_ordered" inputmode="decimal" placeholder="Кол-во *" value="${esc(it.qty_ordered||"")}" style="flex:1"><input data-k="unit" data-sug="unit" placeholder="Ед." value="${esc(it.unit||"")}" style="width:90px"><input data-k="supplier" data-sug="supplier" placeholder="Поставщик" value="${esc(it.supplier||"")}" style="flex:2"></div></div>`).join("");
+  const readRows=box=>{c.items=[...box.querySelectorAll("[data-tr]")].map((r,k)=>{const o=Object.assign({},c.items[k]||{});r.querySelectorAll("[data-k]").forEach(i=>o[i.dataset.k]=i.value.trim());return o}).filter(o=>o.material||o.qty_ordered)};
+  tunnel({title:"Новая заявка",okLast:"СОХРАНИТЬ ЗАЯВКУ",c,steps:[
+   {t:"Скан заявки",sub:"PDF или фото бумажной заявки — сервер прочитает номер, объект и позиции. Нет скана — «Пропустить».",
+    html:()=>tunFiles("tq","📄 PDF / из галереи",true,false)+`<div id="tqs" style="margin-top:8px">${c.ocr?`<div class="banner green" style="margin:0">Уже прочитано позиций: ${c.items.length}</div>`:""}</div>
+      <div style="margin-top:16px"><button class="btn sm" id="tunform">📝 Обычная форма (всё на одной странице)</button></div>`,
+    bind:(box,_,T)=>{tunFileBind(box,"tq",c.files,()=>{const f=c.files[c.files.length-1];c.files=[f];const st=$("#tqs",box);
+       act(null,async()=>{st.innerHTML=`<div class="muted">⏳ Читаю заявку… 10–40 секунд на страницу</div>`;const fd=new FormData();fd.append("uploaded_by",S.user.id);fd.append("file",/^image\//.test(f.type)&&f.size>4e6?await shrink(f):f);
+         const up=await api("POST","/api/collections/request_ocr/records",fd,true);const res=await api("POST","/api/vs/request/ocr",{upload:up.id});const h=res.header||{};
+         c.ocr=res;c.number=c.number||h.number||"";if(h.date)c.date=h.date;c.object=c.object||h.object||"";c.recipient=c.recipient||h.recipient||"";
+         c.items=(res.items||[]).map(it=>({material:it.material||"",qty_ordered:it.qty_ordered||it.qty||"",unit:it.unit||"",supplier:it.supplier||""}));
+         if(T.c===c&&$("#tqs"))$("#tqs").innerHTML=`<div class="banner green" style="margin:0">Прочитано позиций: ${c.items.length}. Дальше — проверьте шапку и позиции.</div>`}).catch(()=>{const s=$("#tqs");if(s)s.innerHTML=`<div class="muted" style="color:var(--r)">Не получилось прочитать — заполните вручную.</div>`})});
+     $("#tunform",box).onclick=()=>{tunClose();requestForm()}}},
+   {t:"Шапка заявки",html:()=>`<label class="f">№ заявки *</label><input id="tn" value="${esc(c.number||"")}" autocomplete="off">
+     <label class="f">Дата заявки</label><input id="td" type="date" value="${esc(c.date||"")}">
+     <label class="f">Объект / подразделение</label><input id="to" data-sug="object" data-chips value="${esc(c.object||"")}">
+     <label class="f">Получатель / МОЛ</label><input id="tr" data-sug="recipient" data-chips value="${esc(c.recipient||"")}">
+     <label class="f">Примечание</label><input id="tm" value="${esc(c.note||"")}">
+     <label class="row" style="gap:8px;margin-top:12px"><input type="checkbox" id="th" ${c.handed?"checked":""} style="width:24px;height:24px"><span>Заявку мне уже передали — сразу в работу <span class="muted">(иначе — 📬 «на почте»)</span></span></label>`,
+    read:(b)=>{c.number=$("#tn",b).value.trim();c.date=$("#td",b).value;c.object=$("#to",b).value.trim();c.recipient=$("#tr",b).value.trim();c.note=$("#tm",b).value.trim();c.handed=$("#th",b).checked},
+    check:()=>c.number?"":"Укажите № заявки (или «Пропустить» — спрошу в конце)."},
+   {t:"Позиции",sub:"Материал, количество, единица. Подсказки — из прошлых заявок.",
+    html:()=>`<div id="trows">${rowsHtml()}</div><button type="button" class="btn" id="tradd" style="margin-top:8px">＋ Ещё позиция</button>`,
+    bind:(box)=>{const rb=()=>{box.querySelectorAll("[data-trx]").forEach(b=>b.onclick=()=>{readRows(box);c.items.splice(+b.dataset.trx,1);$("#trows",box).innerHTML=rowsHtml();sugAttach(box);rb()})};rb();
+     $("#tradd",box).onclick=()=>{readRows(box);c.items.push({});$("#trows",box).innerHTML=rowsHtml();sugAttach(box);rb();const L=box.querySelectorAll('[data-k="material"]');L[L.length-1].focus()}},
+    read:readRows,check:()=>!c.items.length?"Добавьте хотя бы одну позицию.":c.items.some(i=>!i.material||!(num(i.qty_ordered)>0))?"У каждой позиции — материал и количество.":""},
+   {t:"Где лежит",sub:"Место на складе для каждой позиции — запомнится и подставится в план погрузки. Подсказки: флажки на карте, прошлые заявки, приход.",
+    html:async()=>{const N=c.items.map(i=>i.material);const [H,M,mem]=await Promise.all([pickHist(N).catch(()=>N.map(()=>({}))),tunMapHints(N),ldMem()]);
+      return c.items.map((it,k)=>{const h=H[k]||{},m=M[k]||[],lm=mem.get(lcq(it.material).replace(/\s+/g," ").trim());const ch=[...new Set([lm&&lm.place,h.pick&&h.pick.place,h.unload&&h.unload.place,...m.map(f=>f.zone)].filter(Boolean))];
+        return tunCard(`<b>${esc(it.material)}</b> <span class="muted">${fmtQ(it.qty_ordered)} ${esc(it.unit||"")}</span>
+         <input data-pl="${k}" data-sug="ship_place" placeholder="Площадка, ряд, ангар" value="${esc(it.place||(lm&&lm.place)||"")}" style="margin-top:6px">
+         ${ch.length?`<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">${ch.map(v=>`<button type="button" class="btn sm" data-plc="${k}" data-v="${esc(v)}">📍 ${esc(v)}</button>`).join("")}</div>`:""}
+         ${m.length?`<div class="muted" style="margin-top:4px">На карте: ${m.map(f=>`⚑ ${esc(f.material)}${f.qty?" — "+esc(f.qty)+" "+esc(f.unit||""):""} (${esc(f.zone||"вне зон")})`).join("; ")}</div>`:""}`)}).join("")},
+    bind:(box)=>box.querySelectorAll("[data-plc]").forEach(b=>b.onclick=()=>{box.querySelector(`[data-pl="${b.dataset.plc}"]`).value=b.dataset.v}),
+    read:(b)=>b.querySelectorAll("[data-pl]").forEach(i=>c.items[+i.dataset.pl].place=i.value.trim())},
+   {t:"Чем грузить",sub:"Техника для каждой позиции — запомнится для плана погрузки.",
+    html:async()=>{const mem=await ldMem();const cr=(S.data.resources||[]).filter(r=>r.category==="crane").map(r=>r.name);const opts=[...new Set(cr.concat(["КМУ (манипулятор)","Погрузчик (вилочный)","Кран","Вручную (стропальщики)"]))];
+      return tunCard(`<label class="f">Для всех позиций сразу</label><div class="row" style="gap:6px;flex-wrap:wrap">${opts.map(v=>`<button type="button" class="btn sm" data-ldall="${esc(v)}">${esc(v)}</button>`).join("")}</div>`,"background:#f0f9ff")+
+       c.items.map((it,k)=>{const lm=mem.get(lcq(it.material).replace(/\s+/g," ").trim());return tunCard(`<b>${esc(it.material)}</b>${it.place?` <span class="muted">📍 ${esc(it.place)}</span>`:""}
+         <input data-ld="${k}" data-sug="ship_load" placeholder="Кран, КМУ, погрузчик, вручную" value="${esc(it.load||(lm&&lm.load)||"")}" style="margin-top:6px">`)}).join("")},
+    bind:(box)=>box.querySelectorAll("[data-ldall]").forEach(b=>b.onclick=()=>box.querySelectorAll("[data-ld]").forEach(i=>i.value=b.dataset.ldall)),
+    read:(b)=>b.querySelectorAll("[data-ld]").forEach(i=>c.items[+i.dataset.ld].load=i.value.trim())},
+   {t:"Проверьте и сохраните",html:()=>tunCard(`<div style="font-size:18px"><b>Заявка № ${esc(c.number||"—")}</b> от ${esc(dmy(c.date)||"—")}</div><div>${esc([c.object,c.recipient].filter(Boolean).join(" · ")||"объект и получатель не указаны")}</div>
+      <div class="muted">${c.handed?"✔ передали — сразу в работу":"📬 на почте, пока не нажмёте «Принято»"}${c.files.length?" · скан приложится":""}</div>`)+
+     tunCard(`<b>Позиции: ${c.items.length}</b>${c.items.map((it,k)=>`<div style="padding:6px 0;border-bottom:1px dashed var(--line)">${k+1}. ${esc(it.material)} — <b>${fmtQ(it.qty_ordered)} ${esc(it.unit||"")}</b>${it.place||it.load?`<div class="muted">${it.place?"📍 "+esc(it.place):""}${it.load?" · 🏗 "+esc(it.load):""}</div>`:""}</div>`).join("")}`),
+    check:()=>!c.number?"Нет № заявки — вернитесь на шаг «Шапка заявки».":!c.items.length?"Нет позиций — вернитесь на шаг «Позиции».":""}],
+   done:async()=>{const items=c.items.map(it=>({material:it.material,qty_ordered:it.qty_ordered,unit:it.unit,supplier:it.supplier||""}));
+     const j=await api("POST","/api/vs/request/create",{number:c.number,req_date:c.date?c.date+" 12:00:00.000Z":"",object:c.object||"",recipient:c.recipient||"",note:c.note||"",handed:!!c.handed,items});
+     const mem=c.items.filter(i=>i.place||i.load).map(i=>({material:i.material,place:i.place||"",load:i.load||""}));
+     if(mem.length){try{await api("POST","/api/vs/loadmem/set",{lines:mem})}catch(e){toast("Места не запомнились: "+e.message,"err")}}
+     if(c.files.length){try{await uploadReqFiles(j.request,c.files,"signed")}catch(e){toast("Скан не приложился: "+e.message,"err")}}
+     await load(["requests"]);toast("Заявка сохранена","ok");location.hash="#/request/"+j.request}})}
+
+/* ----- 2) Закрытие заявки: что выдано → невыданное → подписи → фото → закрыть ----- */
+function tunCloseReq(r,items,files,ships,refresh,oldForm){const M=can.manage();const id=r.id;
+  const short=items.filter(i=>itemState(i)!=="full"),transit=ships.filter(x=>x.status==="preparing"||x.status==="sent"),over=items.filter(i=>overQ(i)>0);
+  const hasPh=files.some(f=>f.kind==="close"&&f.request===id);const sig=r.signs&&typeof r.signs==="object"?r.signs:{};
+  const c={photos:[],lo:true,lit:short.map(i=>i.id),cm:"",sig:{}};
+  tunnel({title:"Закрытие заявки № "+r.number,okLast:"ЗАКРЫТЬ ЗАЯВКУ",c,steps:[
+   {t:"Что выдано",html:()=>`${transit.length?`<div class="banner red" style="font-size:15px">ЕСТЬ НЕЗАВЕРШЁННАЯ ОТГРУЗКА<small>Сначала отметьте доставку или отмените её.${M?" Руководитель может закрыть в обход, с объяснением.":""}</small></div>`:""}
+     ${over.length?`<div class="banner orange" style="font-size:15px">ВЫДАНО СВЕРХ ЗАКАЗА<small>${over.map(i=>esc(i.material)+": +"+fmtQ(overQ(i))+" "+esc(i.unit)).join("\n")}</small></div>`:""}
+     ${short.length?`<div class="banner yellow" style="font-size:15px">ВЫДАНО НЕ ПОЛНОСТЬЮ — ${short.length} поз.</div>`:`<div class="banner green" style="font-size:15px">ВСЕ ПОЗИЦИИ ВЫДАНЫ ПОЛНОСТЬЮ</div>`}
+     <div class="tw"><table><tr><th>Позиция</th><th>Заказано</th><th>Выдано</th></tr>${items.map(i=>`<tr><td>${esc(i.material)}</td><td>${fmtQ(i.qty_ordered)} ${esc(i.unit)}</td><td><b style="color:${itemState(i)==="full"?"var(--g)":"var(--o,#c2410c)"}">${fmtQ(i.qty_issued)}</b></td></tr>`).join("")}</table></div>
+     <div style="margin-top:14px"><button class="btn sm" id="tunform">📝 Обычное окно закрытия</button></div>`,
+    bind:(box)=>{$("#tunform",box).onclick=()=>{tunClose();oldForm()}},check:()=>transit.length&&!M?"Есть незавершённая отгрузка — закрыть нельзя.":""},
+   {t:"Невыданное",sub:"Остаток уйдёт в список «Невыданное по заявкам» — его можно выдать потом без заявки.",when:()=>short.length>0,
+    html:()=>`<label class="row" style="gap:8px;font-weight:800"><input type="checkbox" id="tlo" ${c.lo?"checked":""} style="width:24px;height:24px"> 📦 Отправить невыданное в отдельный список</label>
+     ${short.map(i=>`<label class="row" style="gap:8px;margin-top:8px"><input type="checkbox" data-tlo="${i.id}" ${c.lit.includes(i.id)?"checked":""} style="width:22px;height:22px"><span class="grow">${esc(i.material)}</span><b>${fmtQ(Math.max(0,num(i.qty_ordered)-num(i.qty_issued)))} ${esc(i.unit)}</b></label>`).join("")}
+     <label class="f" style="margin-top:12px">Комментарий (обязательно) *</label><textarea id="tcm" placeholder="например: остаток выдадим по новой заявке">${esc(c.cm)}</textarea>`,
+    read:(b)=>{c.lo=$("#tlo",b).checked;c.lit=[...b.querySelectorAll("[data-tlo]:checked")].map(x=>x.dataset.tlo);c.cm=$("#tcm",b).value.trim()},
+    check:()=>c.cm?"":"Выдано не полностью — напишите комментарий.",skip:false},
+   {t:"Подписи",sub:"Кто подписал бумажную заявку. Не подписано — «Пропустить», заявка будет в «Долгах по подписям».",
+    html:async()=>{await sugFresh(SIGNS.map(s=>"sign_"+s[0]));return SIGNS.map(s=>tunCard(sig[s[0]]?`✔ <b>${esc(s[1])}</b> <span class="muted">— уже отмечено</span>`:`<label class="row" style="gap:8px;font-weight:700"><input type="checkbox" data-sg="${s[0]}" ${c.sig[s[0]]?"checked":""} style="width:22px;height:22px"> ${esc(s[1])}</label>
+      <input data-sgw="${s[0]}" data-sug="sign_${s[0]}" placeholder="Кто подписал (ФИО)" value="${esc((c.sig[s[0]]||{}).who||"")}" style="margin-top:6px">`)).join("")},
+    read:(b)=>{c.sig={};b.querySelectorAll("[data-sg]").forEach(x=>{const w=b.querySelector(`[data-sgw="${x.dataset.sg}"]`).value.trim();if(x.checked||w)c.sig[x.dataset.sg]={who:w}})}},
+   {t:"Фото закрытия",sub:`Фото подписанной заявки / выданного материала${hasPh?" (фото уже есть — можно добавить)":M?" (руководитель может закрыть без фото)":" — обязательно"}.`,
+    html:()=>tunFiles("tcp","Из галереи",true,true),bind:(box)=>tunFileBind(box,"tcp",c.photos)},
+   {t:"Закрыть заявку",html:()=>tunCard(`<div style="font-size:18px"><b>Заявка № ${esc(r.number)}</b></div>${short.length?`<div>Невыданное: ${c.lo&&c.lit.length?c.lit.length+" поз. → в список":"не переносится"}</div><div class="muted">«${esc(c.cm)}»</div>`:"<div>Всё выдано полностью.</div>"}
+      <div>Подписи: ${Object.keys(c.sig).length?Object.keys(c.sig).map(k=>esc((SIGNS.find(s=>s[0]===k)||[k,k])[1])).join(", "):"без новых отметок"}</div><div>Фото: ${c.photos.length||(hasPh?"уже есть":"нет")}</div>`)+
+      (!short.length?`<label class="f">Комментарий</label><textarea id="tcm2">${esc(c.cm)}</textarea>`:"")+`<div class="muted" style="margin-top:8px">После закрытия выданное количество изменить нельзя.</div>`,
+    read:(b)=>{const t=$("#tcm2",b);if(t)c.cm=t.value.trim()},check:()=>!c.photos.length&&!hasPh&&!M?"Нужно фото — вернитесь на шаг «Фото закрытия». Без фото закрыть может руководитель.":""}],
+   done:async()=>{for(const k of Object.keys(c.sig))await api("POST","/api/vs/request/sign",{request:id,key:k,value:true,who:c.sig[k].who||""});
+     if(c.photos.length)await uploadReqFiles(id,c.photos,"close");
+     await api("POST","/api/vs/request/status",{request:id,action:"close",comment:c.cm,leftover:!!(short.length&&c.lo&&c.lit.length),leftover_items:short.length?c.lit:[]});
+     toast("Заявка закрыта","ok");await refresh()}})}
+
+/* ----- 3) Приёмка материала: УПД → поставщик и машина → проверка → фото груза → количество → где выгрузили (карта) → чек-лист → завершить ----- */
+async function tunRecv(){await sugFresh(["supplier","sender","vehicle","ship_place"]);const c={upd:[],cargo:[],flag:null};
+  const R=async()=>{c.r=await api("GET","/api/collections/receipts/records/"+c.rid);c.items=await all("checklist_items",`receipt="${c.rid}"`,"sort");return c.r};
+  const ok=()=>c.r&&["in_progress","pending_approval","nonconformity"].includes(c.r.status);
+  tunnel({title:"Приёмка материала",okLast:"ЗАВЕРШИТЬ ПРИЁМКУ",c,exitAsk:"Выйти? Созданная приёмка останется в «Открытых приёмках».",steps:[
+   {t:"УПД",sub:"Номер УПД и фото / PDF документа.",html:()=>`<label class="f">Номер УПД *</label><input id="tu" value="${esc(c.num||"")}" autocomplete="off" placeholder="например 12345">
+     <div style="margin-top:10px">${tunFiles("tuu","📄 УПД: PDF / галерея",true,true)}</div>`,
+    bind:(box)=>tunFileBind(box,"tuu",c.upd),read:(b)=>{c.num=$("#tu",b).value.trim()},check:()=>c.num?"":"Укажите номер УПД.",skip:false},
+   {t:"Поставщик и машина",html:()=>`<label class="f">Поставщик</label><input id="ts" data-sug="supplier" data-chips value="${esc(c.sup||"")}">
+     <label class="f">Грузоотправитель (если отличается)</label><input id="tsd" data-sug="sender" value="${esc(c.snd||"")}">
+     <label class="f">Транспорт / госномер</label><input id="tv" data-sug="vehicle" data-chips value="${esc(c.veh||"")}"><div id="tah" style="margin-top:10px"></div>`,
+    bind:(box)=>{let t=0;const h=()=>{clearTimeout(t);t=setTimeout(async()=>{try{const j=await api("POST","/api/vs/acts/match",{upd:c.num,supplier:$("#ts",box).value});const e=$("#tah",box);if(e)e.innerHTML=actsBanner(j.acts,true)}catch(_){}},500)};$("#ts",box).addEventListener("input",h);h()},
+    read:(b)=>{c.sup=$("#ts",b).value.trim();c.snd=$("#tsd",b).value.trim();c.veh=$("#tv",b).value.trim()},ok:"ПРОВЕРИТЬ УПД →",
+    save:async()=>{if(c.rid)return;const j=await api("POST","/api/vs/upd/check",{upd:c.num,supplier:c.sup,sender:c.snd,vehicle:c.veh});c.rid=j.receipt;if(j.existing)toast("По этому УПД уже есть открытая приёмка — продолжаю её");
+      for(const f of c.upd){const fd=new FormData();fd.append("receipt",c.rid);fd.append("kind","document");fd.append("uploaded_by",S.user.id);fd.append("file",await shrink(f));try{await api("POST","/api/collections/attachments/records",fd,true)}catch(er){toast("Файл «"+f.name+"» не загрузился: "+er.message,"err")}}
+      c.upd=[];await R();await load(["receipts"])}},
+   {t:"Результат проверки",noBack:true,skip:false,html:()=>{const r=c.r,bc={green:"green",red:"red",yellow:"yellow",notfound:"notfound"}[r.check_result]||"gray";
+     return `<div class="banner ${bc}" style="font-size:18px">${esc(T.check[r.check_result]||"")}<small>${esc(r.instruction||"")}</small></div>${actsBanner(Array.isArray(r.acts_found)?r.acts_found:[],false)}
+      ${ok()?`<div class="muted">Дальше — фото груза, количество, место выгрузки и чек-лист.</div>`:`<div class="banner red">Приёмка остановлена — дальше по шагам нельзя. Откройте приёмку: там согласование / решение руководителя.</div>`}`},
+    ok:"ДАЛЬШЕ →",save:async(_,T2)=>{if(!ok()){tunClose();location.hash="#/receipt/"+c.rid;throw new Error("Приёмка остановлена — открыл её карточку.")}}},
+   {t:"Фото груза",html:()=>tunFiles("tuc","Из галереи",true,true,"image/*"),bind:(box)=>tunFileBind(box,"tuc",c.cargo),
+    save:async()=>{for(const f of c.cargo){const fd=new FormData();fd.append("receipt",c.rid);fd.append("kind","material");fd.append("uploaded_by",S.user.id);fd.append("file",await shrink(f));await api("POST","/api/collections/attachments/records",fd,true)}c.cargo=[]}},
+   {t:"Количество и повреждения",html:()=>{const r=c.r;return `<div class="row" style="gap:8px"><div class="grow"><label class="f">По документу</label><input id="tqd" inputmode="decimal" value="${esc(r.qty_doc||"")}"></div><div class="grow"><label class="f">Фактически</label><input id="tqf" inputmode="decimal" value="${esc(r.qty_fact||"")}"></div></div>
+     <label class="f">Повреждения</label><input id="tdm" value="${esc(r.damage||"")}" placeholder="нет / помята упаковка 2 места"><label class="f">Заметки</label><textarea id="tnt">${esc(r.notes||"")}</textarea>`},
+    read:(b)=>{c.qd=$("#tqd",b).value;c.qf=$("#tqf",b).value;c.dm=$("#tdm",b).value;c.nt=$("#tnt",b).value},
+    save:async()=>{await api("POST","/api/vs/receipt/update",{receipt:c.rid,qty_doc:c.qd,qty_fact:c.qf,damage:c.dm,notes:c.nt});await R()}},
+   {t:"Где выгрузили",sub:"Нажмите на схеме место выгрузки — встанет флажок «УПД № … — поставщик». Можно «Пропустить».",
+    html:async()=>{if(!S.mapLoaded){await mapLoad();S.mapLoaded=1}return `<div id="tmapw" style="overflow:auto;border:1px solid var(--line);border-radius:12px;background:#e5e7eb"><div id="tmap" style="position:relative;width:100%;min-width:560px;aspect-ratio:${MAPW}/${MAPH};background:#f1f5f0;cursor:crosshair">
+       ${(MAPS.zones||[]).map(z=>{const cc=(MZT[z.t]||MZT.open)[1];return `<div style="position:absolute;pointer-events:none;left:${z.x/MAPW*100}%;top:${z.y/MAPH*100}%;width:${z.w/MAPW*100}%;height:${z.h/MAPH*100}%;background:${cc}22;border:2px solid ${cc};border-radius:6px;box-sizing:border-box"><span style="position:absolute;left:3px;top:1px;font-size:10px;font-weight:700;color:${cc}">${esc(z.n)}</span></div>`}).join("")}
+       <span id="tmf" style="position:absolute;display:${c.flag?"block":"none"};left:${c.flag?c.flag.x*100:0}%;top:${c.flag?c.flag.y*100:0}%;transform:translate(-4px,-100%);font-size:30px;line-height:1;pointer-events:none">🚩</span></div></div>
+      <div id="tmz" class="muted" style="margin-top:6px">${c.flag?"📍 "+esc(c.flag.zone||"вне зон"):"Место не выбрано"}</div>
+      <label class="f">Что выгрузили (подпись флажка)</label><input id="tmm" value="${esc(c.fm||("УПД № "+c.num+(c.sup?" — "+c.sup:"")))}">
+      <label class="f">Примечание (ряд, ярус)</label><input id="tmn" value="${esc(c.fn||"")}">`},
+    bind:(box)=>{const m=$("#tmap",box);m.onclick=e=>{const r=m.getBoundingClientRect();const x=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),y=Math.max(0,Math.min(1,(e.clientY-r.top)/r.height));
+      c.flag={x,y,zone:mapZoneAt(x*MAPW,y*MAPH)};const f=$("#tmf",box);Object.assign(f.style,{display:"block",left:x*100+"%",top:y*100+"%"});$("#tmz",box).textContent="📍 "+(c.flag.zone||"вне зон")}},
+    read:(b)=>{c.fm=$("#tmm",b).value.trim();c.fn=$("#tmn",b).value.trim()},
+    save:async()=>{if(!c.flag||c.flagId)return;const f=await api("POST","/api/collections/smap_flags/records",{x:c.flag.x,y:c.flag.y,zone:c.flag.zone,material:c.fm||("УПД № "+c.num),note:c.fn,color:"green",created_by:S.user.id});c.flagId=f.id;if(MAPS.flags)MAPS.flags.unshift(f)}},
+   {t:"Чек-лист приёмки",when:()=>c.items&&c.items.length>0,html:()=>c.items.map(i=>`<label class="chk ${i.done?"done":""}" style="display:flex;gap:10px;align-items:flex-start;padding:10px;margin-top:6px;background:#fff;border-radius:10px"><input type="checkbox" data-tci="${i.id}" ${i.done?"checked":""} style="width:26px;height:26px;flex:none"><span><b>${esc(i.title)}</b>${i.required?"":" <span class='muted'>(необязательно)</span>"}</span></label>`).join(""),
+    read:(b)=>{c.chk={};b.querySelectorAll("[data-tci]").forEach(x=>c.chk[x.dataset.tci]=x.checked)},
+    save:async()=>{for(const i of c.items){if(c.chk&&i.id in c.chk&&!!c.chk[i.id]!==!!i.done)await api("POST","/api/vs/checklist/set",{item:i.id,done:c.chk[i.id]})}await R()}},
+   {t:"Завершить приёмку",html:()=>{const req=(c.items||[]).filter(i=>i.required&&!i.done);return tunCard(`<div style="font-size:18px"><b>УПД № ${esc(c.num)}</b> ${esc(c.sup||"")}</div><div>${esc(c.veh||"")}</div>
+      <div>Количество: ${esc(c.r.qty_doc||"—")} по док. / ${esc(c.r.qty_fact||"—")} факт.${c.r.damage?" · повреждения: "+esc(c.r.damage):""}</div><div>Место: ${c.flag?"🚩 "+esc(c.flag.zone||"на карте"):"не отмечено"}</div>`)+
+      (req.length?`<div class="banner yellow">Не отмечены обязательные пункты чек-листа: ${req.map(i=>esc(i.title)).join("; ")}<small>Вернитесь назад или завершите позже в карточке приёмки.</small></div>`:"")+(c.r.status!=="in_progress"?`<div class="banner yellow">Статус приёмки: ${esc((T.rst[c.r.status]||[c.r.status])[0])} — завершить можно после решения.</div>`:"")},
+    check:()=>c.r.status!=="in_progress"?"Приёмку пока нельзя завершить — откройте её карточку.":(c.items||[]).some(i=>i.required&&!i.done)?"Сначала отметьте обязательные пункты чек-листа.":""}],
+   done:async()=>{await api("POST","/api/vs/receipt/complete",{receipt:c.rid});await load(["receipts"]);toast("Приёмка завершена","ok");location.hash="#/receipt/"+c.rid},
+   onExit:()=>{if(c.rid)location.hash="#/receipt/"+c.rid}})}
+
+/* ----- 4) Утро: таблицы за сегодня → незавершённое → напоминания ----- */
+const mornKey=()=>"vs_morning_"+(S.user&&S.user.id)+"_"+new Date().toLocaleDateString("ru-RU");
+function mornAuto(){try{if(!S.user||S.user.scope||!can.write()||appOn()||can.mz())return;if(navigator.webdriver&&!localStorage.getItem("vs_tun_test"))return;   // автотесты — только когда тест сам просит
+  if(localStorage.getItem(mornKey())||TUNS.cur||$("#tun"))return;if(new Date().getHours()<4)return;tunMorning()}catch(_){}}
+async function tunMorning(){const c={};const today=new Date().toDateString();const isT=s=>{const d=pd(s);return d&&d.toDateString()===today};const ago=s=>{const d=pd(s);if(!d)return "ни разу";const n=Math.floor((Date.now()-d.getTime())/864e5);return n<=0?"сегодня":n===1?"вчера":n+" дн. назад"};
+  tunnel({title:"Утро на складе",pausable:true,exitAsk:false,okLast:"ХОРОШЕГО ДНЯ!",c,steps:[
+   {t:"Доброе утро"+(S.user.name?", "+S.user.name.split(" ")[0]:"")+"!",sub:new Date().toLocaleDateString("ru-RU",{weekday:"long",day:"numeric",month:"long"}),
+    html:async()=>{const [mail,open,rc,lf,sh]=await Promise.all([api("GET","/api/collections/requests/records?perPage=1&filter="+encodeURIComponent('status="open"&&handed_at=""')).then(j=>j.totalItems).catch(()=>0),
+       api("GET","/api/collections/requests/records?perPage=1&filter="+encodeURIComponent('status="open"&&handed_at!=""')).then(j=>j.totalItems).catch(()=>0),
+       api("GET","/api/collections/receipts/records?perPage=1&filter="+encodeURIComponent('status="in_progress"||status="pending_approval"||status="nonconformity"')).then(j=>j.totalItems).catch(()=>0),
+       api("GET","/api/collections/leftovers/records?perPage=1&filter="+encodeURIComponent('status="open"')).then(j=>j.totalItems).catch(()=>0),
+       api("GET","/api/collections/request_shipments/records?perPage=1&filter="+encodeURIComponent('status="sent"||status="preparing"')).then(j=>j.totalItems).catch(()=>0)]);
+     Object.assign(c,{mail,open,rc,lf,sh});
+     return `<div class="row" style="gap:8px;flex-wrap:wrap">${[["📬 На почте",mail],["▤ Заявки в работе",open],["▣ Приёмки не закончены",rc],["🚚 Отгрузки в пути",sh],["📦 Невыданное",lf]].map(([l,n])=>`<div class="card" style="flex:1;min-width:140px;padding:12px"><div class="muted">${l}</div><div style="font-size:28px"><b>${n}</b></div></div>`).join("")}</div>
+      <div class="muted" style="margin-top:10px">Дальше — что загрузить сегодня, незавершённое и напоминания. Каждый шаг можно пропустить.</div>`}},
+   {t:"Таблицы на сегодня",sub:"Нажмите «Загрузить» — откроется раздел, потом вернётесь сюда кнопкой «↩».",
+    html:async()=>{const [mp,op,zr,ur]=await Promise.all([api("GET","/api/vs/mpz/meta").catch(()=>({})),api("GET","/api/vs/oper/meta").catch(()=>({sources:[]})),api("GET","/api/vs/zreg/meta").catch(()=>({})),api("GET","/api/vs/ureg/meta").catch(()=>({}))]);
+     const opl=(op.sources||[]).map(s=>s.last).sort().pop()||"";
+     const L=[["Остатки МПЗ (выгрузка из 1С)",mp.at,"#/mpz"],["Оперативка",opl,"#/oper"],["Реестр заявок",zr.last&&zr.last.at,"#/zreg"],["Сводный отчёт прихода",ur.last&&ur.last.at,"#/ureg"]];
+     c.tbl=L.filter(x=>!isT(x[1])).length;
+     return L.map(([n,at,h])=>tunCard(`<div class="row" style="align-items:center;gap:8px;flex-wrap:wrap"><div class="grow"><b>${n}</b><div class="${isT(at)?"":"muted"}" style="${isT(at)?"color:var(--g)":""}">${isT(at)?"✔ загружено сегодня":"последний раз: "+ago(at)}</div></div>
+       ${isT(at)?"":`<button class="btn sm acc" data-tgo="${h}">⬆ Загрузить</button>`}</div>`)).join("")},
+    bind:(box)=>box.querySelectorAll("[data-tgo]").forEach(b=>b.onclick=()=>tunGo(b.dataset.tgo))},
+   {t:"Незавершённое",html:async()=>{const w7=new Date(Date.now()-7*864e5).toISOString().replace("T"," ");
+     const [mail,old,rc,sh,lf]=await Promise.all([all("requests",'status="open"&&handed_at=""',"-created").catch(()=>[]),all("requests",`status="open"&&handed_at!=""&&handed_at<="${w7}"`,"handed_at").catch(()=>[]),
+       all("receipts",'status="in_progress"||status="pending_approval"||status="nonconformity"',"-created").catch(()=>[]),all("request_shipments",'status="sent"||status="preparing"',"-created","request").catch(()=>[]),
+       api("GET","/api/collections/leftovers/records?perPage=1&filter="+encodeURIComponent('status="open"')).then(j=>j.totalItems).catch(()=>0)]);
+     const sec=(t,L,f)=>L.length?tunCard(`<b>${t} — ${L.length}</b>${L.slice(0,12).map(f).join("")}${L.length>12?`<div class="muted">… ещё ${L.length-12}</div>`:""}`):"";
+     const ln=(h,a,b)=>`<a href="#" data-tgo="${h}" style="display:block;padding:7px 0;border-bottom:1px dashed var(--line);color:inherit;text-decoration:none">${a}${b?`<div class="muted">${b}</div>`:""}</a>`;
+     const html=sec("📬 Заявки на почте — ещё не передали",mail,r=>ln("#/request/"+r.id,`№ ${esc(r.number)} ${esc(r.object||"")}`,esc(r.recipient||"")+" · пришла "+dt(r.created)))+
+      sec("⏳ В работе больше недели",old,r=>ln("#/request/"+r.id,`№ ${esc(r.number)} ${esc(r.object||"")}`,"передали "+dt(r.handed_at)))+
+      sec("▣ Приёмки не закончены",rc,r=>ln("#/receipt/"+r.id,`УПД № ${esc(r.upd_number)} ${esc(r.supplier||"")}`,esc((T.rst[r.status]||[r.status])[0])+" · "+dt(r.created)))+
+      sec("🚚 Отгрузки не доставлены",sh,s=>ln("#/request/"+s.request,`${esc(s.vehicle||"машина")} ${s.expand&&s.expand.request?"· заявка № "+esc(s.expand.request.number):""}`,esc((SHS[s.status]||[s.status])[0])+" · "+dt(s.sent_at||s.created)))+
+      (lf?tunCard(`<a href="#" data-tgo="#/leftovers" style="color:inherit"><b>📦 Невыданное по заявкам — ${lf} поз.</b></a>`):"");
+     return html||`<div class="banner green">Незавершённого нет 👍</div>`},
+    bind:(box)=>box.querySelectorAll("[data-tgo]").forEach(a=>a.onclick=e=>{e.preventDefault();tunGo(a.dataset.tgo)})},
+   {t:"Напоминания",sub:"Ваши напоминания и задачи — те же, что под 🔔.",html:async()=>{try{await ntfLoad()}catch(_){}const L=(NTF.items||[]).slice(0,30);
+     return L.length?L.map(e=>`<a href="#" data-tgo="${esc(ntfHref(e))}" style="display:block;padding:10px;margin-top:6px;background:#fff;border-radius:10px;color:inherit;text-decoration:none"><b>${ntfTitle(e)}</b><div class="muted">${ntfSub(e)||""} · ${dt(e.t)}</div></a>`).join(""):`<div class="banner green">Напоминаний нет 👍</div>`},
+    bind:(box)=>box.querySelectorAll("[data-tgo]").forEach(a=>a.onclick=e=>{e.preventDefault();tunGo(a.dataset.tgo)})},
+   {t:"Готово",html:()=>tunCard(`<div style="font-size:18px">Утренний обход — всё.</div><div class="muted">Снова открыть: «Главная» → «☀ Утро на складе».${c.tbl?` Не загружено таблиц: ${c.tbl}.`:""}</div>`)}],
+   done:async()=>{try{localStorage.setItem(mornKey(),"1")}catch(_){}},onExit:()=>{try{localStorage.setItem(mornKey(),"1")}catch(_){}}})}
+
+/* ===================== 1.9.37: «Монтаж» — НОРМАТИВЫ: расход материала на работы, нормы выдачи ===================== */
+const MZN={tab:"work",q:"",work:"",vol:"",days:30};
+const nKey=(n,s)=>lcq(n).replace(/\s+/g," ").trim()+"|"+lcq(s).replace(/\s+/g," ").trim();
+async function mzNormsAll(){return all("mz_norms","","kind,work,name").catch(()=>[])}
+function mzNormItem(n,I){return I.find(x=>x.id===n.item)||I.find(x=>nKey(x.name,x.size)===nKey(n.name,n.size))||null}
+async function vMzNorms(id,changed){if(!can.mz())return;if(changed&&$("#mznb"))return;const W=mzW();
+  if(W&&!MZN.ens){MZN.ens=1;try{await api("POST","/api/vs/mz/norms/ensure",{})}catch(_){}}
+  const [N,I]=await Promise.all([mzNormsAll(),mzItems("")]);if(S.route!=="mznorms")return;
+  const WN=N.filter(n=>n.kind==="work"),IN=N.filter(n=>n.kind==="issue");const works=[...new Set(WN.map(n=>n.work))];const demo=N.some(n=>n.demo);
+  if(MZN.tab==="work"&&!MZN.work&&works.length)MZN.work=works[0];
+  const hit=n=>!MZN.q||wmatch(MZN.q,n.search_lc||n.name);
+  let body="";
+  if(MZN.tab==="work"){const L=WN.filter(n=>n.work===MZN.work),vol=num(MZN.vol);const wu=(L[0]||{}).work_unit||"";
+    const R=L.map(n=>{const it=mzNormItem(n,I),need=num(n.qty)*vol;return {n,it,need,stock:it?num(it.qty):null,def:it?Math.max(0,need-num(it.qty)):need}});MZN.calc={R,work:MZN.work,vol,wu};
+    body=`<div class="card" style="background:#f0f9ff"><b>🧮 Сколько нужно материала на работы</b>
+      <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px;align-items:flex-end"><div style="flex:2;min-width:220px"><label class="f">Вид работ</label><select id="nwk">${works.map(w=>`<option ${w===MZN.work?"selected":""}>${esc(w)}</option>`).join("")||"<option>— нет нормативов —</option>"}</select></div>
+       <div><label class="f">Объём${wu?", "+esc(wu):""}</label><input id="nvol" inputmode="decimal" value="${esc(MZN.vol)}" style="width:120px" placeholder="0"></div></div>
+      ${vol>0&&R.length?`<div class="tw" style="margin-top:10px"><table><tr><th>Материал</th><th>Норма на ${esc(wu||"ед.")}</th><th>Нужно</th><th>На складе</th><th>Не хватает</th></tr>${R.map(x=>`<tr><td>${x.it?`<a href="#/mzitem/${x.it.id}">${esc(x.n.name)}${x.n.size?" "+esc(x.n.size):""}</a>`:esc(x.n.name+(x.n.size?" "+x.n.size:""))}</td><td>${fmtQ(x.n.qty)} ${esc(x.n.unit||"")}</td><td><b>${fmtQ(x.need)}</b> ${esc(x.n.unit||"")}</td>
+        <td>${x.stock==null?'<span class="muted">нет в списке</span>':fmtQ(x.stock)}</td><td>${x.def>0?`<b style="color:var(--r)">${fmtQ(x.def)}</b>${x.it&&!mzBuy(x.it)?' <span class="muted">по заявке Велесстроя</span>':""}`:'<span style="color:var(--g)">✔ хватает</span>'}</td></tr>`).join("")}</table></div>
+       <div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn sm" id="ncx">⬇ Excel расчёта</button>${W&&R.some(x=>x.def>0&&(!x.it||mzBuy(x.it)))?`<button class="btn sm acc" id="ncp">🛒 Нехватку — в заявку на закупку</button>`:""}</div>`:`<div class="muted" style="margin-top:8px">Введите объём — посчитаю материал и сравню с остатком.</div>`}</div>
+     <div class="card" style="margin-top:10px"><b>Нормы расхода</b>${works.filter(w=>WN.some(n=>n.work===w&&hit(n))).map(w=>`<h3 style="margin:12px 0 4px">${esc(w)} <span class="muted" style="font-weight:400">на 1 ${esc((WN.find(n=>n.work===w)||{}).work_unit||"ед.")}</span></h3>
+       ${WN.filter(n=>n.work===w&&hit(n)).map(n=>`<div class="row" style="gap:8px;padding:5px 0;border-bottom:1px dashed var(--line);align-items:center"><span class="grow">${esc(n.name)}${n.size?" "+esc(n.size):""}${n.demo?' <span class="pill y" style="font-size:10px">ПРИМЕР</span>':""}</span><b>${fmtQ(n.qty)} ${esc(n.unit||"")}</b>${W?`<button class="btn sm" data-ned="${n.id}" aria-label="Изменить">✎</button>`:""}</div>`).join("")}`).join("")||'<div class="muted">Нормативов нет.</div>'}</div>`}
+  else{const D=num(MZN.days)||30;const since=new Date(Date.now()-D*864e5).toISOString().replace("T"," ");
+    const mv=await all("mz_moves",`(kind="out"||kind="ret")&&created>="${since}"&&who!=""`,"created").catch(()=>[]);if(S.route!=="mznorms")return;
+    const per=n=>num(n.qty)*D/(num(n.period_days)||30);
+    const rows=[];IN.filter(hit).forEach(n=>{const it=mzNormItem(n,I);if(!it){rows.push({n,it:null,who:"",got:0,lim:per(n)});return}
+      const by={};mv.filter(m=>m.item===it.id).forEach(m=>{by[m.who]=(by[m.who]||0)+(m.kind==="out"?num(m.qty):-num(m.qty))});
+      const ws=Object.keys(by);if(!ws.length)rows.push({n,it,who:"",got:0,lim:per(n)});ws.forEach(w=>rows.push({n,it,who:w,got:by[w],lim:per(n)}))});
+    MZN.iss={rows,D};
+    body=`<div class="card"><div class="row" style="gap:8px;align-items:flex-end;flex-wrap:wrap"><b class="grow">Выдано за период и норма</b><div><label class="f">Период, дней</label><input id="ndays" inputmode="numeric" value="${D}" style="width:90px"></div><button class="btn sm" id="nix">⬇ Excel</button></div>
+      <div class="tw" style="margin-top:8px"><table><tr><th>Позиция</th><th>Норма</th><th>Получатель</th><th>Выдано за ${D} дн.</th><th>Норма за ${D} дн.</th><th></th></tr>${rows.map(x=>{const over=x.who&&x.got>x.lim+1e-9;return `<tr><td>${x.it?`<a href="#/mzitem/${x.it.id}">${esc(x.n.name)}${x.n.size?" "+esc(x.n.size):""}</a>`:esc(x.n.name+(x.n.size?" "+x.n.size:""))}${x.n.demo?' <span class="pill y" style="font-size:10px">ПРИМЕР</span>':""}</td>
+        <td>${fmtQ(x.n.qty)} ${esc(x.n.unit||"")} / ${fmtQ(x.n.period_days||30)} дн.${x.n.per?" на "+esc(x.n.per):""}</td><td>${esc(x.who||"—")}</td><td><b style="color:${over?"var(--r)":"inherit"}">${x.who?fmtQ(x.got):"—"}</b></td><td>${fmtQ(Math.round(x.lim*10)/10)}</td>
+        <td>${over?'<span class="pill r">СВЕРХ НОРМЫ</span>':x.who?'<span class="pill g">в норме</span>':""}${W?` <button class="btn sm" data-ned="${x.n.id}" aria-label="Изменить норму">✎</button>`:""}</td></tr>`}).join("")||'<tr><td colspan="6" class="muted">Норм выдачи нет.</td></tr>'}</table></div>
+      <div class="muted" style="margin-top:6px">Выдано минус возвращено по накладным и выдачам. При выдаче сверх нормы форма «📤 Выдача по накладной» предупредит.</div></div>`}
+  $("#main").innerHTML=`<div class="row" style="align-items:center;gap:8px;flex-wrap:wrap"><h1 class="grow" style="margin:0">📐 Нормативы</h1>${W?`<button class="btn acc" id="nadd">＋ Норма</button><button class="btn" id="nimp">⬆ Загрузить таблицу</button>`:""}<button class="btn" id="ntpl">⬇ Шаблоны Excel</button></div>
+   ${demo?`<div class="banner yellow" style="margin-top:8px">👀 Показан <b>ПРИМЕР</b> нормативов — исчезнет при загрузке вашей таблицы нормативов (или вместе с примером склада).</div>`:""}
+   <div class="tabs" style="margin:10px 0"><button class="${MZN.tab==="work"?"on":""}" data-nt="work">🧱 Расход на работы (${WN.length})</button><button class="${MZN.tab==="issue"?"on":""}" data-nt="issue">🧤 Нормы выдачи (${IN.length})</button></div>
+   <input id="nq" value="${esc(MZN.q)}" placeholder="🔎 материал, вид работ" style="margin-bottom:8px"><div id="mznb">${body}</div>`;
+  document.querySelectorAll("[data-nt]").forEach(b=>b.onclick=()=>{MZN.tab=b.dataset.nt;vMzNorms()});
+  let t=0;$("#nq").oninput=e=>{clearTimeout(t);t=setTimeout(()=>{MZN.q=e.target.value.trim();vMzNorms().then(()=>{const q=$("#nq");if(q){q.focus();q.setSelectionRange(q.value.length,q.value.length)}})},350)};
+  const wk=$("#nwk");if(wk)wk.onchange=()=>{MZN.work=wk.value;vMzNorms()};
+  const vl=$("#nvol");if(vl){let t2=0;vl.oninput=()=>{clearTimeout(t2);t2=setTimeout(()=>{MZN.vol=vl.value;vMzNorms().then(()=>{const v=$("#nvol");if(v){v.focus();v.setSelectionRange(v.value.length,v.value.length)}})},400)}}
+  const dy=$("#ndays");if(dy)dy.onchange=()=>{MZN.days=dy.value;vMzNorms()};
+  document.querySelectorAll("[data-ned]").forEach(b=>b.onclick=()=>mzNormForm(N.find(n=>n.id===b.dataset.ned)));
+  const ad=$("#nadd");if(ad)ad.onclick=()=>mzNormForm(null);
+  const im=$("#nimp");if(im)im.onclick=()=>mzNormImport();
+  $("#ntpl").onclick=()=>mzNormTpl();
+  const cx=$("#ncx");if(cx)cx.onclick=()=>{const C=MZN.calc,T=XS.cC;const r=[[{v:`Расход материала: ${C.work} — ${fmtQ(C.vol)} ${C.wu}`,s:XS.title}],[{v:"По нормативам «Склад Велесстрой Монтаж» · "+dt(new Date().toISOString()),s:T}],[],["Материал","Размер","Ед.","Норма на 1 "+(C.wu||"ед."),"Нужно","На складе","Не хватает"].map(v=>({v,s:XS.head}))];
+    C.R.forEach(x=>r.push([{v:x.n.name,s:T},{v:x.n.size,s:T},{v:x.n.unit,s:T},{v:num(x.n.qty),s:XS.cN},{v:Math.round(x.need*1000)/1000,s:XS.cN},{v:x.stock==null?"":x.stock,s:x.stock==null?T:XS.cN},{v:Math.round(x.def*1000)/1000,s:x.def>0?XS.cR:XS.cG}]));
+    saveBlob(xlsxBlob([{name:"Расход",cols:[36,16,7,14,12,12,12],rows:r,merges:["A1:G1","A2:G2"],freeze:4}]),"Raskhod_po_normam.xlsx")};
+  const cp=$("#ncp");if(cp)cp.onclick=()=>{const C=MZN.calc;mzPurchaseForm(C.R.filter(x=>x.def>0&&(!x.it||mzBuy(x.it))).map(x=>({item:x.it?x.it.id:"",name:x.n.name,size:x.n.size,unit:x.n.unit,stock:x.it?x.it.qty:"",qty:String(Math.ceil(x.def*100)/100),note:`${C.work}: ${fmtQ(C.vol)} ${C.wu}`})),`${C.work} — ${fmtQ(C.vol)} ${C.wu}`)};
+  const ix=$("#nix");if(ix)ix.onclick=()=>{const Z=MZN.iss,T=XS.cC;const r=[[{v:`Выдача по нормам за ${Z.D} дн.`,s:XS.title}],[{v:dt(new Date().toISOString()),s:T}],[],["Позиция","Размер","Ед.","Норма","на дней","на кого","Получатель","Выдано","Норма за период","Итог"].map(v=>({v,s:XS.head}))];
+    Z.rows.forEach(x=>{const over=x.who&&x.got>x.lim+1e-9;r.push([{v:x.n.name,s:T},{v:x.n.size,s:T},{v:x.n.unit,s:T},{v:num(x.n.qty),s:XS.cN},{v:num(x.n.period_days)||30,s:XS.cN},{v:x.n.per,s:T},{v:x.who||"—",s:T},{v:x.who?x.got:"",s:XS.cN},{v:Math.round(x.lim*10)/10,s:XS.cN},{v:over?"СВЕРХ НОРМЫ":x.who?"в норме":"",s:over?XS.cR:x.who?XS.cG:T}])});
+    saveBlob(xlsxBlob([{name:"Нормы выдачи",cols:[32,14,7,9,9,12,34,10,14,14],rows:r,merges:["A1:J1"],freeze:4}]),"Vydacha_po_normam.xlsx")}}
+async function mzNormForm(n){const I=await mzItems("");await sugFresh(["mz_work","mz_wunit","mz_unit","mz_who"]);const kind=n?n.kind:MZN.tab;const byL=new Map(I.map(x=>[x.name+(x.size?" "+x.size:""),x]));
+  modal(`<h3>${n?"✎ Норма":"＋ Новая норма"} — ${kind==="work"?"расход на работы":"норма выдачи"}</h3>
+   ${kind==="work"?`<div class="g2x"><div><label class="f">Вид работ *</label><input id="nfw" data-sug="mz_work" value="${esc(n?n.work:MZN.work)}"></div><div><label class="f">Единица работ</label><input id="nfwu" data-sug="mz_wunit" value="${esc(n?n.work_unit:"")}" placeholder="м3, м2, т, шт"></div></div>`:""}
+   <datalist id="nfdl">${I.map(x=>`<option value="${esc(x.name+(x.size?" "+x.size:""))}">`).join("")}</datalist>
+   <label class="f">${kind==="work"?"Материал":"Инструмент / расходник"} * <span class="muted">(из списка склада или своё)</span></label><input id="nfn" list="nfdl" value="${esc(n?n.name+(n.size?" "+n.size:""):"")}">
+   <div class="g2x"><div><label class="f">${kind==="work"?"Расход на 1 ед. работ *":"Сколько *"}</label><input id="nfq" inputmode="decimal" value="${n?fmtQ(n.qty):""}"></div><div><label class="f">Ед.</label><input id="nfu" data-sug="mz_unit" value="${esc(n?n.unit:"")}"></div></div>
+   ${kind==="issue"?`<div class="g2x"><div><label class="f">За сколько дней</label><input id="nfd" inputmode="numeric" value="${n?fmtQ(n.period_days||30):"30"}"></div><div><label class="f">На кого</label><input id="nfp" value="${esc(n?n.per:"бригада")}" placeholder="бригада / человек"></div></div>`:""}
+   <label class="f">Примечание</label><input id="nfo" value="${esc(n?n.note:"")}">
+   <div class="row" style="margin-top:12px;gap:6px"><button class="btn p grow" id="mok">СОХРАНИТЬ</button>${n?`<button class="btn r" id="nfdel">Удалить</button>`:""}<button class="btn" data-close>Отмена</button></div>`,box=>{sugAttach(box);
+   $("#nfn",box).onchange=()=>{const x=byL.get($("#nfn",box).value);if(x&&!$("#nfu",box).value)$("#nfu",box).value=x.unit||""};
+   $("#mok",box).onclick=e=>act(e.target,async()=>{const v=$("#nfn",box).value.trim();const x=byL.get(v);if(!v)throw new Error("Укажите наименование.");if($("#nfq",box).value.trim()==="")throw new Error("Укажите норму.");
+     const d={kind,name:x?x.name:v,size:x?x.size||"":"",item:x?x.id:"",qty:num($("#nfq",box).value),unit:$("#nfu",box).value.trim(),note:$("#nfo",box).value.trim()};
+     if(kind==="work"){d.work=$("#nfw",box).value.trim();d.work_unit=$("#nfwu",box).value.trim();if(!d.work)throw new Error("Укажите вид работ.")}else{d.period_days=num($("#nfd",box).value)||30;d.per=$("#nfp",box).value.trim()}
+     if(n)await api("PATCH","/api/collections/mz_norms/records/"+n.id,d);else{d.created_by=S.user.id;await api("POST","/api/collections/mz_norms/records",d)}
+     if(kind==="work")MZN.work=d.work;closeModal();vMzNorms()},"Норма сохранена");
+   const dl=$("#nfdel",box);if(dl)dl.onclick=()=>{if(!confirm("Удалить норму?"))return;act(dl,async()=>{await api("DELETE","/api/collections/mz_norms/records/"+n.id);closeModal();vMzNorms()},"Удалено")}})}
+// загрузка таблицы нормативов: шапка ищется сама («Вид работ», «Наименование», «Норма / Расход», «Ед.», «Период», «На кого»)
+async function mzNormParse(f){const x=await readXlsx(f);const out={work:[],issue:[]};const H=s=>lcq(xlStr(s)).replace(/\s+/g," ").trim();
+  for(const sh of x.sheets){const rows=await x.rows(sh);let hi=-1,C={};
+    for(let i=0;i<Math.min(rows.length,25);i++){const r=[...(rows[i]||[])].map(H);const nm=r.findIndex(v=>/наимен|материал|инструмент|позиция/.test(v)),q=r.findIndex(v=>/норм|расход|кол-?во|количество/.test(v));
+      if(nm>=0&&q>=0){hi=i;C={name:nm,qty:q,work:r.findIndex(v=>/вид работ|работ[аы]?$|^работы/.test(v)),wu:r.findIndex(v=>/ед\.? ?работ|единица работ/.test(v)),size:r.findIndex(v=>/размер|марка|диаметр/.test(v)),
+        unit:r.findIndex((v,k)=>/^ед\.?( изм\.?)?$|единица/.test(v)&&!/работ/.test(v)&&k!==nm),days:r.findIndex(v=>/период|срок|дн/.test(v)),per:r.findIndex(v=>/на кого|кому|на бригад|на человек/.test(v)),note:r.findIndex(v=>/примеч/.test(v))};break}}
+    if(hi<0)continue;let lastW="",lastWU="";
+    for(const r of rows.slice(hi+1)){if(!r)continue;const g=k=>k>=0?xlStr(r[k]).trim():"";const name=g(C.name);const q=num(g(C.qty));if(!name||!g(C.qty))continue;
+      const w=g(C.work)||(C.work>=0?lastW:"");if(C.work>=0&&g(C.work))lastW=g(C.work);const wu=g(C.wu)||(C.wu>=0?lastWU:"");if(C.wu>=0&&g(C.wu))lastWU=g(C.wu);
+      const o={name,size:g(C.size),unit:g(C.unit),qty:q,note:g(C.note)};
+      if(C.work>=0&&w)out.work.push(Object.assign(o,{work:w,work_unit:wu}));else out.issue.push(Object.assign(o,{period_days:num(g(C.days))||30,per:g(C.per)}))}}
+  return out}
+function mzNormImport(){modal(`<h3>⬆ Таблица нормативов</h3><div class="muted">Excel: если есть столбец «Вид работ» — это расход на работы, иначе — нормы выдачи. Шаблоны — кнопкой «⬇ Шаблоны Excel». Нормы с тем же наименованием обновятся. <b>Загрузка убирает пример.</b></div>
+   <label class="btn acc big" style="margin-top:10px">📄 Выбрать файл<input type="file" id="nff" accept=".xlsx,.xlsm" hidden></label><div id="nfr" style="margin-top:8px"></div><div class="row" style="margin-top:10px"><button class="btn" data-close>Закрыть</button></div>`,box=>{
+   $("#nff",box).onchange=e=>{const f=e.target.files[0];e.target.value="";if(!f)return;act(null,async()=>{const P=await mzNormParse(f);if(!P.work.length&&!P.issue.length)throw new Error("Не нашёл шапку: нужны столбцы «Наименование» и «Норма» (или «Расход»).");
+     let s={created:0,updated:0,skipped:0,demo:false};for(const k of ["work","issue"])if(P[k].length){const j=await api("POST","/api/vs/mz/norms/import",{kind:k,rows:P[k]});s.created+=j.created;s.updated+=j.updated;s.skipped+=j.skipped;if(j.demo_cleared)s.demo=true}
+     $("#nfr",box).innerHTML=`<div class="banner green" style="margin:0">Расход на работы: ${P.work.length} строк, нормы выдачи: ${P.issue.length}<small>Новых: ${s.created}, обновлено: ${s.updated}${s.skipped?", пропущено: "+s.skipped:""}${s.demo?". Пример убран.":""}</small></div>`;MZN.work="";if(P.work.length)MZN.tab="work";else MZN.tab="issue";vMzNorms()})}})}
+function mzNormTpl(){const T=XS.cC;
+  const a=[[{v:"Нормы расхода материала на работы",s:XS.title}],[],["Вид работ","Ед. работ","Наименование","Размер / марка","Ед.","Расход на 1 ед. работ","Примечание"].map(v=>({v,s:XS.head})),
+    ...[["Армирование стен и колонн","т","Проволока вязальная","1,2 мм","кг",10,""],["","","Фиксатор «стульчик»","30 мм","шт",120,""],["Кладка перегородок","м2","Кирпич М150","","шт",52,"1/2 кирпича"]].map(r=>r.map((v,k)=>({v,s:k===5?XS.cN:T})))];
+  const b=[[{v:"Нормы выдачи инструмента и расходников",s:XS.title}],[],["Наименование","Размер / марка","Ед.","Норма","Период, дней","На кого","Примечание"].map(v=>({v,s:XS.head})),
+    ...[["Круг отрезной","125×1,2","шт",40,30,"бригада",""],["Перчатки х/б","","пара",4,30,"человек",""]].map(r=>r.map((v,k)=>({v,s:k===3||k===4?XS.cN:T})))];
+  saveBlob(xlsxBlob([{name:"Расход на работы",cols:[30,10,32,16,7,18,20],rows:a,merges:["A1:G1"],freeze:3},{name:"Нормы выдачи",cols:[32,16,7,10,12,12,20],rows:b,merges:["A1:G1"],freeze:3}]),"Shablon_normativov.xlsx")}
+// предупреждение в «Выдаче по накладной»: сверх нормы выдачи за период
+async function mzNormWarn(who,lines,I){if(!who||!lines.length)return [];let N=[];try{N=(await mzNormsAll()).filter(n=>n.kind==="issue")}catch(_){return []}if(!N.length)return [];
+  const out=[];for(const l of lines){const it=I.find(x=>x.id===l.item);if(!it)continue;const n=N.find(n=>n.item===it.id||nKey(n.name,n.size)===nKey(it.name,it.size));if(!n)continue;
+    const D=num(n.period_days)||30;const since=new Date(Date.now()-D*864e5).toISOString().replace("T"," ");
+    const mv=await all("mz_moves",`item="${it.id}"&&(kind="out"||kind="ret")&&created>="${since}"&&who="${who.replace(/"/g,"")}"`,"created").catch(()=>[]);
+    const got=mv.reduce((a,m)=>a+(m.kind==="out"?num(m.qty):-num(m.qty)),0);if(got+num(l.qty)>num(n.qty)+1e-9)out.push({it,n,got,add:num(l.qty),D})}
+  return out}
 
 /* ----- 1.9.31: ПЛАН ПОГРУЗКИ — где лежит, чем грузить, на какую машину; порядок: по местам, сначала кран/КМУ, потом погрузчик, потом вручную ----- */
 const LOAD_BASE=["КМУ (кран-манипулятор)","Погрузчик (вилочный)","Вилочник (рохля)","Вручную (стропальщики)"];
