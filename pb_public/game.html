@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Прихлопни кладовщика!</title>
+<style>
+:root{--bg:#1f2937;--wood:#8b5a2b;--wood2:#6b4420;--y:#fbbf24;--r:#ef4444;--g:#22c55e;--ink:#111827}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html,body{margin:0;height:100%;background:linear-gradient(#0f172a,#1e293b 55%,#334155);color:#fff;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;overflow:hidden;user-select:none;-webkit-user-select:none}
+#app{max-width:640px;margin:0 auto;height:100%;display:flex;flex-direction:column;padding:10px 12px 14px}
+header{display:flex;align-items:center;gap:8px}
+h1{font-size:20px;margin:0;flex:1;line-height:1.1}
+h1 small{display:block;font-size:12px;font-weight:400;color:#cbd5e1}
+.hud{display:flex;gap:8px;margin:10px 0 8px}
+.hud div{flex:1;background:rgba(255,255,255,.08);border-radius:12px;padding:6px 8px;text-align:center}
+.hud b{display:block;font-size:22px}
+.hud span{font-size:11px;color:#cbd5e1;text-transform:uppercase;letter-spacing:.04em}
+#timebar{height:6px;border-radius:3px;background:rgba(255,255,255,.12);overflow:hidden;margin-bottom:10px}
+#timebar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,var(--g),var(--y),var(--r));transition:width .2s linear}
+#field{flex:1;position:relative;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:8px;
+  background:repeating-linear-gradient(90deg,#a16207 0 46px,#92400e 46px 50px);border-radius:16px;padding:10px;box-shadow:inset 0 0 0 4px #78350f,0 10px 30px rgba(0,0,0,.4);cursor:crosshair;touch-action:manipulation;min-height:300px}
+.hole{position:relative;overflow:hidden;border-radius:0 0 50% 50%/0 0 30% 30%;container-type:size}
+.hole::after{content:"";position:absolute;left:6%;right:6%;bottom:4%;height:26%;border-radius:50%;background:radial-gradient(#0b0b0b 55%,#3f2a14 72%);z-index:1}
+.mole{position:absolute;left:10%;right:10%;bottom:9%;z-index:2;transform:translateY(130%);transition:transform .16s ease-out;display:flex;justify-content:center;pointer-events:none}
+.mole.up{transform:translateY(0);pointer-events:auto}
+.mole.hit{transform:translateY(130%)!important;transition:transform .25s ease-in .18s}
+.mole .head{width:min(100%,72cqh);max-width:160px;aspect-ratio:1;border-radius:50%;overflow:hidden;position:relative;box-shadow:0 4px 0 rgba(0,0,0,.35);background:#fcd9b6}
+.mole .head img,.mole .head svg{width:100%;height:100%;object-fit:cover;display:block}
+.hole .front{position:absolute;left:0;right:0;bottom:0;height:18%;background:linear-gradient(#7c4a1e,#5b3412);border-radius:0 0 50% 50%/0 0 60% 60%;z-index:3}
+.bubble{position:absolute;left:50%;top:0;transform:translate(-50%,-105%);background:#fff;color:var(--ink);font-size:12px;font-weight:700;padding:4px 7px;border-radius:10px;white-space:nowrap;z-index:5;pointer-events:none;opacity:0;transition:opacity .15s}
+.mole.up .bubble.on{opacity:1}
+.tag{position:absolute;left:50%;bottom:-2px;transform:translateX(-50%);background:rgba(0,0,0,.65);font-size:10px;padding:1px 6px;border-radius:6px;white-space:nowrap;z-index:4}
+.pop{position:absolute;z-index:9;font-weight:900;font-size:22px;pointer-events:none;animation:pop .7s ease-out forwards;text-shadow:0 2px 0 #000}
+@keyframes pop{from{transform:translate(-50%,-50%) scale(.6);opacity:1}to{transform:translate(-50%,-160%) scale(1.3);opacity:0}}
+.star{position:absolute;z-index:8;font-size:26px;pointer-events:none;animation:star .5s ease-out forwards}
+@keyframes star{from{transform:translate(-50%,-50%) scale(1.4) rotate(0)}to{transform:translate(-50%,-50%) scale(.4) rotate(160deg);opacity:0}}
+#field.shake{animation:shake .25s}
+@keyframes shake{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+.btn{border:0;border-radius:12px;padding:12px 16px;font-size:16px;font-weight:800;cursor:pointer;background:var(--y);color:var(--ink)}
+.btn.s{padding:7px 10px;font-size:13px;background:rgba(255,255,255,.14);color:#fff}
+.btn:focus-visible{outline:3px solid #fff;outline-offset:2px}
+.over{position:fixed;inset:0;background:rgba(15,23,42,.88);display:flex;align-items:center;justify-content:center;z-index:20;padding:16px}
+.card{background:#fff;color:var(--ink);border-radius:18px;padding:18px;max-width:440px;width:100%;max-height:92vh;overflow:auto}
+.card h2{margin:0 0 6px}
+.card p{margin:6px 0;color:#374151;font-size:14px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.faces{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.face{width:64px;text-align:center;font-size:11px;position:relative}
+.face img,.face svg{width:60px;height:60px;border-radius:50%;object-fit:cover;border:2px solid #e5e7eb;background:#fcd9b6}
+.face button{position:absolute;right:0;top:-4px;border:0;border-radius:50%;width:20px;height:20px;background:var(--r);color:#fff;font-size:12px;cursor:pointer;line-height:20px;padding:0}
+.face input{width:64px;font-size:11px;border:1px solid #d1d5db;border-radius:6px;padding:2px;margin-top:2px}
+label.up{display:inline-block}
+.legend{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:13px;align-items:center;margin:8px 0}
+.legend span:nth-child(odd){font-size:20px;text-align:center}
+ol{margin:6px 0 0;padding-left:22px;font-size:14px}
+.muted{color:#6b7280;font-size:12px}
+input[type=text]{font-size:16px;padding:8px;border:1px solid #d1d5db;border-radius:10px;width:100%}
+@media (max-height:640px){.hud b{font-size:18px}h1{font-size:17px}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header><a href="/" style="display:inline-block;margin-bottom:6px;color:inherit;font-size:14px">← В программу</a><h1>🔨 Прихлопни кладовщика! <small>Бей, пока не спрятался обратно в склад</small></h1>
+    <button class="btn s" id="bFaces">👷 Лица</button><button class="btn s" id="bSnd" aria-label="Звук">🔊</button></header>
+  <div class="hud"><div><b id="sc">0</b><span>очки</span></div><div><b id="tm">60</b><span>секунд</span></div><div><b id="cb">×1</b><span>комбо</span></div><div><b id="best">0</b><span>рекорд</span></div></div>
+  <div id="timebar"><i id="tb"></i></div>
+  <div id="field" aria-label="Игровое поле"></div>
+</div>
+
+<div class="over" id="start"><div class="card">
+  <h2>🔨 Прихлопни кладовщика!</h2>
+  <p>Кладовщики выглядывают из люков склада. Успей стукнуть, пока не спрятались. 60 секунд, дальше — быстрее.</p>
+  <div class="legend">
+    <span>👷</span><span>Кладовщик — <b>+1</b> (серия без промахов: ×2, ×3…)</span>
+    <span>⭐</span><span>Начальник склада в золотой каске — <b>+5</b></span>
+    <span>🦺</span><span>Инспектор СКК с актом — <b>не бей! −3</b></span>
+    <span>⏰</span><span>Будильник — <b>+5 секунд</b></span>
+  </div>
+  <p class="muted">«👷 Лица» — поставьте фото своих кладовщиков. Фото остаются только в этом браузере, никуда не отправляются.</p>
+  <div class="row" style="margin-top:10px"><button class="btn" id="bGo" style="flex:1">ИГРАТЬ</button><button class="btn s" id="bFaces2" style="background:#e5e7eb;color:#111">👷 Лица</button></div>
+  <div class="row" style="margin-top:8px;justify-content:center"><a href="/" id="bHome" style="color:#cbd5e1;font-size:14px">← Вернуться в программу</a></div>
+  <div id="top" style="margin-top:10px"></div>
+</div></div>
+
+<div class="over" id="end" hidden><div class="card">
+  <h2 id="endT">Смена окончена!</h2>
+  <p id="endS" style="font-size:18px"></p>
+  <div id="nameBox"><p>Новый рекорд! Как вас записать?</p><div class="row"><input type="text" id="nm" maxlength="20" placeholder="Имя"><button class="btn" id="bSave">OK</button></div></div>
+  <div id="top2"></div>
+  <div class="row" style="margin-top:12px"><button class="btn" id="bAgain" style="flex:1">ЕЩЁ РАЗ</button></div>
+</div></div>
+
+<div class="over" id="facesDlg" hidden><div class="card">
+  <h2>👷 Лица кладовщиков</h2>
+  <p>Добавьте фото (лучше лицо крупно) и подпишите — в игре будут их головы. Без фото — нарисованные кладовщики.</p>
+  <div class="faces" id="faces"></div>
+  <div class="row"><label class="btn up" style="position:relative;overflow:hidden">＋ Фото<input type="file" id="ff" accept="image/*" multiple style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden"></label><button class="btn s" id="bClr" style="background:#fee2e2;color:#991b1b">Убрать все фото</button></div>
+  <p class="muted" id="fnote">Фото хранятся только в этом браузере на этом устройстве.</p>
+  <div class="row" style="margin-top:10px"><button class="btn" id="bFacesOk" style="flex:1">ГОТОВО</button></div>
+</div></div>
+
+<script>
+(function(){
+"use strict";
+const $=s=>document.querySelector(s);
+const store={get(k,d){try{const v=localStorage.getItem("kl_"+k);return v==null?d:JSON.parse(v)}catch(_){return d}},set(k,v){try{localStorage.setItem("kl_"+k,JSON.stringify(v));return true}catch(_){return false}}};
+const PHR=["Где заявка?!","Я на обеде!","Нет в МПЗ!","Акт составлю!","Не моя смена!","Приходи завтра!","Подпись где?","Кран занят!","Это не я!","Ой!","Пересчитаю…","УПД нет!","Сначала пропуск!","Иду, иду…"];
+const OUCH=["Ай!","Ой-ой!","За что?!","Больно!","Ну всё…","Пожалуюсь!"];
+// нарисованные кладовщики: каска, лицо, усы/борода/очки
+function svgHead(v){const skins=["#f5c6a5","#e8b48a","#d39b6a","#fcd9b6"],hats=["#f97316","#facc15","#ffffff","#3b82f6"];
+  const s=skins[v%4],h=v==="boss"?"#fbbf24":v==="skk"?"#e5e7eb":hats[v%4];
+  const mus=v===1||v===3?'<path d="M34 66q8-6 16 0q8-6 16 0q-8 6-16 2q-8 4-16-2z" fill="#4b2e14"/>':"";
+  const beard=v===2?'<path d="M28 60q22 30 44 0q-4 18-22 20q-18-2-22-20z" fill="#5b3a1e"/>':"";
+  const glasses=v===3||v==="skk"?'<g fill="none" stroke="#111" stroke-width="3"><circle cx="40" cy="52" r="7"/><circle cx="60" cy="52" r="7"/><path d="M47 52h6"/></g>':"";
+  const extra=v==="boss"?'<text x="50" y="27" text-anchor="middle" font-size="16">⭐</text>':v==="skk"?'<rect x="36" y="70" width="28" height="22" rx="2" fill="#fff" stroke="#111" stroke-width="2"/><text x="50" y="86" text-anchor="middle" font-size="9" font-weight="700" fill="#dc2626">АКТ</text>':"";
+  return `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100" fill="${v==="skk"?"#bae6fd":v==="boss"?"#fef3c7":"#fde68a"}"/>
+   <circle cx="50" cy="58" r="30" fill="${s}"/><circle cx="20" cy="58" r="6" fill="${s}"/><circle cx="80" cy="58" r="6" fill="${s}"/>
+   <path d="M18 40a32 26 0 0 1 64 0z" fill="${h}" stroke="rgba(0,0,0,.25)" stroke-width="2"/><rect x="12" y="38" width="76" height="7" rx="3" fill="${h}" stroke="rgba(0,0,0,.25)" stroke-width="2"/>
+   <circle cx="40" cy="52" r="3.5" fill="#111"/><circle cx="60" cy="52" r="3.5" fill="#111"/>${glasses}
+   <path d="M42 72q8 6 16 0" stroke="#7c2d12" stroke-width="3" fill="none" stroke-linecap="round"/>${mus}${beard}${extra}</svg>`}
+function svgClock(){return `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100" fill="#dcfce7"/><circle cx="50" cy="55" r="32" fill="#fff" stroke="#16a34a" stroke-width="6"/><path d="M50 55V35M50 55l14 8" stroke="#111" stroke-width="5" stroke-linecap="round"/><circle cx="26" cy="22" r="9" fill="#16a34a"/><circle cx="74" cy="22" r="9" fill="#16a34a"/><text x="50" y="98" text-anchor="middle" font-size="14" font-weight="800" fill="#166534">+5 с</text></svg>`}
+// --- лица (фото)
+let FACES=store.get("faces",[]);
+function drawFaces(){const b=$("#faces");b.innerHTML=FACES.map((f,i)=>`<div class="face"><img src="${f.src}" alt="${esc(f.name||"Кладовщик")}"><button data-del="${i}" aria-label="Убрать">×</button><input data-nm="${i}" value="${esc(f.name||"")}" placeholder="имя"></div>`).join("")||'<div class="muted">Пока без фото — будут нарисованные кладовщики.</div>';
+  b.querySelectorAll("[data-del]").forEach(x=>x.onclick=()=>{FACES.splice(+x.dataset.del,1);saveFaces();drawFaces()});
+  b.querySelectorAll("[data-nm]").forEach(x=>x.oninput=()=>{FACES[+x.dataset.nm].name=x.value.slice(0,16);saveFaces()})}
+// фото остаются в игре в любом случае; если браузер не даёт сохранить — только до закрытия страницы
+let warned=false;function saveFaces(){if(!store.set("faces",FACES)&&FACES.length&&!warned){warned=true;const n=$("#fnote");if(n)n.textContent="Этот браузер не даёт сохранить фото — они будут в игре, пока страница открыта."}}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+function msg(t){const p=document.createElement("div");p.className="pop";p.style.cssText="left:50%;top:40%;position:fixed;font-size:16px;background:#111;padding:6px 10px;border-radius:8px";p.textContent=t;document.body.appendChild(p);setTimeout(()=>p.remove(),1400)}
+function addFace(src,w,h,name){const c=document.createElement("canvas"),S=200;c.width=c.height=S;const x=c.getContext("2d");const m=Math.min(w,h);
+  // квадрат по центру, чуть выше середины — там обычно лицо
+  x.drawImage(src,(w-m)/2,Math.max(0,(h-m)*0.35),m,m,0,0,S,S);FACES.push({src:c.toDataURL("image/jpeg",0.82),name:name});saveFaces();drawFaces()}
+async function loadFace(f){const name=(f.name||"").replace(/\.[^.]+$/,"").replace(/^(IMG|PXL|DSC)[_-]?\d*$/i,"").slice(0,16);
+  try{if(window.createImageBitmap){const b=await createImageBitmap(f);addFace(b,b.width,b.height,name);return}}catch(_){}
+  await new Promise(res=>{const u=URL.createObjectURL(f);const im=new Image();im.onload=()=>{addFace(im,im.naturalWidth,im.naturalHeight,name);URL.revokeObjectURL(u);res()};
+    im.onerror=()=>{URL.revokeObjectURL(u);const n=$("#fnote");if(n)n.textContent="Не получилось открыть «"+(f.name||"фото")+"». Попробуйте другое фото (JPG/PNG) или сделайте скриншот фото.";res()};im.src=u})}
+$("#ff").addEventListener("change",async e=>{const fs=[...e.target.files];for(const f of fs)await loadFace(f);e.target.value=""});
+$("#bClr").onclick=()=>{FACES=[];saveFaces();drawFaces()};
+const openFaces=()=>{drawFaces();$("#facesDlg").hidden=false};
+$("#bFaces").onclick=openFaces;$("#bFaces2").onclick=openFaces;$("#bFacesOk").onclick=()=>{$("#facesDlg").hidden=true};
+// --- звук
+let snd=store.get("snd",true),AC=null;$("#bSnd").textContent=snd?"🔊":"🔇";
+$("#bSnd").onclick=()=>{snd=!snd;store.set("snd",snd);$("#bSnd").textContent=snd?"🔊":"🔇"};
+function beep(f,d,type,vol){if(!snd)return;try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();const o=AC.createOscillator(),g=AC.createGain();o.type=type||"square";o.frequency.setValueAtTime(f,AC.currentTime);
+  g.gain.setValueAtTime(vol||.12,AC.currentTime);g.gain.exponentialRampToValueAtTime(.001,AC.currentTime+d);o.connect(g);g.connect(AC.destination);o.start();o.stop(AC.currentTime+d)}catch(_){}}
+const sHit=()=>{beep(180,.12,"square",.18);setTimeout(()=>beep(90,.1,"triangle",.15),40)},sBoss=()=>{[523,659,784,1046].forEach((f,i)=>setTimeout(()=>beep(f,.1,"square",.1),i*60))},
+  sBad=()=>{beep(110,.35,"sawtooth",.15)},sMiss=()=>beep(300,.05,"sine",.05),sClock=()=>{beep(880,.08,"sine",.12);setTimeout(()=>beep(1175,.12,"sine",.12),90)};
+// --- поле
+const F=$("#field");const H=[];
+for(let i=0;i<9;i++){const h=document.createElement("div");h.className="hole";h.innerHTML=`<div class="mole"><div class="bubble"></div><div class="head"></div><div class="tag" hidden></div></div><div class="front"></div>`;F.appendChild(h);
+  const m=h.querySelector(".mole");H.push({h,m,on:false,kind:"",t:0});m.addEventListener("pointerdown",e=>{e.stopPropagation();e.preventDefault();whack(i,e)})}
+F.addEventListener("pointerdown",e=>{if(!G.run)return;G.combo=0;upd();sMiss();const r=F.getBoundingClientRect();fx("💨",e.clientX-r.left,e.clientY-r.top,"star")});
+const G={run:false,score:0,time:60,combo:0,best:store.get("best",0),timers:[],tick:null,spawnT:null,startAt:0,hits:0,miss:0};
+$("#best").textContent=G.best;
+function upd(){$("#sc").textContent=G.score;$("#tm").textContent=Math.ceil(G.time);$("#cb").textContent="×"+Math.max(1,1+Math.floor(G.combo/5));$("#tb").style.width=Math.max(0,G.time/60*100)+"%"}
+function fx(t,x,y,cls,color){const p=document.createElement("div");p.className=cls||"pop";p.style.left=x+"px";p.style.top=y+"px";if(color)p.style.color=color;p.textContent=t;F.appendChild(p);setTimeout(()=>p.remove(),800)}
+function pick(){const r=Math.random(),el=(Date.now()-G.startAt)/1000;
+  if(r<0.07)return "boss";if(r<0.07+Math.min(0.2,0.08+el/400))return "skk";if(r<0.32&&G.time<45&&Math.random()<0.25)return "clock";return "worker"}
+function spawn(){if(!G.run)return;const free=H.map((x,i)=>i).filter(i=>!H[i].on);if(free.length){const i=free[Math.floor(Math.random()*free.length)];show(i,pick())}
+  const el=(Date.now()-G.startAt)/1000;const gap=Math.max(330,900-el*11)*(0.7+Math.random()*0.6);
+  if(Math.random()<Math.min(0.45,el/90))setTimeout(()=>{if(G.run){const fr=H.map((x,i)=>i).filter(i=>!H[i].on);if(fr.length)show(fr[Math.floor(Math.random()*fr.length)],"worker")}},120);
+  G.spawnT=setTimeout(spawn,gap)}
+let vIdx=0;
+function show(i,kind){const o=H[i];o.on=true;o.kind=kind;o.m.classList.remove("hit");const head=o.m.querySelector(".head"),tag=o.m.querySelector(".tag"),bub=o.m.querySelector(".bubble");tag.hidden=true;
+  if(kind==="worker"){if(FACES.length){const f=FACES[Math.floor(Math.random()*FACES.length)];head.innerHTML=`<img src="${f.src}" alt="">`;if(f.name){tag.textContent=f.name;tag.hidden=false}}else head.innerHTML=svgHead(vIdx++%4)}
+  else if(kind==="boss"){head.innerHTML=svgHead("boss");tag.textContent="Начальник";tag.hidden=false}
+  else if(kind==="skk"){head.innerHTML=svgHead("skk");tag.textContent="Инспектор СКК";tag.hidden=false}
+  else head.innerHTML=svgClock();
+  bub.className="bubble";if(kind!=="clock"&&Math.random()<0.45){bub.textContent=kind==="skk"?"Не трогать! Акт!":PHR[Math.floor(Math.random()*PHR.length)];bub.classList.add("on")}
+  requestAnimationFrame(()=>o.m.classList.add("up"));
+  const el=(Date.now()-G.startAt)/1000;const stay=(kind==="boss"?650:kind==="clock"?800:Math.max(520,1150-el*10))*(0.8+Math.random()*0.4);
+  clearTimeout(o.t);o.t=setTimeout(()=>hide(i,false),stay)}
+function hide(i,hit){const o=H[i];if(!o.on)return;o.on=false;clearTimeout(o.t);o.m.classList.remove("up");if(hit)o.m.classList.add("hit");
+  if(!hit&&o.kind!=="skk"&&o.kind!=="clock"&&G.run){G.combo=0;G.miss++;upd()}}
+function whack(i,e){if(!G.run)return;const o=H[i];if(!o.on)return;const r=F.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
+  const bub=o.m.querySelector(".bubble");bub.textContent=o.kind==="skk"?"Составлю акт!":OUCH[Math.floor(Math.random()*OUCH.length)];bub.className="bubble on";
+  if(o.kind==="skk"){G.score=Math.max(0,G.score-3);G.combo=0;sBad();F.classList.remove("shake");void F.offsetWidth;F.classList.add("shake");fx("−3",x,y,"pop","#f87171");if(navigator.vibrate)try{navigator.vibrate(120)}catch(_){}}
+  else if(o.kind==="clock"){G.time=Math.min(60,G.time+5);sClock();fx("+5 с",x,y,"pop","#4ade80")}
+  else{G.combo++;G.hits++;const mult=Math.max(1,1+Math.floor((G.combo-1)/5));const pts=(o.kind==="boss"?5:1)*mult;G.score+=pts;(o.kind==="boss"?sBoss:sHit)();
+    fx("+"+pts,x,y,"pop",o.kind==="boss"?"#fbbf24":"#fff");fx("💥",x,y,"star");if(navigator.vibrate)try{navigator.vibrate(30)}catch(_){}}
+  hide(i,true);upd()}
+function start(){$("#start").hidden=true;$("#end").hidden=true;Object.assign(G,{run:true,score:0,time:60,combo:0,startAt:Date.now(),hits:0,miss:0});upd();
+  try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();AC.resume&&AC.resume()}catch(_){}
+  let last=Date.now();G.tick=setInterval(()=>{const n=Date.now();G.time-=(n-last)/1000;last=n;if(G.time<=0){G.time=0;stop()}upd()},100);setTimeout(spawn,400)}
+function stop(){G.run=false;clearInterval(G.tick);clearTimeout(G.spawnT);H.forEach((o,i)=>hide(i,false));
+  const top=store.get("top",[]);const rec=G.score>0&&(top.length<5||G.score>top[top.length-1].s);
+  if(G.score>G.best){G.best=G.score;store.set("best",G.best);$("#best").textContent=G.best}
+  $("#endT").textContent=G.score>=60?"Гроза склада! 🏆":G.score>=30?"Отличная смена! 💪":G.score>=10?"Неплохо!":"Кладовщики победили 😅";
+  $("#endS").innerHTML=`Очки: <b>${G.score}</b> · попаданий: ${G.hits} · сбежали: ${G.miss}`;
+  $("#nameBox").hidden=!rec;$("#nm").value=store.get("lastName","");drawTop("#top2");$("#end").hidden=false;if(rec)setTimeout(()=>$("#nm").focus(),100)}
+function drawTop(sel){const top=store.get("top",[]);$(sel).innerHTML=top.length?`<b>🏆 Лучшие смены</b><ol>${top.map(t=>`<li>${esc(t.n)} — <b>${t.s}</b> <span class="muted">${esc(t.d)}</span></li>`).join("")}</ol>`:""}
+$("#bSave").onclick=()=>{const n=($("#nm").value||"Без имени").trim().slice(0,20);store.set("lastName",n);const top=store.get("top",[]);top.push({n,s:G.score,d:new Date().toLocaleDateString("ru-RU")});
+  top.sort((a,b)=>b.s-a.s);store.set("top",top.slice(0,5));$("#nameBox").hidden=true;drawTop("#top2")};
+$("#nm").onkeydown=e=>{if(e.key==="Enter")$("#bSave").click()};
+$("#bGo").onclick=start;$("#bAgain").onclick=start;drawTop("#top");
+})();
+</script>
+</body>
+</html>
