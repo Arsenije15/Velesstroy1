@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Чернослав против ведьмы Накладной</title>
+<style>
+[hidden]{display:none!important}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:#1c1007;font-family:system-ui,sans-serif;color:#fff;user-select:none;-webkit-user-select:none}
+.wrap{max-width:560px;margin:0 auto;padding:8px}
+header{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+header a{color:#fcd9a0;font-size:14px}
+h1{font:700 18px Georgia,serif;margin:0;color:#fde68a;flex:1}
+.hud{display:flex;gap:6px;margin:6px 0;font-weight:700;font-size:14px}
+.hud div{flex:1;background:#3f2a14;border-radius:8px;padding:5px 6px;text-align:center}
+.hpbar{height:10px;background:#450a0a;border-radius:6px;overflow:hidden;margin-bottom:6px}
+.hpbar i{display:block;height:100%;background:linear-gradient(90deg,#a21caf,#e879f9);transition:width .2s}
+#field{position:relative;width:100%;aspect-ratio:3/4;border-radius:12px;overflow:hidden;background:linear-gradient(#1e2a44 0,#334166 48%,#5b3a1e 48%,#3f2a14 100%);touch-action:manipulation}
+.moon{position:absolute;right:8%;top:5%;width:12%;aspect-ratio:1;border-radius:50%;box-shadow:-10px 6px 0 0 #fef3c7}
+#witch{position:absolute;width:22%;aspect-ratio:1;left:40%;top:10%;transform:translate(-50%,-50%);pointer-events:none;transition:filter .1s}
+#witch.hit{filter:brightness(3) saturate(0)}
+.obj{position:absolute;width:21%;aspect-ratio:1;transform:translate(-50%,-50%);cursor:pointer;border:0;background:none;padding:0}
+.obj svg{width:100%;height:100%;display:block;transition:transform .15s}
+.obj.open svg{transform:translateY(-14%) rotate(-6deg);opacity:.55}
+.obj.done{pointer-events:none}
+.obj .bd{position:absolute;right:0;top:0;font-size:18px}
+#hero{position:absolute;left:50%;bottom:0;width:20%;transform:translateX(-50%);pointer-events:none}
+.flash{position:absolute;width:9%;aspect-ratio:1;border-radius:50%;background:radial-gradient(#fff,#fde68a 45%,rgba(253,230,138,0));transform:translate(-50%,-50%);pointer-events:none;z-index:6}
+.pop{position:absolute;transform:translate(-50%,-50%);font-weight:900;font-size:15px;pointer-events:none;z-index:8;text-shadow:0 2px 0 #000;animation:up 1.1s ease-out forwards;white-space:nowrap;text-align:center}
+@keyframes up{to{transform:translate(-50%,-160%);opacity:0}}
+.paper{position:absolute;font-size:22px;transform:translate(-50%,-50%);pointer-events:none;z-index:5}
+.over{position:fixed;inset:0;background:rgba(15,10,5,.9);display:flex;align-items:center;justify-content:center;z-index:20;padding:16px}
+.card{background:#fbf3dc;color:#3b2410;border:3px double #c9a25b;border-radius:10px;padding:18px;max-width:420px;width:100%;font:16px/1.5 Georgia,serif}
+.card h2{margin:0 0 8px;color:#9b1c1c;text-align:center}
+.card ul{padding-left:18px;margin:6px 0}
+.btn{display:block;width:100%;margin-top:10px;border:0;border-radius:10px;padding:12px;font:700 17px system-ui;background:#9b1c1c;color:#fff;cursor:pointer;text-align:center;text-decoration:none}
+.btn.s{background:#e5e7eb;color:#111;font-size:14px;padding:9px}
+.tip{font-size:13px;color:#fcd9a0;text-align:center;margin-top:6px;min-height:18px}
+</style></head><body><div class="wrap">
+<header><a href="/">← В программу</a><h1>🧹 Чернослав против ведьмы</h1><a href="/skazka.html">📜 Сказка</a></header>
+<div class="hud"><div>📸 <span id="ammo">0</span></div><div>📦 <span id="found">0</span>/<span id="ftot">5</span></div><div>⏱ <span id="tm">90</span></div><div>⭐ <span id="sc">0</span></div></div>
+<div class="hpbar"><i id="hp" style="width:100%"></i></div>
+<div id="field"><div class="moon"></div><div id="witch"></div><div id="hero"></div></div>
+<div class="tip" id="tip">Ищи материал в ящиках — каждая находка даёт 3 вспышки 📸</div>
+</div>
+
+<div class="over" id="start"><div class="card">
+<h2>Чернослав против ведьмы Накладной</h2>
+<p>Ведьма Накладная спрятала по складу принятый материал. Победить её можно только <b>фотографией</b> — вспышка снимает заклятье!</p>
+<ul><li>Тапай по ящикам и контейнерам — <b>найдёшь материал → +3 вспышки</b> 📸</li>
+<li>Без находок фотоаппарат пустой — стрелять нечем!</li>
+<li>Тапай по ведьме, чтобы сфотографировать её.</li>
+<li>Каждые 15 секунд ведьма колдует и <b>перепрятывает</b> материал.</li></ul>
+<button class="btn" id="bGo">В БОЙ!</button>
+<a class="btn s" href="/">← Вернуться в программу</a>
+</div></div>
+<div class="over" id="end" hidden><div class="card"><h2 id="endT"></h2><p id="endS"></p><button class="btn" id="bAgain">Ещё раз</button><a class="btn s" href="/skazka.html">📜 К сказке</a></div></div>
+
+<script>
+(function(){"use strict";
+const $=s=>document.querySelector(s),F=$("#field");
+const MATS=["Герметик","Петли","Дроссель, клапан","Кольцо","Муфта","Гидроизоляция","Штуцер","Скоба крепёжная"];
+const EMPTY=["Пусто!","Тут только пыль","Брезент и мыши","Ведьма хихикает…","Не здесь!"];
+const WITCH=`<svg viewBox="0 0 100 100"><path d="M8 70h70" stroke="#7c4a1e" stroke-width="5" stroke-linecap="round"/><path d="M78 70l16-8M78 70l16 0M78 70l16 8" stroke="#ca8a04" stroke-width="4"/>
+<path d="M30 70q4-26 20-28q16 2 20 28z" fill="#581c87"/><circle cx="50" cy="34" r="12" fill="#86efac"/><path d="M34 26l16-24l16 24z" fill="#3b0764"/><rect x="30" y="24" width="40" height="5" rx="2" fill="#3b0764"/>
+<circle cx="45" cy="33" r="2" fill="#111"/><circle cx="55" cy="33" r="2" fill="#111"/><path d="M50 36l3 5h-4" fill="#4ade80"/><path d="M44 41q6 4 12 0" stroke="#111" stroke-width="2" fill="none"/>
+<rect x="56" y="50" width="16" height="12" fill="#fff" stroke="#111"/><text x="64" y="59" font-size="5" text-anchor="middle" fill="#dc2626" font-weight="700">УПД</text></svg>`;
+const HERO=`<svg viewBox="0 0 100 110"><defs><radialGradient id="g" cx=".35" cy=".3" r=".7"><stop offset="0" stop-color="#fff"/><stop offset=".25" stop-color="#f6d2ad"/><stop offset="1" stop-color="#d9a273"/></radialGradient></defs>
+<path d="M18 110q-2-46 32-50q34 4 32 50z" fill="#ea580c"/><path d="M40 62v48M60 62v48" stroke="#facc15" stroke-width="4"/>
+<circle cx="50" cy="36" r="24" fill="url(#g)"/><ellipse cx="42" cy="22" rx="7" ry="3.5" fill="#fff" opacity=".9"/><path d="M32 44q18 20 36 0q-5 16-18 17q-13-1-18-17z" fill="#6b4423"/>
+<circle cx="42" cy="36" r="2.4" fill="#111"/><circle cx="58" cy="36" r="2.4" fill="#111"/><rect x="62" y="66" width="24" height="16" rx="3" fill="#111"/><circle cx="74" cy="74" r="5" fill="#60a5fa" stroke="#fff" stroke-width="1.5"/></svg>`;
+const BOX=[`<svg viewBox="0 0 100 100"><rect x="10" y="28" width="80" height="62" fill="#a16207" stroke="#5b3412" stroke-width="4"/><path d="M10 28l80 62M90 28l-80 62" stroke="#5b3412" stroke-width="4"/></svg>`,
+`<svg viewBox="0 0 100 100"><rect x="4" y="30" width="92" height="56" fill="#2563eb" stroke="#1e3a8a" stroke-width="4"/><path d="M20 30v56M36 30v56M52 30v56M68 30v56M84 30v56" stroke="#1e3a8a" stroke-width="3"/></svg>`,
+`<svg viewBox="0 0 100 100"><path d="M8 88q10-60 42-62q32 2 42 62z" fill="#4d7c0f" stroke="#365314" stroke-width="4"/><path d="M30 50q20 10 40 0" stroke="#365314" stroke-width="3" fill="none"/></svg>`,
+`<svg viewBox="0 0 100 100"><rect x="14" y="70" width="72" height="12" fill="#a16207"/><rect x="18" y="34" width="64" height="36" fill="#fef3c7" stroke="#a16207" stroke-width="3"/><path d="M18 46h64M18 58h64" stroke="#a16207" stroke-width="2"/></svg>`];
+$("#witch").innerHTML=WITCH;$("#hero").innerHTML=HERO;
+const POS=[[16,58],[40,56],[64,58],[86,56],[16,72],[40,74],[64,72],[86,74]];
+let G={},objs=[];
+function build(){objs.forEach(o=>o.el.remove());objs=POS.map((p,i)=>{const b=document.createElement("button");b.className="obj";b.style.left=p[0]+"%";b.style.top=p[1]+"%";b.innerHTML=BOX[i%4];b.setAttribute("aria-label","Ящик");F.appendChild(b);const o={el:b,mat:null,open:false};b.onclick=e=>{e.stopPropagation();search(o)};return o})}
+function hide(){const left=G.mats.filter(m=>!m.found);objs.forEach(o=>{if(!o.el.classList.contains("done")){o.mat=null;o.open=false;o.el.classList.remove("open")}});
+  const free=objs.filter(o=>!o.el.classList.contains("done")).sort(()=>Math.random()-.5);left.forEach((m,i)=>{if(free[i])free[i].mat=m})}
+function pop(x,y,t,c){const p=document.createElement("div");p.className="pop";p.style.left=x+"%";p.style.top=y+"%";p.style.color=c||"#fff";p.innerHTML=t;F.appendChild(p);setTimeout(()=>p.remove(),1100)}
+function search(o){if(!G.run||o.open)return;o.open=true;o.el.classList.add("open");const x=parseFloat(o.el.style.left),y=parseFloat(o.el.style.top);
+  if(o.mat){o.mat.found=true;o.el.classList.add("done");o.el.insertAdjacentHTML("beforeend",'<span class="bd">✅</span>');G.ammo+=3;G.found++;G.score+=10;pop(x,y,"📦 "+o.mat.n+"<br>+3 📸","#86efac");tip("Нашёл «"+o.mat.n+"»! Теперь фотографируй ведьму!");
+    }
+  else{pop(x,y,EMPTY[Math.floor(Math.random()*EMPTY.length)],"#fcd9a0");setTimeout(()=>{if(!o.mat){o.open=false;o.el.classList.remove("open")}},1400)}upd()}
+function tip(t){$("#tip").textContent=t}
+function upd(){$("#ammo").textContent=G.ammo;$("#found").textContent=G.found;$("#ftot").textContent=G.mats.length;$("#tm").textContent=Math.ceil(G.time);$("#sc").textContent=G.score;$("#hp").style.width=(G.hp/G.hpMax*100)+"%"}
+F.addEventListener("click",e=>{if(!G.run)return;const r=F.getBoundingClientRect(),x=(e.clientX-r.left)/r.width*100,y=(e.clientY-r.top)/r.height*100;
+  if(y>50)return;
+  if(G.ammo<=0){pop(x,y,"Нет вспышек!<br>Ищи материал 📦","#fca5a5");tip("Фотоаппарат пуст — сначала найди материал в ящиках!");return}
+  G.ammo--;upd();const f=document.createElement("div");f.className="flash";f.style.left="56%";f.style.top="88%";F.appendChild(f);
+  f.animate([{left:"56%",top:"88%"},{left:x+"%",top:y+"%"}],{duration:260,easing:"ease-out"}).onfinish=()=>{f.remove();
+    const d=Math.hypot(x-G.wx,(y-G.wy)*0.75);if(d<10){G.hp--;G.score+=25;$("#witch").classList.add("hit");setTimeout(()=>$("#witch").classList.remove("hit"),150);pop(G.wx,G.wy,["Ай! Заклятье слабеет!","Без вспышки!","Ой, фото!","Не снимай!"][G.hp%4],"#f0abfc");if(G.hp<=0)end(true)}
+    else pop(x,y,"Мимо!","#cbd5e1");upd()}});
+let raf=0,last=0,nextSpell=15,nextPaper=4;
+function loop(t){if(!G.run)return;const dt=Math.min(.05,(t-last)/1000||0);last=t;G.time-=dt;G.t+=dt;
+  const sp=1+(G.hpMax-G.hp)*0.12;G.wx=50+38*Math.sin(G.t*0.9*sp)+6*Math.sin(G.t*2.3);G.wy=22+12*Math.sin(G.t*1.4*sp);
+  const w=$("#witch");w.style.left=G.wx+"%";w.style.top=G.wy+"%";w.style.transform=`translate(-50%,-50%) scaleX(${Math.cos(G.t*0.9*sp)>0?1:-1})`;
+  if(G.t>nextSpell){nextSpell+=15;hide();pop(G.wx,G.wy+8,"✨ Перепрятала!","#e879f9");tip("Ведьма заколдовала — материал перепрятан!")}
+  if(G.t>nextPaper){nextPaper+=3+Math.random()*3;const p=document.createElement("div");p.className="paper";p.textContent="📄";F.appendChild(p);
+    p.animate([{left:G.wx+"%",top:G.wy+"%",transform:"translate(-50%,-50%) rotate(0)"},{left:(G.wx+(Math.random()*30-15))+"%",top:"95%",transform:"translate(-50%,-50%) rotate(360deg)"}],{duration:1600}).onfinish=()=>p.remove()}
+  if(G.time<=0){G.time=0;upd();end(false);return}
+  if(Math.floor(G.time)!==G.lastSec){G.lastSec=Math.floor(G.time);upd()}
+  raf=requestAnimationFrame(loop)}
+function start(){const m=MATS.slice().sort(()=>Math.random()-.5).slice(0,5).map(n=>({n,found:false}));
+  G={run:true,ammo:0,found:0,score:0,time:90,t:0,hp:8,hpMax:8,wx:50,wy:20,mats:m,lastSec:90};nextSpell=15;nextPaper=4;
+  build();hide();$("#start").hidden=true;$("#end").hidden=true;tip("Ищи материал в ящиках — каждая находка даёт 3 вспышки 📸");upd();last=performance.now();raf=requestAnimationFrame(loop)}
+function end(win){G.run=false;cancelAnimationFrame(raf);if(win)G.score+=Math.ceil(G.time)*5;
+  $("#endT").textContent=win?"🏆 Ведьма повержена!":"⌛ Ведьма улетела…";
+  $("#endS").innerHTML=win?`Заклятье снято! Весь найденный материал снова видимый.<br><b>Очки: ${G.score}</b><br>Чернослав сияет ярче прожектора ✨`:`Найдено материала: ${G.found} из ${G.mats.length}. Очки: ${G.score}.<br>Совет Лысику: фотографируй приход сразу — и ведьма не страшна!`;
+  $("#end").hidden=false;try{const b=+localStorage.getItem("vd_best")||0;if(G.score>b)localStorage.setItem("vd_best",G.score)}catch(_){}}
+$("#bGo").onclick=start;$("#bAgain").onclick=start;
+window.__vd=()=>G;
+})();
+</script>
+</body></html>
