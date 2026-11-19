@@ -2075,7 +2075,7 @@ function langBind(root){const R=()=>{const b=$("#langbox");if(b){b.innerHTML=lan
     window.open(`https://translate.yandex.ru/?source_lang=${to()?"ru":tl}&target_lang=${to()?tl:"ru"}&text=${encodeURIComponent(v)}`,"_blank","noopener")}}
 /* --- страницы: «Инструменты» (калькулятор + переводчик) в основном складе, «Переводчик» у Монтажа --- */
 async function vTools(id,changed){if(role()===""||S.user.scope)return vHome();if(changed&&($("#calcbox")||$("#langbox")))return;const tab=id==="lang"?"lang":"calc";
-  $("#main").innerHTML=`<h1>🧰 Инструменты</h1><div class="tabs" style="margin-bottom:10px"><button class="${tab==="calc"?"on":""}" data-tt="calc">🧮 Калькулятор металлопроката</button><button class="${tab==="lang"?"on":""}" data-tt="lang">🗣 Переводчик</button><a class="btn" id="tlGame" href="/game.html" style="margin-left:6px">🎮 Игра «Кладовщики»</a></div>
+  $("#main").innerHTML=`<h1>🧰 Инструменты</h1><div class="tabs" style="margin-bottom:10px"><button class="${tab==="calc"?"on":""}" data-tt="calc">🧮 Калькулятор металлопроката</button><button class="${tab==="lang"?"on":""}" data-tt="lang">🗣 Переводчик</button><a class="btn" id="tlGame" href="/game.html" style="margin-left:6px">🎮 Игра «Кладовщики»</a><a class="btn" id="tlTale" href="/skazka.html" style="margin-left:6px">📜 Сказка о Чернославе</a></div>
    <div class="card" id="${tab==="calc"?"calcbox":"langbox"}">${tab==="calc"?calcHtml():langHtml()}</div>`;
   document.querySelectorAll("[data-tt]").forEach(b=>b.onclick=()=>{location.hash="#/tools/"+b.dataset.tt});
   tab==="calc"?calcBind($("#calcbox")):langBind($("#langbox"))}
