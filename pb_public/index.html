@@ -298,6 +298,8 @@ async function ntfLoad(){if(!ntfOk())return;if(can.mz())return mzNtf();
   const d14=new Date(Date.now()-14*86400000).toISOString().replace("T"," "),now=new Date(),nowS=now.toISOString().replace("T"," ");const ev=[];
   if(!appOn()&&(!can.linkOnly()||S.user.scope==="skk")){try{const L=await all("skk_acts",`created>="${d14}"||closed_at>="${d14}"`,"-created");
     L.forEach(a=>{if(a.created>=d14)ev.push({t:a.created,kind:"new",a});if(a.status==="closed"&&a.closed_at&&a.closed_at>=d14)ev.push({t:a.closed_at,kind:"closed",a})})}catch(_){}}
+  // 1.9.40: после моей заявки появился акт на её материал / УПД
+  if(can.write()&&(!S.user.scope||S.user.scope==="zay"))try{const j=await api("GET","/api/vs/request/actalerts");(j.alerts||[]).forEach(x=>ev.push({t:x.t,kind:"reqact",x}))}catch(_){}
   // 1.9.15: моя заявка открыта дольше 7 дней
   const w7=new Date(now.getTime()-7*86400000).toISOString().replace("T"," ");
   try{const R=await all("requests",`status="open"&&created_by="${S.user.id}"&&handed_at!=""&&handed_at<="${w7}"`,"handed_at");   // 1.9.22: неделя — от передачи на склад
@@ -321,13 +323,13 @@ async function ntfLoad(){if(!ntfOk())return;if(can.mz())return mzNtf();
     let since=l?l+7*864e5:0;if(!since){try{since=+localStorage.getItem("vs_bk_due")||0;if(!since){since=Date.now();localStorage.setItem("vs_bk_due",String(since))}}catch(_){since=Date.now()}}
     ev.push({t:new Date(since).toISOString().replace("T"," "),kind:"bk"})}}
   NTF.loaded=true;
-  {const ACT={rqfull:1,rqpick:1,updnew:1,req7:1,note:1};let k=0;NTF.items=ev.sort((x,y)=>String(y.t).localeCompare(String(x.t))).filter(e=>ACT[e.kind]||k++<80)}   // 1.9.24: «надо сделать» не вытесняются старыми событиями
+  {const ACT={reqact:1,rqfull:1,rqpick:1,updnew:1,req7:1,note:1};let k=0;NTF.items=ev.sort((x,y)=>String(y.t).localeCompare(String(x.t))).filter(e=>ACT[e.kind]||k++<80)}   // 1.9.24: «надо сделать» не вытесняются старыми событиями
   if(!ntfSeen()&&NTF.items[0])try{localStorage.setItem(ntfKey(),NTF.items.find(e=>e.kind!=="note"&&e.kind!=="req7")?NTF.items.find(e=>e.kind!=="note"&&e.kind!=="req7").t:"0")}catch(_){}   // первый вход — старые акты не сыпем; напоминания и долгие заявки — показываем
   ntfPaint()}
 function ntfPaint(){const n=$("#ntfn");if(!n)return;const s=ntfSeen();const k=NTF.items.filter(e=>e.t>s&&!(e.kind==="new"&&e.a.created_by===S.user.id)).length;n.hidden=!k;n.textContent=k>99?"99+":k}
-const ntfTitle=e=>({new:"📋 Новый акт № "+(e.a&&e.a.number),closed:"✔ Акт закрыт № "+(e.a&&e.a.number),req7:"⏳ Заявка № "+(e.r&&e.r.number)+" в работе больше 7 дней (с передачи "+(e.r&&e.r.handed_at?dmy(String(e.r.handed_at).slice(0,10)):"")+")",note:"⏰ Напоминание",bk:"💾 Пора сделать бэкап на компьютер",bc:"💬 "+(e.b?e.b.text:""),rqfull:"✅ Заявка № "+(e.r&&e.r.number)+" выдана полностью — закройте",rqpick:"📦 Заявка № "+(e.r&&e.r.number)+": прошёл срок «забрать до» "+(e.r&&e.r.pickup_until?dmy(e.r.pickup_until):""),updnew:"📄 УПД № "+(e.u&&e.u.number)+" без приёмки больше 2 дней",mzlow:"⚠ Ниже минимума: "+(e.i&&(MZS[e.i.section][1]+" "+e.i.name+(e.i.size?" "+e.i.size:""))),mztask:"⏰ Задача: "+(e.k&&e.k.title)})[e.kind];
-const ntfHref=e=>e.i?"#/mzitem/"+e.i.id:e.k?"#/mztasks":e.u?"#/upd/"+e.u.id:e.kind==="bc"?"#/home":e.kind==="bk"?"#/backup":e.a?"#/skkact/"+e.a.id:e.r?"#/request/"+e.r.id:e.n?"#/request/"+e.n.request:"#/";
-const ntfSub=e=>{if(e.i)return "остаток "+fmtQ(e.i.qty)+" "+esc(e.i.unit||"")+" при минимуме "+fmtQ(e.i.min_qty)+(e.i.place?" · 📍 "+esc(e.i.place):"");if(e.k)return (e.k.people?"👷 "+esc(e.k.people)+" · ":"")+"срок "+dmy(e.k.due);
+const ntfTitle=e=>({reqact:"⚠ Новый акт № "+(e.x&&e.x.act_no)+" — по вашей заявке № "+(e.x&&e.x.number),new:"📋 Новый акт № "+(e.a&&e.a.number),closed:"✔ Акт закрыт № "+(e.a&&e.a.number),req7:"⏳ Заявка № "+(e.r&&e.r.number)+" в работе больше 7 дней (с передачи "+(e.r&&e.r.handed_at?dmy(String(e.r.handed_at).slice(0,10)):"")+")",note:"⏰ Напоминание",bk:"💾 Пора сделать бэкап на компьютер",bc:"💬 "+(e.b?e.b.text:""),rqfull:"✅ Заявка № "+(e.r&&e.r.number)+" выдана полностью — закройте",rqpick:"📦 Заявка № "+(e.r&&e.r.number)+": прошёл срок «забрать до» "+(e.r&&e.r.pickup_until?dmy(e.r.pickup_until):""),updnew:"📄 УПД № "+(e.u&&e.u.number)+" без приёмки больше 2 дней",mzlow:"⚠ Ниже минимума: "+(e.i&&(MZS[e.i.section][1]+" "+e.i.name+(e.i.size?" "+e.i.size:""))),mztask:"⏰ Задача: "+(e.k&&e.k.title)})[e.kind];
+const ntfHref=e=>e.x?"#/request/"+e.x.request:e.i?"#/mzitem/"+e.i.id:e.k?"#/mztasks":e.u?"#/upd/"+e.u.id:e.kind==="bc"?"#/home":e.kind==="bk"?"#/backup":e.a?"#/skkact/"+e.a.id:e.r?"#/request/"+e.r.id:e.n?"#/request/"+e.n.request:"#/";
+const ntfSub=e=>{if(e.x)return esc(e.x.material)+" · акт ("+esc(e.x.act_src)+") от "+dmy(e.x.act_date)+(e.x.supplier?" · "+esc(e.x.supplier):"")+(e.x.reason?" — "+esc(String(e.x.reason).slice(0,80)):"")+" · совпало: "+esc(e.x.why);if(e.i)return "остаток "+fmtQ(e.i.qty)+" "+esc(e.i.unit||"")+" при минимуме "+fmtQ(e.i.min_qty)+(e.i.place?" · 📍 "+esc(e.i.place):"");if(e.k)return (e.k.people?"👷 "+esc(e.k.people)+" · ":"")+"срок "+dmy(e.k.due);
   if(e.u)return esc(e.u.supplier||"")+" · от "+dmy(String(e.u.date||"").slice(0,10))+" · загружен "+dt(e.u.created);
   if(e.r&&(e.kind==="rqfull"||e.kind==="rqpick"))return esc(e.r.object||"")+" · "+esc(e.r.recipient||"")+(e.r.phone?" · 📞 "+esc(e.r.phone):"");
   if(e.a){const rows=actRows(e.a);return esc(e.a.supplier||"")+" · "+(e.kind==="new"?"замечаний: "+rows.length+" · составил "+esc(uname(e.a.created_by)):"в работе "+actDays(e.a)+" дн.")}
@@ -385,7 +387,7 @@ async function boot(){
 }
 
 /* ---------- Каркас ---------- */
-const NAV=[["home","Главная","⌂"],["receive","Приёмка","▣"],["requests","Заявки","▤"],["resources","Ресурсы","⚙"],["history","История","☰"],["rules","Инструкции","⚑"],["split","Поставщики","⇄"],["skk","Склад / СКК","✔"],["topics","Задачи и согласования","☑"],["report","Отчёт дня","☰"],["mpz","Остатки МПЗ","▦"],["map","Карта склада","🗺"],["tools","Инструменты","🧰"],["users","Пользователи","👥"]];
+const NAV=[["home","Главная","⌂"],["receive","Приёмка","▣"],["requests","Заявки","▤"],["resources","Ресурсы","⚙"],["history","История","☰"],["rules","Инструкции","⚑"],["split","Поставщики","⇄"],["skk","Склад / СКК","✔"],["topics","Задачи и согласования","☑"],["report","Отчёт дня","☰"],["mpz","Остатки МПЗ","▦"],["codes","Сверка по шифрам","⇄"],["map","Карта склада","🗺"],["tools","Инструменты","🧰"],["users","Пользователи","👥"]];
 /* ----- 1.9.27: приложение для телефона (Android) — только заявки и всё, что с ними связано ----- */
 const APPM=/VSApp\//.test(navigator.userAgent);
 const MOB=APPM||/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Macintosh/.test(navigator.userAgent));   // 1.9.30: телефон/планшет
@@ -421,7 +423,7 @@ function render(changedCols,force){
   if(!S.user||!$("#main"))return;
   const [p,id]=S.route.split("/");
   document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("on",a.dataset.n===(p==="receipt"?"receive":p==="request"||p==="leftovers"?"requests":/^(upd|updedit|skkact|skkactedit|oper)$/.test(p)?"skk":p==="topic"?"topics":p)));
-  const V={mznorms:vMzNorms,map:vMap,tools:vTools,mzlang:vMzLang,mzdocs:vMzDocs,mzdoc:vMzDoc,mzjournal:vMzJournal,mz:vMz,mzitem:vMzItem,mztasks:vMzTasks,mztopics:vMzTopics,mztopic:vMzTopic,mzhelp:vMzHelp,ureg:vUreg,walk:vWalk,bc:vBc,zreg:vZreg,backup:vBackup,find:vFind,leftovers:vLeftovers,fields:vFields,home:vHome,receive:vReceive,receipt:vReceipt,requests:vRequests,request:vRequest,resources:vResources,history:vHistory,rules:vRules,users:vUsers,split:vSplit,report:vReport,mpz:vMpz,skk:vSkk,upd:vUpd,updedit:vUpdEdit,skkact:vSkkAct,skkactedit:vSkkActEdit,oper:vOper,topics:vTopics,topic:vTopic}[p]||vHome;
+  const V={codes:vCodes,mznorms:vMzNorms,map:vMap,tools:vTools,mzlang:vMzLang,mzdocs:vMzDocs,mzdoc:vMzDoc,mzjournal:vMzJournal,mz:vMz,mzitem:vMzItem,mztasks:vMzTasks,mztopics:vMzTopics,mztopic:vMzTopic,mzhelp:vMzHelp,ureg:vUreg,walk:vWalk,bc:vBc,zreg:vZreg,backup:vBackup,find:vFind,leftovers:vLeftovers,fields:vFields,home:vHome,receive:vReceive,receipt:vReceipt,requests:vRequests,request:vRequest,resources:vResources,history:vHistory,rules:vRules,users:vUsers,split:vSplit,report:vReport,mpz:vMpz,skk:vSkk,upd:vUpd,updedit:vUpdEdit,skkact:vSkkAct,skkactedit:vSkkActEdit,oper:vOper,topics:vTopics,topic:vTopic}[p]||vHome;
   if((p==="users"||p==="fields")&&!can.admin())return vHome();
   const key=S.route;if(key!==lastKey){window.scrollTo(0,0);lastKey=key;dirty.clear()}
   // Обновление пришло, пока человек вводит данные: сохраняем введённое, фокус и курсор
@@ -787,6 +789,14 @@ const pickBadge=h=>!h||(!h.pick&&!h.unload)?"":`<div class="phb">${h.pick?`🕘 
 async function pickHistFill(items,rid){if(!document.querySelector("[data-phn]"))return;const res=await pickHist(items.map(i=>i.material),rid);let n=0;
   items.forEach((it,i)=>{const el=document.querySelector(`[data-phn="${it.id}"]`);const h=res[i];if(el&&h&&(h.pick||h.unload)){el.innerHTML=pickBadge(h);n++}});
   if(n&&!PHN.has(rid)&&items.some(i=>!i.pick_place)){PHN.add(rid);toast(`📍 По ${n} поз. есть место из прошлых заявок / прихода — смотрите у позиции`,"ok")}}
+// 1.9.40: где грузить — флажки карты с фото по названию материала (не обязательно дословно); раньше поставленный — первым (сначала старый материал)
+async function mapPhotoFill(items){if(!document.querySelector("[data-mfl]"))return;let F;try{F=await all("smap_flags","","created")}catch(_){return}
+  F=F.filter(f=>!f.icon&&(f.photo||[]).length||!f.icon&&f.zone);if(!F.length)return;let ft="";
+  for(const it of items){const el=document.querySelector(`[data-mfl="${it.id}"]`);if(!el)continue;const w=qWords(it.material).filter(x=>x.length>=3).slice(0,3).join(" ");if(!w)continue;
+    const L=F.filter(f=>wmatch(w,f.search_lc||f.material)).slice(0,4);if(!L.length)continue;if(!ft&&L.some(f=>(f.photo||[]).length))ft=await fileToken();
+    el.innerHTML=`<div class="card" style="padding:8px;margin-top:6px;background:#f0fdf4"><b>📍 Где грузить</b> <span class="muted">— сначала старый материал</span>${L.map((f,k)=>`<div class="row" style="gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">
+      <span class="pill ${k===0?"g":"gr"}">${k===0?"1 — СТАРЫЙ":k+1}</span><a href="#/map/f=${f.id}" style="flex:1;min-width:150px"><b>${esc(f.zone||"на карте")}</b> · ${esc(f.material)}${f.qty?" — "+esc(f.qty)+" "+esc(f.unit||""):""}<div class="muted">лежит с ${dmy(String(f.created).slice(0,10))}${f.note?" · "+esc(f.note):""}</div></a>
+      ${(f.photo||[]).slice(0,3).map(n=>`<a href="/api/files/smap_flags/${f.id}/${encodeURIComponent(n)}?token=${ft}" target="_blank" rel="noopener"><img src="/api/files/smap_flags/${f.id}/${encodeURIComponent(n)}?thumb=240x240&token=${ft}" alt="Где лежит: ${esc(f.material)}" style="width:72px;height:72px;object-fit:cover;border-radius:8px"></a>`).join("")}</div>`).join("")}</div>`}}
 async function actCheckFill(items){const els=[...document.querySelectorAll("[data-acn]")];if(!els.length)return;
   const res=await actCheck(items.map(i=>i.material));items.forEach((it,i)=>{const el=document.querySelector(`[data-acn="${it.id}"]`);if(el)el.innerHTML=actBadge(res[i])})}
 // 1.9.15: «Невыданное по заявкам» — остаток при закрытии заявки; выдаётся потом без заявки. Сгруппировано по объекту, поиск, Excel.
@@ -1113,7 +1123,7 @@ async function vRequest(id,changedCols){
     ${xfLine("request_item",it.extra)?`<div class="muted">${xfLine("request_item",it.extra)}</div>`:""}${acts.length?`<div style="color:var(--v);font-weight:700;margin-top:4px">⚠ Неустранённый акт № ${acts.map(a=>esc(a.act_no)).filter((v,k,a)=>a.indexOf(v)===k).join(", ")} — служебная записка</div>`:""}<div data-acn="${it.id}"></div>
     ${it.pick_place||it.pick_tool?`<div class="pickl">📍 Взяли: <b>${esc(it.pick_place||"—")}</b>${it.pick_tool?` · чем: <b>${esc(it.pick_tool)}</b>`:""} <span class="muted">(${esc(it.pick_by_name||"")}, ${dt(it.pick_at)})</span></div>`:""}
     ${imedStrip(files.filter(f=>f.item===it.id),ft,WS)}${WS?`<label class="btn sm acc noprint" style="margin-top:4px">📷 Фото / 🎬 видео<input type="file" data-imup="${it.id}" accept="image/*,video/*" multiple hidden></label> `:""}
-    <div data-phn="${it.id}"></div>${WS&&!can.zay()?`<button class="btn sm noprint" data-pick="${it.id}" style="margin-top:4px">📍 ${it.pick_place||it.pick_tool?"Изменить, откуда и чем":"Откуда взяли и чем"}</button>`:""}</div><span class="pill ${st[1]}">${st[0]}</span></div>
+    <div data-phn="${it.id}"></div><div data-mfl="${it.id}"></div>${WS&&!can.zay()?`<button class="btn sm noprint" data-pick="${it.id}" style="margin-top:4px">📍 ${it.pick_place||it.pick_tool?"Изменить, откуда и чем":"Откуда взяли и чем"}</button>`:""}</div><span class="pill ${st[1]}">${st[0]}</span></div>
    <div class="row" style="margin-top:10px;align-items:flex-end">
     <div class="grow"><label class="f">Заказано</label><div style="min-height:48px;padding:10px 12px;border:1px dashed var(--line);border-radius:8px;background:var(--bg);font-weight:800">${fmtQ(it.qty_ordered)} ${esc(it.unit)}</div></div>
     <div class="grow"><label class="f">Выдано${it.unit?", "+esc(it.unit):""}</label>${W?`<input id="iq_${it.id}" data-iq="${it.id}" inputmode="decimal" value="${fmtQ(it.qty_issued)}" style="font-weight:800">`
@@ -1157,7 +1167,7 @@ async function vRequest(id,changedCols){
     sugFresh(["sign_"+key]).then(()=>modal(`<h3>${esc(d[1])}</h3><label class="f">Кто подписал (ФИО)</label><input id="sgw" placeholder="например: Вернер В.А." data-sug="sign_${key}" data-prefill data-chips>
      <div class="row" style="margin-top:14px"><button class="btn g grow" id="mok">ОТМЕТИТЬ ПОДПИСЬ</button><button class="btn" data-close>Отмена</button></div>`,
     box=>{sugAttach(box);$("#mok",box).onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/request/sign",{request:id,key,value:true,who:$("#sgw",box).value});closeModal();await refresh()},"Подпись отмечена")}))});
-  bindShip(id,refresh);actCheckFill(items);pickHistFill(items,id);
+  bindShip(id,refresh);actCheckFill(items);pickHistFill(items,id);mapPhotoFill(items);
   document.querySelectorAll("[data-pick]").forEach(b=>b.onclick=()=>{const it=items.find(x=>x.id===b.dataset.pick);const h=(PHK[it.material]||{}).pick||{},u=(PHK[it.material]||{}).unload||{};
     sugFresh(["pick_place","pick_tool","unload_place"]).then(()=>modal(`<h3>📍 Откуда взяли и чем</h3><div><b>${esc(it.material)}</b></div>
      ${h.place||u.place?`<div class="muted" style="margin-top:4px">${h.place?`В прошлый раз: ${esc(h.place)}${h.tool?", "+esc(h.tool):""} (заявка № ${esc(h.number)})`:""}${u.place?`${h.place?"<br>":""}Выгружали: ${esc(u.place)} (УПД № ${esc(u.number)})`:""}</div>`:""}
@@ -1878,20 +1888,26 @@ async function mapFlagForm(f,p){await sugFresh(["map_mat","map_unit"]);const W=c
   let ic=f?(f.icon||""):(MAPS.lastIcon||"");
   modal(`<h3>${f?"✎ Изменить":"📍 Новая отметка"}</h3><div class="muted">Зона: <b>${esc(zone||"вне зон")}</b></div>
    <label class="f">Что ставим</label><div class="row" style="gap:6px;flex-wrap:wrap"><button type="button" class="btn sm" data-ic="">⚑ Материал</button>${Object.keys(MIC).map(k=>`<button type="button" class="btn sm" data-ic="${k}" style="gap:6px">${micBadge(k,20)} ${MIC[k][0]}</button>`).join("")}</div>
-   <label class="f" id="fml">Что лежит *</label><input id="fm" data-sug="map_mat" value="${esc(f?f.material:"")}" placeholder="Кабель ВВГнг 3х2,5 / утеплитель / фланец 159">
+   <label class="f" id="fml">Что лежит *</label><input id="fm" list="fmdl" autocomplete="off" value="${esc(f?f.material:"")}" placeholder="начните писать — подсказки из МПЗ: кабель ВВГнг 3х2,5, фланец 159"><datalist id="fmdl"></datalist><div id="fmh" class="muted"></div>
    <label class="f">Примечание (ряд, ярус, чей)</label><input id="fn" value="${esc(f?f.note:"")}" placeholder="2-й ряд от ангара, под тентом">
    <div id="fmat"><div class="g2x"><div><label class="f">Количество</label><input id="fq" value="${esc(f?f.qty:"")}" inputmode="decimal"></div><div><label class="f">Ед.</label><input id="fu" data-sug="map_unit" value="${esc(f?f.unit:"")}" placeholder="шт, м, т, пал."></div></div>
    <label class="f">Цвет флажка</label><div class="row" style="gap:6px">${Object.keys(FLC).map(k=>`<label style="display:flex;align-items:center;gap:3px"><input type="radio" name="fc" value="${k}" ${(f?f.color||"red":"red")===k?"checked":""} style="width:auto"><span style="display:inline-block;width:18px;height:18px;background:${FLC[k]};border-radius:4px"></span></label>`).join("")}</div></div>
-   <label class="f">Фото (до 3)</label><input type="file" id="fp" accept="image/*" capture="environment" multiple>
+   <label class="f">Фото (до 20)</label><input type="file" id="fp" accept="image/*" capture="environment" multiple>
    <div class="row" style="margin-top:12px"><button class="btn p grow" id="mok">СОХРАНИТЬ</button><button class="btn" data-close>Отмена</button></div>`,box=>{sugAttach(box);
    const sic=()=>{box.querySelectorAll("[data-ic]").forEach(b=>b.classList.toggle("p",b.dataset.ic===ic));$("#fmat",box).style.display=ic?"none":"";$("#fml",box).textContent=ic?"Подпись * (что за объект)":"Что лежит *";
      $("#fm",box).placeholder=ic?{gate:"Ворота № 1 (въезд)",kpp:"КПП-1 (главный въезд)",hangar:"Ангар № 1",crane:"Кран Liebherr 50 т",fork:"Погрузчик Hyster 3 т",cont:"Контейнер 40' — инструмент",office:"Офис склада / бытовка 2"}[ic]:"Кабель ВВГнг 3х2,5 / утеплитель / фланец 159";
      if(ic&&!f&&!$("#fm",box).value.trim())$("#fm",box).value=MIC[ic][0].split(" (")[0]};
+   {const inp=$("#fm",box),dl=$("#fmdl",box);const mem=[...new Set(sugList("map_mat"))];let t=0,seq=0;   // 1.9.40: подсказки из МПЗ
+    inp.addEventListener("input",()=>{clearTimeout(t);const v=inp.value.trim();if(ic||v.length<3){dl.innerHTML="";return}t=setTimeout(async()=>{const my=++seq;let L=[];
+      try{L=await api("GET","/api/collections/mpz_stock/records?perPage=25&skipTotal=1&sort=-qty_end&filter="+encodeURIComponent(wfil(lcq(v)))).then(j=>j.items)}catch(_){}if(my!==seq)return;
+      const mm=mem.filter(x=>wmatch(v,x)).slice(0,5);const seen=new Set();
+      dl.innerHTML=mm.concat(L.map(x=>x.name)).filter(x=>!seen.has(x)&&seen.add(x)).map(x=>`<option value="${esc(x)}">`).join("");
+      const h=$("#fmh",box);if(h)h.textContent=L.length?`МПЗ: ${L.length} похожих — выберите из списка`:"";},300)})}
    box.querySelectorAll("[data-ic]").forEach(b=>b.onclick=()=>{const was=ic;ic=b.dataset.ic;if(!f&&MIC[was]&&$("#fm",box).value===MIC[was][0].split(" (")[0])$("#fm",box).value="";sic()});sic();
    $("#mok",box).onclick=e=>act(e.target,async()=>{const m=$("#fm",box).value.trim();if(!m)throw new Error(ic?"Напишите подпись.":"Напишите, что лежит.");MAPS.lastIcon=f?MAPS.lastIcon:ic;
      const fd=new FormData();fd.append("material",m);fd.append("qty",$("#fq",box).value.trim());fd.append("unit",$("#fu",box).value.trim());fd.append("note",$("#fn",box).value.trim());
      fd.append("color",(box.querySelector('input[name="fc"]:checked')||{}).value||"red");fd.append("icon",ic);if(ic){fd.set("qty","");fd.set("unit","")}
-     for(const x of [...$("#fp",box).files].slice(0,3))fd.append("photo+",await shrinkImg(x,2400).catch(()=>x));
+     const pf=[...$("#fp",box).files];if(pf.length+(f&&f.photo?f.photo.length:0)>20)throw new Error("У флажка — до 20 фото.");for(const x of pf)fd.append("photo+",await shrinkImg(x,2400).catch(()=>x));
      let r;if(f)r=await api("PATCH","/api/collections/smap_flags/records/"+f.id,fd,true);
      else{fd.append("x",String(p.x));fd.append("y",String(p.y));fd.append("zone",zone);fd.append("created_by",S.user.id);r=await api("POST","/api/collections/smap_flags/records",fd,true)}
      MAPS.flags=[r].concat(MAPS.flags.filter(x=>x.id!==r.id));MAPS.focus=r.id;closeModal();vMap()},"Флажок сохранён")})}
@@ -2402,6 +2418,46 @@ async function mzNormWarn(who,lines,I){if(!who||!lines.length)return [];let N=[]
     const mv=await all("mz_moves",`item="${it.id}"&&(kind="out"||kind="ret")&&created>="${since}"&&who="${who.replace(/"/g,"")}"`,"created").catch(()=>[]);
     const got=mv.reduce((a,m)=>a+(m.kind==="out"?num(m.qty):-num(m.qty)),0);if(got+num(l.qty)>num(n.qty)+1e-9)out.push({it,n,got,add:num(l.qty),D})}
   return out}
+
+/* ===================== 1.9.40: СВЕРКА ПО ШИФРАМ — заявки (архив + программа) ↔ оперативка ↔ сводный отчёт ↔ МПЗ ===================== */
+const CDS={q:"",code:"",list:null,rep:null};
+const CST={stock:["ЕСТЬ НА СКЛАДЕ — МОЖНО ВЫДАТЬ","g"],part:["ЧАСТИЧНО НА СКЛАДЕ","y"],gone:["ПОСТАВЛЕНО ПОД ШИФР, В МПЗ НЕ ВИДНО","o"],none:["НЕ ПОСТАВЛЕНО","r"],issued:["ВЫДАНО","gr"]};
+async function vCodes(id,changed){if(role()===""||S.user.scope)return vHome();if(changed&&$("#cdsr"))return;
+  if(id&&!CDS.code){CDS.code=decodeURIComponent(id);CDS.q=CDS.code}
+  if(!CDS.list){try{CDS.list=(await api("GET","/api/vs/codes/list")).codes}catch(e){CDS.list=[];toast(e.message,"err")}}
+  if(S.route!=="codes")return;
+  const L=CDS.list.filter(c=>!CDS.q||lcq(c.code).replace(/\s+/g,"").includes(lcq(CDS.q).replace(/\s+/g,"").replace(/о/g,"0"))||c.n.includes(lcq(CDS.q).replace(/\s+/g,"").replace(/о/g,"0"))).slice(0,40);
+  $("#main").innerHTML=`<h1>⇄ Сверка по шифрам</h1><div class="muted" style="margin:-6px 0 10px">Шифр с заявки (архив заявок и заявки в программе) → что поставлено под этот шифр по оперативке (УПД, кто принял — из сводного отчёта) → что сейчас есть в остатках МПЗ. Видно, какой материал по шифру уже на складе и его можно выдать.</div>
+   <div class="card noprint"><div class="row" style="gap:6px;flex-wrap:wrap;align-items:flex-end"><div class="grow" style="min-width:240px"><label class="f">Шифр (целиком или начало: «ВС.24.П0-Э1.4»)</label><input id="cdq" list="cddl" value="${esc(CDS.q)}" placeholder="ВС.24.П0-Э1.1-РД-ПС-АР"><datalist id="cddl">${CDS.list.slice(0,800).map(c=>`<option value="${esc(c.code)}">`).join("")}</datalist></div>
+    <button class="btn p" id="cdgo">ПОКАЗАТЬ</button>${CDS.rep?`<button class="btn" id="cdx">⬇ Excel</button>`:""}</div>
+    <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">${L.map(c=>`<button class="btn sm" data-cd="${esc(c.code)}" title="заявок: ${c.req+c.app}, оперативка: ${c.oper}">${esc(c.code)} <span class="muted">${c.req+c.app}/${c.oper}</span></button>`).join("")||'<span class="muted">Шифров не найдено — загрузите архив заявок и оперативку.</span>'}</div>
+    <div class="muted" style="margin-top:4px">Цифры у шифра: строк в заявках / строк в оперативке.</div></div>
+   <div id="cdsr">${CDS.rep?codesHtml(CDS.rep):""}</div>`;
+  const go=v=>{CDS.code=v.trim();CDS.q=CDS.code;if(!CDS.code)return;act($("#cdgo"),async()=>{$("#cdsr").innerHTML='<div class="card muted">⏳ Сверяю заявки, оперативку, сводный отчёт и МПЗ…</div>';CDS.rep=await api("GET","/api/vs/codes/report?code="+encodeURIComponent(CDS.code));vCodes()})};
+  $("#cdgo").onclick=()=>go($("#cdq").value);$("#cdq").onkeydown=e=>{if(e.key==="Enter")go(e.target.value)};
+  let t=0;$("#cdq").oninput=e=>{clearTimeout(t);t=setTimeout(()=>{CDS.q=e.target.value;const r=CDS.rep;vCodes().then(()=>{const q=$("#cdq");if(q){q.focus();q.setSelectionRange(q.value.length,q.value.length)}})},350)};
+  document.querySelectorAll("[data-cd]").forEach(b=>b.onclick=()=>go(b.dataset.cd));
+  const x=$("#cdx");if(x)x.onclick=()=>codesExcel(CDS.rep)}
+function codesHtml(R){const G=R.groups,cnt={};G.forEach(g=>cnt[g.st]=(cnt[g.st]||0)+1);
+  const eso=o=>(o.eso||[]).map(u=>`<div class="muted">сводный: № ${esc(u.no)}${u.gm?" ("+esc(u.gm)+")":""} · принял ${esc(u.keeper||"—")} ${dmy(u.date)}${u.status?" · "+esc(u.status):""}</div>`).join("");
+  return `<div class="card"><div class="row" style="gap:8px;flex-wrap:wrap;align-items:center"><b class="grow">Шифр: ${esc(R.code)}</b>${Object.keys(CST).map(k=>`<span class="pill ${CST[k][1]}">${CST[k][0]}: ${cnt[k]||0}</span>`).join("")}</div>
+    ${R.codes.length>1?`<div class="muted" style="margin-top:4px">Вошли шифры: ${R.codes.map(esc).join("; ")}</div>`:""}
+    <div class="muted">Оперативка под шифр: ${R.oper_rows} строк · МПЗ: ${R.mpz_rows} строк · сводный отчёт: ${R.eso_rows} документов</div></div>
+   <div class="tw" style="margin-top:8px"><table><tr><th>Материал по заявкам</th><th>Заявлено</th><th>Выдано</th><th>Нужно</th><th>На складе (МПЗ)</th><th>Поставлено под шифр</th><th>Итог</th></tr>
+    ${G.map(g=>`<tr><td><b>${esc(g.material)}</b> <span class="muted">${esc(g.unit)}</span><details><summary class="muted" style="cursor:pointer">заявки: ${g.reqs.length}</summary>${g.reqs.map(r=>`<div class="muted">${r.id?`<a href="#/request/${r.id}">№ ${esc(r.no)}</a>`:"№ "+esc(r.no||"—")} ${dmy(r.date)} · ${esc(r.who||"")} · ${fmtQ(r.qty)}${r.iss?" / выдано "+fmtQ(r.iss):""} <span class="pill gr" style="font-size:10px">${esc(r.src)}</span>${R.codes.length>1?" · "+esc(r.code):""}</div>`).join("")}</details></td>
+     <td>${fmtQ(g.ordered)}</td><td>${fmtQ(g.issued)}</td><td><b>${fmtQ(g.need)}</b></td>
+     <td>${g.mpz.length?`<b style="color:${g.stock>0?"var(--g)":"inherit"}">${fmtQ(g.stock)}</b><details><summary class="muted" style="cursor:pointer">${g.mpz.length} назв. в МПЗ</summary>${g.mpz.map(m=>`<div class="muted">${esc(m.name)} — ${fmtQ(m.qty)} ${esc(m.unit)} · ${esc(m.wh)} <span style="opacity:.6">(${Math.round(m.s*100)}%)</span></div>`).join("")}</details>`:'<span class="muted">нет в МПЗ</span>'}${(g.near||[]).length?`<div class="muted" style="color:var(--o,#c2410c)">похожее, но другой размер/марка: ${g.near.slice(0,2).map(m=>esc(m.name)+" — "+fmtQ(m.qty)+" "+esc(m.unit)).join("; ")}</div>`:""}</td>
+     <td>${g.oper.length?g.oper.slice(0,3).map(o=>`<div>${esc(o.name)} — ${fmtQ(o.delivered)} из ${fmtQ(o.qty)} ${esc(o.unit)}${o.torg?` <span class="muted">· ${esc(o.torg)}</span>`:""}</div>${eso(o)}`).join("")+(g.oper.length>3?`<div class="muted">… ещё ${g.oper.length-3}</div>`:""):'<span class="muted">в оперативке под шифр нет</span>'}</td>
+     <td><span class="pill ${CST[g.st][1]}">${CST[g.st][0]}</span></td></tr>`).join("")||'<tr><td colspan="7" class="muted">Заявок с этим шифром нет.</td></tr>'}</table></div>
+   ${R.extra.length?`<div class="card" style="margin-top:10px"><b>Поставлено под шифр, а заявок на это нет — ${R.extra.length}</b><div class="tw" style="margin-top:6px"><table><tr><th>Материал (оперативка)</th><th>Поставлено</th><th>УПД / сводный</th><th>На складе (МПЗ)</th></tr>${R.extra.map(o=>`<tr><td>${esc(o.name)}</td><td>${fmtQ(o.delivered)} из ${fmtQ(o.qty)} ${esc(o.unit)}</td><td>${esc(o.torg||"")}${eso(o)}</td><td><b style="color:${o.stock>0?"var(--g)":"inherit"}">${fmtQ(o.stock)}</b>${o.mpz.length?`<div class="muted">${esc(o.mpz[0].name)}</div>`:""}</td></tr>`).join("")}</table></div></div>`:""}
+   <div class="muted" style="margin-top:6px">Названия сравниваются по словам и размерам (не дословно), поэтому проверяйте строки «${CST.part[0].toLowerCase()}» и «${CST.gone[0].toLowerCase()}» глазами. На складе — по последней выгрузке МПЗ, для всех шифров вместе.</div>`}
+function codesExcel(R){const T=XS.cC;const ST={stock:XS.cG,part:XS.sY,gone:XS.sY,none:XS.cR,issued:T};
+  const a=[[{v:"Сверка по шифру: "+R.code,s:XS.title}],[{v:"Заявки ↔ оперативка ↔ сводный отчёт ↔ МПЗ · "+dt(new Date().toISOString()),s:T}],[],["Материал по заявкам","Ед.","Заявлено","Выдано","Нужно","На складе (МПЗ)","Названия в МПЗ","Поставлено под шифр (оперативка)","УПД","Принял (сводный)","Заявки","Итог"].map(v=>({v,s:XS.head}))];
+  R.groups.forEach(g=>a.push([{v:g.material,s:T},{v:g.unit,s:T},{v:g.ordered,s:XS.cN},{v:g.issued,s:XS.cN},{v:g.need,s:XS.cN},{v:g.stock,s:g.stock>0?XS.cG:XS.cN},{v:g.mpz.slice(0,3).map(m=>m.name+" — "+m.qty).join("; "),s:T},
+    {v:g.oper.slice(0,3).map(o=>o.name+": "+o.delivered+" из "+o.qty+" "+o.unit).join("; "),s:T},{v:g.oper.slice(0,3).map(o=>o.torg).filter(Boolean).join("; "),s:T},{v:g.oper.flatMap(o=>o.eso).slice(0,3).map(u=>(u.keeper||"")+" "+dmy(u.date)).join("; "),s:T},{v:g.reqs.map(r=>r.no).filter(Boolean).slice(0,15).join(", "),s:T},{v:CST[g.st][0],s:ST[g.st]}]));
+  const b=[[{v:"Поставлено под шифр, заявок нет: "+R.code,s:XS.title}],[],["Материал (оперативка)","Ед.","Кол-во","Поставлено","УПД","Принял (сводный)","На складе (МПЗ)","Название в МПЗ"].map(v=>({v,s:XS.head}))];
+  R.extra.forEach(o=>b.push([{v:o.name,s:T},{v:o.unit,s:T},{v:o.qty,s:XS.cN},{v:o.delivered,s:XS.cN},{v:o.torg,s:T},{v:(o.eso||[]).map(u=>(u.keeper||"")+" "+dmy(u.date)).join("; "),s:T},{v:o.stock,s:o.stock>0?XS.cG:XS.cN},{v:o.mpz.length?o.mpz[0].name:"",s:T}]));
+  saveBlob(xlsxBlob([{name:"По заявкам",cols:[44,7,11,11,11,13,44,48,22,24,26,30],rows:a,merges:["A1:L1","A2:L2"],freeze:4},{name:"Без заявок",cols:[48,7,10,11,24,26,13,44],rows:b,merges:["A1:H1"],freeze:3}]),"Sverka_"+R.code.replace(/[^\wА-Яа-яЁё.-]+/g,"_").slice(0,60)+".xlsx")}
 
 /* ----- 1.9.31: ПЛАН ПОГРУЗКИ — где лежит, чем грузить, на какую машину; порядок: по местам, сначала кран/КМУ, потом погрузчик, потом вручную ----- */
 const LOAD_BASE=["КМУ (кран-манипулятор)","Погрузчик (вилочный)","Вилочник (рохля)","Вручную (стропальщики)"];
