@@ -2094,11 +2094,12 @@ async function tunMapHints(names){let F=MAPS.flags&&MAPS.flags.length&&S.mapLoad
   return names.map(n=>{const w=qWords(n).filter(x=>x.length>=3).slice(0,3).join(" ");return w?F.filter(f=>wmatch(w,f.search_lc||f.material)).slice(0,3):[]})}
 
 /* ----- 1) Новая заявка: скан → шапка → позиции → где лежит → чем грузить → проверка ----- */
-async function tunReq(){await sugFresh(["object","recipient","material","unit","supplier","pick_place","pick_tool","ship_place","ship_load"]);
+async function tunReq(){await sugFresh(["object","recipient","material","unit","supplier","rd","pick_place","pick_tool","ship_place","ship_load"]);
   const c={files:[],items:[],date:new Date().toISOString().slice(0,10),handed:false};
   const rowsHtml=()=>(c.items.length?c.items:[{}]).map((it,k)=>`<div class="card" data-tr style="padding:10px;margin-top:8px"><div class="row"><b class="grow">Позиция ${k+1}</b><button type="button" class="btn sm" data-trx="${k}" aria-label="Удалить позицию">✕</button></div>
     <input data-k="material" data-sug="material" placeholder="Материал *" value="${esc(it.material||"")}">
-    <div class="row" style="gap:6px;margin-top:6px"><input data-k="qty_ordered" inputmode="decimal" placeholder="Кол-во *" value="${esc(it.qty_ordered||"")}" style="flex:1"><input data-k="unit" data-sug="unit" placeholder="Ед." value="${esc(it.unit||"")}" style="width:90px"><input data-k="supplier" data-sug="supplier" placeholder="Поставщик" value="${esc(it.supplier||"")}" style="flex:2"></div></div>`).join("");
+    <div class="row" style="gap:6px;margin-top:6px"><input data-k="qty_ordered" inputmode="decimal" placeholder="Кол-во *" value="${esc(it.qty_ordered||"")}" style="flex:1"><input data-k="unit" data-sug="unit" placeholder="Ед." value="${esc(it.unit||"")}" style="width:90px"><input data-k="supplier" data-sug="supplier" placeholder="Поставщик" value="${esc(it.supplier||"")}" style="flex:2"></div>
+    <div class="row" style="gap:6px;margin-top:6px"><input data-k="supply_doc" placeholder="Док. поставки (УПД): № от дата" value="${esc(it.supply_doc||"")}" style="flex:2"><input data-k="rd" data-sug="rd" placeholder="РД / № позиции" value="${esc(it.rd||"")}" style="flex:1"></div><div data-hint></div></div>`).join("");   // 1.9.38: УПД и РД — как в обычной форме
   const readRows=box=>{c.items=[...box.querySelectorAll("[data-tr]")].map((r,k)=>{const o=Object.assign({},c.items[k]||{});r.querySelectorAll("[data-k]").forEach(i=>o[i.dataset.k]=i.value.trim());return o}).filter(o=>o.material||o.qty_ordered)};
   tunnel({title:"Новая заявка",okLast:"СОХРАНИТЬ ЗАЯВКУ",c,steps:[
    {t:"Скан заявки",sub:"PDF или фото бумажной заявки — сервер прочитает номер, объект и позиции. Нет скана — «Пропустить».",
@@ -2108,7 +2109,7 @@ async function tunReq(){await sugFresh(["object","recipient","material","unit","
        act(null,async()=>{st.innerHTML=`<div class="muted">⏳ Читаю заявку… 10–40 секунд на страницу</div>`;const fd=new FormData();fd.append("uploaded_by",S.user.id);fd.append("file",/^image\//.test(f.type)&&f.size>4e6?await shrink(f):f);
          const up=await api("POST","/api/collections/request_ocr/records",fd,true);const res=await api("POST","/api/vs/request/ocr",{upload:up.id});const h=res.header||{};
          c.ocr=res;c.number=c.number||h.number||"";if(h.date)c.date=h.date;c.object=c.object||h.object||"";c.recipient=c.recipient||h.recipient||"";
-         c.items=(res.items||[]).map(it=>({material:it.material||"",qty_ordered:it.qty_ordered||it.qty||"",unit:it.unit||"",supplier:it.supplier||""}));
+         c.items=(res.items||[]).map(it=>Object.assign({},it,{material:it.material||"",qty_ordered:it.qty_ordered||it.qty||"",unit:it.unit||"",supplier:it.supplier||"",supply_doc:it.supply_doc||"",rd:it.rd||""}));
          if(T.c===c&&$("#tqs"))$("#tqs").innerHTML=`<div class="banner green" style="margin:0">Прочитано позиций: ${c.items.length}. Дальше — проверьте шапку и позиции.</div>`}).catch(()=>{const s=$("#tqs");if(s)s.innerHTML=`<div class="muted" style="color:var(--r)">Не получилось прочитать — заполните вручную.</div>`})});
      $("#tunform",box).onclick=()=>{tunClose();requestForm()}}},
    {t:"Шапка заявки",html:()=>`<label class="f">№ заявки *</label><input id="tn" value="${esc(c.number||"")}" autocomplete="off">
@@ -2121,7 +2122,12 @@ async function tunReq(){await sugFresh(["object","recipient","material","unit","
     check:()=>c.number?"":"Укажите № заявки (или «Пропустить» — спрошу в конце)."},
    {t:"Позиции",sub:"Материал, количество, единица. Подсказки — из прошлых заявок.",
     html:()=>`<div id="trows">${rowsHtml()}</div><button type="button" class="btn" id="tradd" style="margin-top:8px">＋ Ещё позиция</button>`,
-    bind:(box)=>{const rb=()=>{box.querySelectorAll("[data-trx]").forEach(b=>b.onclick=()=>{readRows(box);c.items.splice(+b.dataset.trx,1);$("#trows",box).innerHTML=rowsHtml();sugAttach(box);rb()})};rb();
+    bind:(box)=>{const ah=()=>box.querySelectorAll("[data-tr]").forEach(rw=>{if(rw.dataset.hb)return;rw.dataset.hb="1";let t=null,seq=0;
+       const go=()=>{clearTimeout(t);t=setTimeout(async()=>{const sp=rw.querySelector('[data-k="supplier"]').value.trim(),u=rw.querySelector('[data-k="supply_doc"]').value.trim(),h=rw.querySelector("[data-hint]");
+         if(!sp||!u){h.innerHTML="";return}const my=++seq;try{const j=await api("POST","/api/vs/acts/match",{upd:u,supplier:sp});if(my!==seq)return;const op=(j.acts||[]).filter(a=>a.open);
+           h.innerHTML=j.acts&&j.acts.length?actsBanner(j.acts,true)+(op.length?`<div class="muted" style="color:var(--v);font-weight:700">С этой позицией заявку сохранить нельзя без обхода руководителя (с объяснением).</div>`:""):""}catch(_){}},500)};
+       ['[data-k="supplier"]','[data-k="supply_doc"]'].forEach(q=>{const el=rw.querySelector(q);el.addEventListener("input",go);el.addEventListener("change",go)});go()});
+     const rb=()=>{ah();box.querySelectorAll("[data-trx]").forEach(b=>b.onclick=()=>{readRows(box);c.items.splice(+b.dataset.trx,1);$("#trows",box).innerHTML=rowsHtml();sugAttach(box);rb()})};rb();
      $("#tradd",box).onclick=()=>{readRows(box);c.items.push({});$("#trows",box).innerHTML=rowsHtml();sugAttach(box);rb();const L=box.querySelectorAll('[data-k="material"]');L[L.length-1].focus()}},
     read:readRows,check:()=>!c.items.length?"Добавьте хотя бы одну позицию.":c.items.some(i=>!i.material||!(num(i.qty_ordered)>0))?"У каждой позиции — материал и количество.":""},
    {t:"Где лежит",sub:"Место на складе для каждой позиции — запомнится и подставится в план погрузки. Подсказки: флажки на карте, прошлые заявки, приход.",
@@ -2142,9 +2148,10 @@ async function tunReq(){await sugFresh(["object","recipient","material","unit","
     read:(b)=>b.querySelectorAll("[data-ld]").forEach(i=>c.items[+i.dataset.ld].load=i.value.trim())},
    {t:"Проверьте и сохраните",html:()=>tunCard(`<div style="font-size:18px"><b>Заявка № ${esc(c.number||"—")}</b> от ${esc(dmy(c.date)||"—")}</div><div>${esc([c.object,c.recipient].filter(Boolean).join(" · ")||"объект и получатель не указаны")}</div>
       <div class="muted">${c.handed?"✔ передали — сразу в работу":"📬 на почте, пока не нажмёте «Принято»"}${c.files.length?" · скан приложится":""}</div>`)+
-     tunCard(`<b>Позиции: ${c.items.length}</b>${c.items.map((it,k)=>`<div style="padding:6px 0;border-bottom:1px dashed var(--line)">${k+1}. ${esc(it.material)} — <b>${fmtQ(it.qty_ordered)} ${esc(it.unit||"")}</b>${it.place||it.load?`<div class="muted">${it.place?"📍 "+esc(it.place):""}${it.load?" · 🏗 "+esc(it.load):""}</div>`:""}</div>`).join("")}`),
+     tunCard(`<b>Позиции: ${c.items.length}</b>${c.items.map((it,k)=>`<div style="padding:6px 0;border-bottom:1px dashed var(--line)">${k+1}. ${esc(it.material)} — <b>${fmtQ(it.qty_ordered)} ${esc(it.unit||"")}</b>${it.supply_doc||it.supplier?`<div class="muted">${it.supplier?esc(it.supplier):""}${it.supply_doc?" · УПД "+esc(it.supply_doc):""}${it.rd?" · РД "+esc(it.rd):""}</div>`:""}${it.place||it.load?`<div class="muted">${it.place?"📍 "+esc(it.place):""}${it.load?" · 🏗 "+esc(it.load):""}</div>`:""}</div>`).join("")}`),
     check:()=>!c.number?"Нет № заявки — вернитесь на шаг «Шапка заявки».":!c.items.length?"Нет позиций — вернитесь на шаг «Позиции».":""}],
-   done:async()=>{const items=c.items.map(it=>({material:it.material,qty_ordered:it.qty_ordered,unit:it.unit,supplier:it.supplier||""}));
+   done:async()=>{const items=c.items.map(it=>{const o={material:it.material,qty_ordered:it.qty_ordered,unit:it.unit,supplier:it.supplier||"",supply_doc:it.supply_doc||"",rd:it.rd||""};
+     ["project_name","name1c","objcode","stock_note"].forEach(k=>{if(it[k])o[k]=it[k]});return o});
      const j=await api("POST","/api/vs/request/create",{number:c.number,req_date:c.date?c.date+" 12:00:00.000Z":"",object:c.object||"",recipient:c.recipient||"",note:c.note||"",handed:!!c.handed,items});
      const mem=c.items.filter(i=>i.place||i.load).map(i=>({material:i.material,place:i.place||"",load:i.load||""}));
      if(mem.length){try{await api("POST","/api/vs/loadmem/set",{lines:mem})}catch(e){toast("Места не запомнились: "+e.message,"err")}}
