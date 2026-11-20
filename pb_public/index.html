@@ -2438,21 +2438,28 @@ async function mzNormWarn(who,lines,I){if(!who||!lines.length)return [];let N=[]
 /* ===================== 1.9.40: СВЕРКА ПО ШИФРАМ — заявки (архив + программа) ↔ оперативка ↔ сводный отчёт ↔ МПЗ ===================== */
 const CDS={q:"",code:"",list:null,rep:null};
 const CST={stock:["ЕСТЬ НА СКЛАДЕ — МОЖНО ВЫДАТЬ","g"],part:["ЧАСТИЧНО НА СКЛАДЕ","y"],gone:["ПОСТАВЛЕНО ПОД ШИФР, В МПЗ НЕ ВИДНО","o"],none:["НЕ ПОСТАВЛЕНО","r"],issued:["ВЫДАНО","gr"]};
+/* 1.9.45: фильтр и кнопки шифров отдельно — набор в поле не перерисовывает отчёт */
+function cdFilter(q){const n=lcq(q||"").replace(/\s+/g,"").replace(/о/g,"0");return (CDS.list||[]).filter(c=>!q||lcq(c.code).replace(/\s+/g,"").includes(n)||c.n.includes(n)).slice(0,40)}
+function cdChips(L){return L.map(c=>`<button class="btn sm" data-cd="${esc(c.code)}" title="заявок: ${c.req+c.app}, оперативка: ${c.oper}">${esc(c.code)} <span class="muted">${c.req+c.app}/${c.oper}</span></button>`).join("")||'<span class="muted">Шифров не найдено — загрузите архив заявок и оперативку.</span>'}
 async function vCodes(id,changed){if(role()===""||S.user.scope)return vHome();if(changed&&$("#cdsr"))return;
   if(id&&!CDS.code){CDS.code=decodeURIComponent(id);CDS.q=CDS.code}
   if(!CDS.list){try{CDS.list=(await api("GET","/api/vs/codes/list")).codes}catch(e){CDS.list=[];toast(e.message,"err")}}
   if(S.route!=="codes")return;
-  const L=CDS.list.filter(c=>!CDS.q||lcq(c.code).replace(/\s+/g,"").includes(lcq(CDS.q).replace(/\s+/g,"").replace(/о/g,"0"))||c.n.includes(lcq(CDS.q).replace(/\s+/g,"").replace(/о/g,"0"))).slice(0,40);
+  const L=cdFilter(CDS.q);
   $("#main").innerHTML=`<h1>⇄ Сверка по шифрам</h1><div class="muted" style="margin:-6px 0 10px">Шифр с заявки (архив заявок и заявки в программе) → что поставлено под этот шифр по оперативке (УПД, кто принял — из сводного отчёта) → что сейчас есть в остатках МПЗ. Видно, какой материал по шифру уже на складе и его можно выдать.</div>
    <div class="card noprint"><div class="row" style="gap:6px;flex-wrap:wrap;align-items:flex-end"><div class="grow" style="min-width:240px"><label class="f">Шифр (целиком или начало: «ВС.24.П0-Э1.4»)</label><input id="cdq" list="cddl" value="${esc(CDS.q)}" placeholder="ВС.24.П0-Э1.1-РД-ПС-АР"><datalist id="cddl">${CDS.list.slice(0,800).map(c=>`<option value="${esc(c.code)}">`).join("")}</datalist></div>
     <button class="btn p" id="cdgo">ПОКАЗАТЬ</button>${CDS.rep?`<button class="btn" id="cdx">⬇ Excel</button>`:""}</div>
-    <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">${L.map(c=>`<button class="btn sm" data-cd="${esc(c.code)}" title="заявок: ${c.req+c.app}, оперативка: ${c.oper}">${esc(c.code)} <span class="muted">${c.req+c.app}/${c.oper}</span></button>`).join("")||'<span class="muted">Шифров не найдено — загрузите архив заявок и оперативку.</span>'}</div>
+    <div class="row" id="cdchips" style="gap:6px;flex-wrap:wrap;margin-top:8px">${cdChips(L)}</div>
     <div class="muted" style="margin-top:4px">Цифры у шифра: строк в заявках / строк в оперативке.</div></div>
    <div id="cdsr">${CDS.rep?codesHtml(CDS.rep):""}</div>`;
-  const go=v=>{CDS.code=v.trim();CDS.q=CDS.code;if(!CDS.code)return;act($("#cdgo"),async()=>{$("#cdsr").innerHTML='<div class="card muted">⏳ Сверяю заявки, оперативку, сводный отчёт и МПЗ…</div>';CDS.rep=await api("GET","/api/vs/codes/report?code="+encodeURIComponent(CDS.code));vCodes()})};
+  const go=v=>{CDS.code=v.trim();CDS.q=CDS.code;if(!CDS.code)return;act($("#cdgo"),async()=>{$("#cdsr").innerHTML='<div class="card muted">⏳ Сверяю заявки, оперативку, сводный отчёт и МПЗ…</div>';
+    try{CDS.rep=await Promise.race([api("GET","/api/vs/codes/report?code="+encodeURIComponent(CDS.code)),new Promise((_,no)=>setTimeout(()=>no(new Error("Сервер считает слишком долго — попробуйте шифр точнее или позже.")),120000))]);vCodes()}
+    catch(e){CDS.rep=null;const r=$("#cdsr");if(r)r.innerHTML=`<div class="card" id="cderr" style="border-left:4px solid var(--r,#b91c1c)">⚠ ${esc(e.message||String(e))}</div>`}})};
   $("#cdgo").onclick=()=>go($("#cdq").value);$("#cdq").onkeydown=e=>{if(e.key==="Enter")go(e.target.value)};
-  let t=0;$("#cdq").oninput=e=>{clearTimeout(t);t=setTimeout(()=>{CDS.q=e.target.value;const r=CDS.rep;vCodes().then(()=>{const q=$("#cdq");if(q){q.focus();q.setSelectionRange(q.value.length,q.value.length)}})},350)};
-  document.querySelectorAll("[data-cd]").forEach(b=>b.onclick=()=>go(b.dataset.cd));
+  const bindChips=()=>document.querySelectorAll("[data-cd]").forEach(b=>b.onclick=()=>go(b.dataset.cd));
+  // 1.9.45: при наборе обновляются только кнопки шифров, а не вся страница с большой таблицей
+  let t=0;$("#cdq").oninput=e=>{clearTimeout(t);t=setTimeout(()=>{CDS.q=e.target.value;const c=$("#cdchips");if(c){c.innerHTML=cdChips(cdFilter(CDS.q));bindChips()}},250)};
+  bindChips();
   const x=$("#cdx");if(x)x.onclick=()=>codesExcel(CDS.rep)}
 function codesHtml(R){const G=R.groups,cnt={};G.forEach(g=>cnt[g.st]=(cnt[g.st]||0)+1);
   const eso=o=>(o.eso||[]).map(u=>`<div class="muted">сводный: № ${esc(u.no)}${u.gm?" ("+esc(u.gm)+")":""} · принял ${esc(u.keeper||"—")} ${dmy(u.date)}${u.status?" · "+esc(u.status):""}</div>`).join("");
