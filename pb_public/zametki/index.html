@@ -28,7 +28,7 @@ button.p{background:var(--acc);border-color:var(--acc);color:#14181f;font-weight
 #alarm{position:fixed;left:12px;right:12px;top:70px;max-width:620px;margin:0 auto;background:#b91c1c;color:#fff;border-radius:14px;padding:14px;z-index:10;box-shadow:0 8px 30px rgba(0,0,0,.35)}#alarm button{min-height:42px;margin:8px 6px 0 0}
 #toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#14181f;color:#fff;padding:10px 16px;border-radius:10px;opacity:0;transition:.2s;pointer-events:none;z-index:9}
 </style></head><body>
-<header><div class="t"><b>📝 Заметки</b><small id="net"></small></div><small>Хранятся только в этом телефоне · работают без интернета</small></header>
+<header><div class="t"><b>📝 Заметки</b><small id="net"></small></div><small id="syn">Хранятся в телефоне · работают без интернета</small></header>
 <main>
   <div id="ban"></div>
   <div class="add"><textarea id="tx" placeholder="Новая заметка или задача…" rows="2"></textarea><button class="p" id="ad" aria-label="Добавить">＋</button></div>
@@ -48,20 +48,32 @@ const fmt=s=>{const d=new Date(s);return isNaN(d)?"":d.toLocaleString("ru-RU",{d
 function toast(m){const t=document.getElementById("toast");t.textContent=m;t.style.opacity=1;clearTimeout(t._h);t._h=setTimeout(()=>t.style.opacity=0,1800)}
 let mem=[];
 function load(){try{const v=JSON.parse(localStorage.getItem(K)||"[]");return Array.isArray(v)?v:[]}catch(_){return mem}}
-function save(l){mem=l;try{localStorage.setItem(K,JSON.stringify(l))}catch(_){toast("Память телефона недоступна — заметки сохранятся только до закрытия")}}
-let L=load();
+const sig=x=>JSON.stringify([x.text,x.done,x.done_at,x.remind,x.fired,!!x.del]);let SN={};
+function snap(l){SN={};l.forEach(x=>SN[x.id]=sig(x))}
+function raw(l){mem=l;try{localStorage.setItem(K,JSON.stringify(l))}catch(_){toast("Память телефона недоступна — заметки сохранятся только до закрытия")}}
+function save(l){const t=Date.now();l.forEach(x=>{if(SN[x.id]!==sig(x))x.u=t});snap(l);raw(l);clearTimeout(save._h);save._h=setTimeout(sync,1200)}
+const tok=()=>{try{return (JSON.parse(localStorage.getItem("vs_auth")||"{}")||{}).t||""}catch(_){return ""}};
+const syn=t=>{const e=document.getElementById("syn");if(e)e.textContent=t};
+let syncing=false;
+async function sync(){const t=tok();if(!t)return syn("📱 Только в этом телефоне — войдите в программу ВЕЛЕССТРОЙ, и заметки будут и на сервере");
+  if(syncing)return;syncing=true;
+  try{const r=await fetch("/api/vs/zametki/sync",{method:"POST",headers:{"Content-Type":"application/json","Authorization":t},body:JSON.stringify({items:load()})});
+    if(!r.ok)throw r.status;const j=await r.json();L=Array.isArray(j.items)?j.items:L;snap(L);raw(L);draw();syn("☁ Сохранено на сервере · видно в программе и в утреннем обходе")}
+  catch(e){syn(e===401||e===403?"📱 Вход в программу устарел — откройте ВЕЛЕССТРОЙ и войдите снова":"☁ Сервер недоступен — сохранено в телефоне, отправлю позже")}
+  finally{syncing=false}}
+let L=load();snap(L);
 function draw(){
-  const act=L.filter(x=>!x.done).length,dn=L.filter(x=>x.done).length;
-  document.getElementById("tabs").innerHTML=[["active","Не сделано · "+act],["done","Сделано · "+dn],["all","Все · "+L.length]].map(t=>`<button class="${F===t[0]?"on":""}" data-f="${t[0]}">${t[1]}</button>`).join("");
+  const A=L.filter(x=>!x.del);const act=A.filter(x=>!x.done).length,dn=A.filter(x=>x.done).length;
+  document.getElementById("tabs").innerHTML=[["active","Не сделано · "+act],["done","Сделано · "+dn],["all","Все · "+A.length]].map(t=>`<button class="${F===t[0]?"on":""}" data-f="${t[0]}">${t[1]}</button>`).join("");
   document.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{F=b.dataset.f;draw()});
   const q=Q.toLowerCase();
-  const v=L.filter(x=>(F==="all"||(F==="done")===!!x.done)&&(!q||x.text.toLowerCase().includes(q)))
+  const v=A.filter(x=>(F==="all"||(F==="done")===!!x.done)&&(!q||x.text.toLowerCase().includes(q)))
     .sort((a,b)=>F==="done"?(b.done_at||"").localeCompare(a.done_at||""):(a.done-b.done)||(b.at||"").localeCompare(a.at||""));
   document.getElementById("ls").innerHTML=v.map(x=>`<div class="it ${x.done?"done":""}"><input type="checkbox" data-c="${x.id}" ${x.done?"checked":""} aria-label="Сделано">
     <div style="flex:1;min-width:0"><div class="tx" data-e="${x.id}">${esc(x.text)}</div><div class="m">${fmt(x.at)}${x.remind&&!x.done?` <span class="rm${new Date(x.remind)<=new Date()?" due":""}">⏰ ${fmt(x.remind)}</span>`:""}${x.done?` · <span class="done-m">✔ сделано ${fmt(x.done_at)}</span>`:""}</div></div>
     ${x.done?"":`<button class="al" data-a="${x.id}" title="Напоминание" aria-label="Напоминание">⏰</button>`}<button class="x" data-d="${x.id}" aria-label="Удалить">✕</button></div>`).join("")||`<div class="empty">${q?"Ничего не найдено":F==="active"?"Всё сделано 👍":"Пусто"}</div>`;
   document.querySelectorAll("[data-c]").forEach(c=>c.onchange=()=>{const x=L.find(y=>y.id===c.dataset.c);x.done=c.checked;x.done_at=c.checked?now():"";save(L);setTimeout(draw,c.checked?250:0)});
-  document.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>{const x=L.find(y=>y.id===b.dataset.d);if(!confirm("Удалить заметку?\n\n"+x.text.slice(0,80)))return;L=L.filter(y=>y!==x);save(L);draw()});
+  document.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>{const x=L.find(y=>y.id===b.dataset.d);if(!confirm("Удалить заметку?\n\n"+x.text.slice(0,80)))return;x.del=true;save(L);draw()});
   document.querySelectorAll("[data-a]").forEach(b=>b.onclick=()=>{const x=L.find(y=>y.id===b.dataset.a);const cur=x.remind?toLocal(x.remind):toLocal(new Date(Date.now()+3600e3).toISOString());
     const t=prompt("Напомнить (дата и время, ДД.ММ.ГГГГ ЧЧ:ММ). Пусто — без напоминания:",cur.replace(/^(\d{4})-(\d{2})-(\d{2})T/,"$3.$2.$1 "));if(t===null)return;
     if(!t.trim()){x.remind="";x.fired=false;save(L);draw();return toast("Напоминание убрано")}
@@ -79,8 +91,8 @@ function add(){const el=document.getElementById("tx");const t=el.value.trim();if
 document.getElementById("ad").onclick=add;
 document.getElementById("tx").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();add()}};
 document.getElementById("q").oninput=e=>{Q=e.target.value.trim();draw()};
-document.getElementById("cl").onclick=()=>{const n=L.filter(x=>x.done).length;if(!n)return toast("Сделанных нет");if(!confirm("Убрать сделанные ("+n+")?"))return;L=L.filter(x=>!x.done);save(L);draw()};
-const listText=()=>L.filter(x=>F==="all"||(F==="done")===!!x.done).map(x=>(x.done?"✔ ":"☐ ")+x.text).join("\n");
+document.getElementById("cl").onclick=()=>{const n=L.filter(x=>x.done&&!x.del).length;if(!n)return toast("Сделанных нет");if(!confirm("Убрать сделанные ("+n+")?"))return;L.forEach(x=>{if(x.done)x.del=true});save(L);draw()};
+const listText=()=>L.filter(x=>!x.del).filter(x=>F==="all"||(F==="done")===!!x.done).map(x=>(x.done?"✔ ":"☐ ")+x.text).join("\n");
 document.getElementById("sh").onclick=async()=>{const t=listText();if(!t)return toast("Список пуст");
   if(navigator.share){try{await navigator.share({title:"Заметки",text:t});return}catch(_){return}}
   try{await navigator.clipboard.writeText(t);toast("Скопировано")}catch(_){const a=document.createElement("textarea");a.value=t;document.body.appendChild(a);a.select();document.execCommand("copy");a.remove();toast("Скопировано")}};
@@ -111,8 +123,8 @@ function ring(x){beep();try{navigator.vibrate&&navigator.vibrate([400,200,400,20
   document.getElementById("ald").onclick=()=>{const y=cur();if(y){y.done=true;y.done_at=now();save(L)}a.remove();draw()};
   document.getElementById("als").onclick=()=>{const y=cur();if(y){y.remind=new Date(Date.now()+6e5).toISOString();y.fired=false;save(L)}a.remove();draw();toast("Напомню через 10 минут")};
   document.getElementById("alc").onclick=()=>a.remove()}
-function tick(){L=load();const due=L.filter(x=>x.remind&&!x.done&&!x.fired&&new Date(x.remind)<=new Date());
+function tick(){L=load();const due=L.filter(x=>!x.del&&x.remind&&!x.done&&!x.fired&&new Date(x.remind)<=new Date());
   if(due.length){due.forEach(x=>x.fired=true);save(L);draw();ring(due[0])}}
 setInterval(tick,15000);addEventListener("focus",tick);
-draw();setTimeout(tick,800);
+draw();setTimeout(tick,800);sync();addEventListener("focus",()=>sync());addEventListener("online",()=>sync());
 </script></body></html>

@@ -2280,6 +2280,14 @@ async function tunRecv(){await sugFresh(["supplier","sender","vehicle","ship_pla
 const mornKey=()=>"vs_morning_"+(S.user&&S.user.id)+"_"+new Date().toLocaleDateString("ru-RU");
 function mornAuto(){try{if(!S.user||S.user.scope||!can.write()||appOn()||can.mz())return;if(navigator.webdriver&&!localStorage.getItem("vs_tun_test"))return;   // автотесты — только когда тест сам просит
   if(localStorage.getItem(mornKey())||TUNS.cur||$("#tun"))return;if(new Date().getHours()<4)return;tunMorning()}catch(_){}}
+/* 1.9.44: «Заметки» в программе — те же, что в приложении «📝 Заметки» (телефон + сервер) */
+const ZMK="vs_zametki_v1",ZMS={local:true,msg:""};
+function zmLocal(){try{const v=JSON.parse(localStorage.getItem(ZMK)||"[]");return Array.isArray(v)?v:[]}catch(_){return []}}
+function zmPut(l){try{localStorage.setItem(ZMK,JSON.stringify(l))}catch(_){}}
+async function zmLoad(){const loc=zmLocal();try{const j=await api("POST","/api/vs/zametki/sync",{items:loc});const l=Array.isArray(j.items)?j.items:loc;zmPut(l);ZMS.local=true;return l}
+  catch(_){ZMS.local=false;ZMS.msg="Сервер не ответил — показаны заметки только из этого телефона.";return loc}}
+async function zmDone(id){const l=zmLocal();let x=l.find(y=>y.id===id);if(!x){try{const j=await api("GET","/api/vs/zametki");x=(j.items||[]).find(y=>y.id===id);if(x)l.push(x)}catch(_){}}
+  if(!x)return;x.done=true;x.done_at=new Date().toISOString();x.u=Date.now();zmPut(l);try{const j=await api("POST","/api/vs/zametki/sync",{items:l});if(Array.isArray(j.items))zmPut(j.items)}catch(_){}}
 async function tunMorning(){const c={};const today=new Date().toDateString();const isT=s=>{const d=pd(s);return d&&d.toDateString()===today};const ago=s=>{const d=pd(s);if(!d)return "ни разу";const n=Math.floor((Date.now()-d.getTime())/864e5);return n<=0?"сегодня":n===1?"вчера":n+" дн. назад"};
   tunnel({title:"Утро на складе",pausable:true,exitAsk:false,okLast:"ХОРОШЕГО ДНЯ!",c,steps:[
    {t:"Доброе утро"+(S.user.name?", "+S.user.name.split(" ")[0]:"")+"!",sub:new Date().toLocaleDateString("ru-RU",{weekday:"long",day:"numeric",month:"long"}),
@@ -2290,7 +2298,7 @@ async function tunMorning(){const c={};const today=new Date().toDateString();con
        api("GET","/api/collections/request_shipments/records?perPage=1&filter="+encodeURIComponent('status="sent"||status="preparing"')).then(j=>j.totalItems).catch(()=>0)]);
      Object.assign(c,{mail,open,rc,lf,sh});
      return `<div class="row" style="gap:8px;flex-wrap:wrap">${[["📬 На почте",mail],["▤ Заявки в работе",open],["▣ Приёмки не закончены",rc],["🚚 Отгрузки в пути",sh],["📦 Невыданное",lf]].map(([l,n])=>`<div class="card" style="flex:1;min-width:140px;padding:12px"><div class="muted">${l}</div><div style="font-size:28px"><b>${n}</b></div></div>`).join("")}</div>
-      <div class="muted" style="margin-top:10px">Дальше — что загрузить сегодня, незавершённое и напоминания. Каждый шаг можно пропустить.</div>`}},
+      <div class="muted" style="margin-top:10px">Дальше — что загрузить сегодня, незавершённое, напоминания и заметки. Каждый шаг можно пропустить.</div>`}},
    {t:"Таблицы на сегодня",sub:"Нажмите «Загрузить» — откроется раздел, потом вернётесь сюда кнопкой «↩».",
     html:async()=>{const [mp,op,zr,ur]=await Promise.all([api("GET","/api/vs/mpz/meta").catch(()=>({})),api("GET","/api/vs/oper/meta").catch(()=>({sources:[]})),api("GET","/api/vs/zreg/meta").catch(()=>({})),api("GET","/api/vs/ureg/meta").catch(()=>({}))]);
      const opl=(op.sources||[]).map(s=>s.last).sort().pop()||"";
@@ -2315,7 +2323,15 @@ async function tunMorning(){const c={};const today=new Date().toDateString();con
    {t:"Напоминания",sub:"Ваши напоминания и задачи — те же, что под 🔔.",html:async()=>{try{await ntfLoad()}catch(_){}const L=(NTF.items||[]).slice(0,30);
      return L.length?L.map(e=>`<a href="#" data-tgo="${esc(ntfHref(e))}" style="display:block;padding:10px;margin-top:6px;background:#fff;border-radius:10px;color:inherit;text-decoration:none"><b>${ntfTitle(e)}</b><div class="muted">${ntfSub(e)||""} · ${dt(e.t)}</div></a>`).join(""):`<div class="banner green">Напоминаний нет 👍</div>`},
     bind:(box)=>box.querySelectorAll("[data-tgo]").forEach(a=>a.onclick=e=>{e.preventDefault();tunGo(a.dataset.tgo)})},
-   {t:"Готово",html:()=>tunCard(`<div style="font-size:18px">Утренний обход — всё.</div><div class="muted">Снова открыть: «Главная» → «☀ Утро на складе».${c.tbl?` Не загружено таблиц: ${c.tbl}.`:""}</div>`)}],
+   {t:"Заметки",sub:"Не сделанное из «📝 Заметки». Отметьте сделанное прямо здесь.",html:async()=>{const Z=await zmLoad();const now=Date.now();
+     const A=Z.filter(x=>!x.del&&!x.done).sort((x,y)=>{const rx=x.remind?Date.parse(x.remind):Infinity,ry=y.remind?Date.parse(y.remind):Infinity;return (rx-ry)||String(y.at).localeCompare(String(x.at))});c.zm=A.length;
+     const head=`<div class="row" style="align-items:center;gap:8px;margin-bottom:6px"><div class="grow muted">${A.length?"Не сделано: "+A.length:""}</div><a class="btn sm" href="/zametki/" target="_blank" id="zmOpen">📝 Открыть «Заметки»</a></div>`;
+     return head+(A.length?A.slice(0,40).map(x=>{const due=x.remind&&Date.parse(x.remind)<=now;return `<label class="card" style="display:flex;gap:10px;align-items:flex-start;padding:10px;margin-top:6px;cursor:pointer">
+       <input type="checkbox" data-zm="${esc(x.id)}" style="width:22px;height:22px;margin-top:2px"><div class="grow"><div style="white-space:pre-wrap">${esc(x.text)}</div>
+       <div class="muted">${x.remind?`<span style="${due?"color:var(--r,#b91c1c);font-weight:700":""}">⏰ ${dt(x.remind)}${due?" — пора!":""}</span> · `:""}записано ${dt(x.at)}</div></div></label>`}).join("")+(A.length>40?`<div class="muted">… ещё ${A.length-40}</div>`:"")
+       :`<div class="banner green">В заметках всё сделано 👍</div>`)+(ZMS.local?"":`<div class="muted" style="margin-top:8px">${ZMS.msg}</div>`)},
+    bind:(box)=>box.querySelectorAll("[data-zm]").forEach(cb=>cb.onchange=async()=>{if(!cb.checked)return;cb.disabled=true;await zmDone(cb.dataset.zm);const l=cb.closest("label");if(l){l.style.opacity=".45";l.style.textDecoration="line-through"}toast("✔ Отмечено в «Заметках»")})},
+   {t:"Готово",html:()=>tunCard(`<div style="font-size:18px">Утренний обход — всё.</div><div class="muted">Снова открыть: «Главная» → «☀ Утро на складе».${c.tbl?` Не загружено таблиц: ${c.tbl}.`:""}${c.zm?` Не сделано в заметках: ${c.zm}.`:""}</div>`)}],
    done:async()=>{try{localStorage.setItem(mornKey(),"1")}catch(_){}},onExit:()=>{try{localStorage.setItem(mornKey(),"1")}catch(_){}}})}
 
 /* ===================== 1.9.37: «Монтаж» — НОРМАТИВЫ: расход материала на работы, нормы выдачи ===================== */

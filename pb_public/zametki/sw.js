@@ -1,5 +1,5 @@
 // Заметки ВЕЛЕССТРОЙ — работа без интернета: страница хранится в телефоне
-const C = "vs-zametki-v1";
+const C = "vs-zametki-v2";
 const FILES = ["/zametki/", "/zametki/index.html", "/zametki/manifest.webmanifest", "/zametki/icon.svg"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(C).then((c) => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== C).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });

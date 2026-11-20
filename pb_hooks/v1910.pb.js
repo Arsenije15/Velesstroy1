@@ -73,28 +73,28 @@ routerUse((e) => {
   if (sc === "skk") {
     const p = e.request.url.path;
     let okp = true;
-    if (p.indexOf("/api/vs/") === 0) okp = /^\/api\/vs\/(upd|skk|oper|mpz|suppliers|fields|sfiles|pub|aosr|cert|org)(\/|$)/.test(p);
+    if (p.indexOf("/api/vs/") === 0) okp = /^\/api\/vs\/(upd|skk|oper|mpz|suppliers|fields|sfiles|pub|aosr|cert|org|zametki)(\/|$)/.test(p);
     else if (p.indexOf("/api/collections/") === 0) okp = /^\/api\/collections\/(users|upd_docs|skk_acts|suppliers|supplier_splits|supplier_files|oper_rows|mpz_stock|upd_photos|suggestions|form_fields|field_files|acts|aosr|skk_photos|broadcasts|upd_certs|org_settings)\//.test(p);
     if (!okp) throw new ForbiddenError("По этой ссылке доступна только страница «Склад / СКК».");
   } else if (sc === "sklad") {
     // 1.9.12: «Склад» — новый приход (УПД + фото груза), оперативка, МПЗ, журнал актов; ссылки на СКК и акты СКК закрыты
     const p = e.request.url.path;
     let okp = true;
-    if (p.indexOf("/api/vs/") === 0) okp = /^\/api\/vs\/(upd|oper|mpz|fields|pub|cert)(\/|$)/.test(p) && !/^\/api\/vs\/upd\/(spec|delete)/.test(p);
+    if (p.indexOf("/api/vs/") === 0) okp = /^\/api\/vs\/(upd|oper|mpz|fields|pub|cert|zametki)(\/|$)/.test(p) && !/^\/api\/vs\/upd\/(spec|delete)/.test(p);
     else if (p.indexOf("/api/collections/") === 0) okp = /^\/api\/collections\/(users|upd_docs|upd_photos|oper_rows|mpz_stock|acts|suggestions|form_fields|field_files|broadcasts|upd_certs|org_settings)\//.test(p);
     if (!okp) throw new ForbiddenError("По этой ссылке доступна только страница «Склад».");
   } else if (sc === "mz") {
     // 1.9.32: «Склад Велесстрой Монтаж» — только свой раздел (позиции, движение, задачи, темы, примеры таблиц)
     const p = e.request.url.path;
     let okp = true;
-    if (p.indexOf("/api/vs/") === 0) okp = /^\/api\/vs\/(mz|pub)(\/|$)/.test(p);
+    if (p.indexOf("/api/vs/") === 0) okp = /^\/api\/vs\/(mz|pub|zametki)(\/|$)/.test(p);
     else if (p.indexOf("/api/collections/") === 0) okp = /^\/api\/collections\/(users|mz_items|mz_moves|mz_tasks|mz_topics|mz_posts|mz_samples|mz_docs|mz_norms|suggestions|broadcasts)\//.test(p);
     if (!okp) throw new ForbiddenError("По этой ссылке доступен только «Склад Велесстрой Монтаж».");
   } else if (sc === "zay") {
     // 1.9.15: «Склад: заявки» — ресурсы склада (как в программе), поиск (оперативка, МПЗ, журнал актов) и свои заявки (с проверкой на акт)
     const p = e.request.url.path;
     let okp = true;
-    if (p.indexOf("/api/vs/") === 0) okp = /^\/api\/vs\/(request\/(create|update|note|ocr|file_delete|actalerts)|acts\/match|pickhist|reserve|reservation\/action|resource\/status|actcheck|oper|mpz|fields|pub)(\/|$)/.test(p);
+    if (p.indexOf("/api/vs/") === 0) okp = /^\/api\/vs\/(request\/(create|update|note|ocr|file_delete|actalerts)|acts\/match|pickhist|reserve|reservation\/action|resource\/status|actcheck|oper|mpz|fields|pub|zametki)(\/|$)/.test(p);
     else if (p.indexOf("/api/collections/") === 0) okp = /^\/api\/collections\/(users|requests|request_items|request_files|request_notes|request_shipments|request_ocr|resources|reservations|oper_rows|mpz_stock|acts|suggestions|form_fields|field_files|broadcasts)\//.test(p);
     if (!okp) throw new ForbiddenError("По этой ссылке доступны только «Ресурсы склада», «Поиск» и «Мои заявки».");
   }
