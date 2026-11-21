@@ -100,50 +100,22 @@ systemctl daemon-reload
 systemctl enable velesstroy >/dev/null 2>&1
 systemctl restart velesstroy
 
-# 1.9.46: ПЛАН Б — копия базы и файлов в облако (Litestream + rclone). Ключи вводятся в программе: «Пользователи» → «💾 Резервные копии».
+# 1.9.46/1.9.48: ПЛАН Б — копия базы и файлов в облако. Копию базы делает сам сервер (каждые 5 минут при изменениях),
+# rclone только отправляет готовые файлы. Ключи вводятся в программе: «Пользователи» → «💾 Резервные копии».
 say "Резервная копия в облако (план Б)"
-LS_V="v0.3.13"; RC_V="v1.68.2"
+RC_V="v1.68.2"
 case "$(uname -m)" in x86_64) BA=amd64;; aarch64|arm64) BA=arm64;; *) BA=amd64;; esac
+# 1.9.48: Litestream убран — с этой сборкой PocketBase он может повредить служебные файлы работающей базы
+systemctl disable --now velesstroy-litestream velesstroy-backup-conf.path >/dev/null 2>&1 || true
+rm -f /etc/systemd/system/velesstroy-litestream.service /etc/systemd/system/velesstroy-backup-conf.path /etc/systemd/system/velesstroy-backup-conf.service "$APP/bin/litestream" "$APP/backup_state/litestream.yml"
 mkdir -p "$APP/bin" "$APP/backup" "$APP/backup_state"
 cp "$SRC/backup/"*.sh "$APP/backup/"; chmod 755 "$APP/backup/"*.sh
-if ! "$APP/bin/litestream" version 2>/dev/null | grep -q "$LS_V"; then
-  T=$(mktemp -d); curl -fsSL --retry 5 -o "$T/ls.tgz" "https://github.com/benbjohnson/litestream/releases/download/$LS_V/litestream-$LS_V-linux-$BA.tar.gz" \
-    && tar xzf "$T/ls.tgz" -C "$T" && install -m 755 "$T/litestream" "$APP/bin/litestream" || echo "ВНИМАНИЕ: Litestream не скачался — пришлите снимок экрана"; rm -rf "$T"
-fi
 if ! "$APP/bin/rclone" version 2>/dev/null | grep -q "$RC_V"; then
   T=$(mktemp -d); curl -fsSL --retry 5 -o "$T/rc.zip" "https://github.com/rclone/rclone/releases/download/$RC_V/rclone-$RC_V-linux-$BA.zip" \
     && unzip -q -o "$T/rc.zip" -d "$T" && install -m 755 "$T/rclone-$RC_V-linux-$BA/rclone" "$APP/bin/rclone" || echo "ВНИМАНИЕ: rclone не скачался — пришлите снимок экрана"; rm -rf "$T"
 fi
+command -v flock >/dev/null || apt-get install -y util-linux >/dev/null 2>&1 || true
 chown -R velesstroy:velesstroy "$APP/backup" "$APP/backup_state" "$APP/bin"; chmod 700 "$APP/backup_state"
-BK="runuser -u velesstroy -- env VS_DATA=$APP/pb_data VS_STATE=$APP/backup_state bash $APP/backup/backup.sh"
-cat > /etc/systemd/system/velesstroy-litestream.service <<EOF
-[Unit]
-Description=VELESSTROY: непрерывная копия базы в облако (Litestream)
-After=velesstroy.service network-online.target
-ConditionPathExists=$APP/backup_state/litestream.yml
-[Service]
-User=velesstroy
-ExecStart=$APP/bin/litestream replicate -config $APP/backup_state/litestream.yml
-Restart=always
-RestartSec=15
-[Install]
-WantedBy=multi-user.target
-EOF
-cat > /etc/systemd/system/velesstroy-backup-conf.service <<EOF
-[Unit]
-Description=VELESSTROY: новые ключи резервной копии
-[Service]
-Type=oneshot
-ExecStart=/bin/bash -c '$BK conf && systemctl restart velesstroy-litestream; sleep 20; $BK files'
-EOF
-cat > /etc/systemd/system/velesstroy-backup-conf.path <<EOF
-[Unit]
-Description=VELESSTROY: следить за ключами резервной копии
-[Path]
-PathChanged=$APP/backup_state/backup.env
-[Install]
-WantedBy=multi-user.target
-EOF
 for J in "files|*:0/10|файлы каждые 10 минут" "daily|*-*-* 00:30:00|ночная копия (03:30 МСК)" "restoretest|Sun *-*-* 01:30:00|проверка восстановления (вс 04:30 МСК)"; do
   IFS="|" read -r N CAL DESC <<< "$J"
   cat > /etc/systemd/system/velesstroy-backup-$N.service <<EOF
@@ -167,9 +139,8 @@ WantedBy=timers.target
 EOF
 done
 systemctl daemon-reload
-systemctl enable --now velesstroy-backup-conf.path velesstroy-backup-files.timer velesstroy-backup-daily.timer velesstroy-backup-restoretest.timer >/dev/null 2>&1 || true
-if [ -f "$APP/backup_state/backup.env" ]; then $BK conf >/dev/null 2>&1 || true; systemctl enable velesstroy-litestream >/dev/null 2>&1 || true; systemctl restart velesstroy-litestream || true
-  echo "Копия в облако: включена ($(systemctl is-active velesstroy-litestream))"
+systemctl enable --now velesstroy-backup-files.timer velesstroy-backup-daily.timer velesstroy-backup-restoretest.timer >/dev/null 2>&1 || true
+if [ -f "$APP/backup_state/backup.env" ]; then echo "Копия в облако: включена (база — каждые 5 минут при изменениях, файлы — каждые 10 минут)"
 else echo "Копия в облако: ключи ещё не введены — программа → «Пользователи» → «💾 Резервные копии»"; fi
 command -v ufw >/dev/null && ufw status | grep -q active && { ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/dev/null; }
 

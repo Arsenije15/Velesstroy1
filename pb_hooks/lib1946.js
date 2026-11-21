@@ -21,7 +21,7 @@ function status(app) {
   const alarm = [];
   if (!conf) alarm.push("Копия в облако не настроена — при поломке сервера данные можно потерять.");
   else {
-    if (age("db") > 30) alarm.push("Непрерывная копия базы не подтверждена " + (isFinite(age("db")) ? Math.round(age("db")) + " мин" : "ни разу") + (S.db && !S.db.ok ? ": " + S.db.msg : ""));
+    if (age("db") > 30) alarm.push("Копия базы не подтверждена " + (isFinite(age("db")) ? Math.round(age("db")) + " мин" : "ни разу") + (S.db && !S.db.ok ? ": " + S.db.msg : ""));
     if (age("files") > 60) alarm.push("Файлы не копировались " + (isFinite(age("files")) ? Math.round(age("files")) + " мин" : "ни разу") + (S.files && !S.files.ok ? ": " + S.files.msg : ""));
     if (age("daily") > 26 * 60 && S.daily) alarm.push("Ночная копия не делалась больше суток" + (!S.daily.ok ? ": " + S.daily.msg : ""));
     if (E.YD_USER && S.ydisk && !S.ydisk.ok) alarm.push("Яндекс Диск: " + S.ydisk.msg);
@@ -52,7 +52,7 @@ function saveConfig(app, b) {
   return P;
 }
 function run(app, what) {
-  if (["files", "check", "daily", "restoretest", "conf", "all"].indexOf(what) < 0) throw new BadRequestError("Неизвестная команда.");
+  if (["files", "check", "daily", "restoretest", "push", "all"].indexOf(what) < 0) throw new BadRequestError("Неизвестная команда.");
   const P = paths(app);
   $os.cmd("sh", "-c", 'VS_DATA="$1" VS_STATE="$2" nohup bash "$3" "$4" >/dev/null 2>&1 &', "sh", P.data, P.state, P.script, what).run();
 }
