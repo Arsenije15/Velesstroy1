@@ -4,6 +4,7 @@ function smapFlag(e) {
   const r = e.record;
   r.set("search_lc", X.lc([r.getString("material"), r.getString("zone"), r.getString("note"), r.getString("qty"), r.getString("unit")].join(" ")).slice(0, 2000));
   if (e.auth) r.set("updated_by", e.auth.id);
-  if (!(r.getFloat("x") >= 0 && r.getFloat("x") <= 1 && r.getFloat("y") >= 0 && r.getFloat("y") <= 1)) throw new BadRequestError("Флажок — вне карты.");
+  // 1.9.47: поле карты можно расширить за края снимка (до 3 снимков в каждую сторону) — координаты считаются от снимка
+  if (!(r.getFloat("x") >= -3 && r.getFloat("x") <= 4 && r.getFloat("y") >= -3 && r.getFloat("y") <= 4)) throw new BadRequestError("Флажок — вне карты.");
 }
 module.exports = { smapFlag };

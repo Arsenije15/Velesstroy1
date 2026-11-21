@@ -1801,13 +1801,23 @@ const MIC={gate:["Ворота в ограждении","#7c3aed",'<path d="M3 2
 const micSvg=(k,sz)=>`<svg width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${MIC[k][2]}</svg>`;
 const micBadge=(k,sz)=>`<span style="display:inline-flex;align-items:center;justify-content:center;width:${sz}px;height:${sz}px;border-radius:50%;background:${MIC[k][1]};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5);flex:none">${micSvg(k,Math.round(sz*.62))}</span>`;
 const flIcon=(f,sz)=>f.icon&&MIC[f.icon]?micBadge(f.icon,sz||22):`<span style="color:${FLC[f.color]||FLC.red}">⚑</span>`;
-const MAPS={mode:"view",zoom:1,q:"",sat:true,op:.6,cfg:null,flags:[],zones:null,dirty:false,sel:-1,move:null,focus:""};
+const MAPS={mode:"view",zoom:1,q:"",sat:true,op:.6,cfg:null,flags:[],zones:null,dirty:false,sel:-1,move:null,focus:"",ext:{l:0,r:0,t:0,b:0}};
+/* 1.9.47: рабочее поле шире снимка. Координаты — как раньше, от снимка (0…1600 × 0…1000); поле добавляет места слева/справа/сверху/снизу */
+const MEXT_MAX={x:MAPW*3,y:MAPH*3};
+function mapGeo(){const e=MAPS.ext||{},l=+e.l||0,r=+e.r||0,t=+e.t||0,b=+e.b||0,CW=MAPW+l+r,CH=MAPH+t+b;
+  return {l,r,t,b,CW,CH,PX:x=>(x+l)/CW*100,PY:y=>(y+t)/CH*100,SW:w=>w/CW*100,SH:h=>h/CH*100,
+    pt:(e,el)=>{const rc=el.getBoundingClientRect();const fx=Math.max(0,Math.min(1,(e.clientX-rc.left)/rc.width)),fy=Math.max(0,Math.min(1,(e.clientY-rc.top)/rc.height));return {x:(fx*CW-l)/MAPW,y:(fy*CH-t)/MAPH}}}}
+function mapNeed(){const G=mapGeo();let l=0,r=0,t=0,b=0;   // сколько поля занято объектами — меньше нельзя
+  (MAPS.zones||[]).forEach(z=>{l=Math.max(l,-z.x);t=Math.max(t,-z.y);r=Math.max(r,z.x+z.w-MAPW);b=Math.max(b,z.y+z.h-MAPH)});
+  (MAPS.flags||[]).forEach(f=>{const x=f.x*MAPW,y=f.y*MAPH;l=Math.max(l,-x+20);t=Math.max(t,-y+40);r=Math.max(r,x-MAPW+20);b=Math.max(b,y-MAPH+20)});
+  return {l:Math.ceil(l),r:Math.ceil(r),t:Math.ceil(t),b:Math.ceil(b)}}
 const mapZoneAt=(x,y)=>{const Z=MAPS.zones||[];for(let i=Z.length-1;i>=0;i--){const z=Z[i];if(x>=z.x&&x<=z.x+z.w&&y>=z.y&&y<=z.y+z.h&&z.t!=="road"&&z.t!=="fence")return z.n}return""};
 async function mapLoad(){const c=await api("GET","/api/collections/smap_cfg/records?perPage=1&sort=created").catch(()=>({items:[]}));MAPS.cfg=c.items[0]||null;
   if(!MAPS.dirty)MAPS.zones=JSON.parse(JSON.stringify(MAPS.cfg&&Array.isArray(MAPS.cfg.zones)&&MAPS.cfg.zones.length?MAPS.cfg.zones:MAP_DEF));
   if(MAPS.cfg&&MAPS.cfg.bg_opacity)MAPS.op=MAPS.cfg.bg_opacity;
+  if(!MAPS.dirty){const e=MAPS.cfg&&MAPS.cfg.ext;MAPS.ext={l:+(e&&e.l)||0,r:+(e&&e.r)||0,t:+(e&&e.t)||0,b:+(e&&e.b)||0}}
   MAPS.flags=await all("smap_flags","","-updated").catch(()=>[])}
-async function mapSaveZones(){const body={zones:MAPS.zones,bg_opacity:MAPS.op};
+async function mapSaveZones(){const body={zones:MAPS.zones,bg_opacity:MAPS.op,ext:MAPS.ext};
   MAPS.cfg=MAPS.cfg?await api("PATCH","/api/collections/smap_cfg/records/"+MAPS.cfg.id,body):await api("POST","/api/collections/smap_cfg/records",body);MAPS.dirty=false}
 async function vMap(id,changed){if(role()===""||S.user.scope)return vHome();if(changed&&$("#mapc"))return;   // обновления в реальном времени не сбивают правку зон
   if(id&&id.startsWith("f="))MAPS.focus=id.slice(2);
@@ -1815,7 +1825,7 @@ async function vMap(id,changed){if(role()===""||S.user.scope)return vHome();if(c
   if(!S.route.startsWith("map"))return;const W=can.write();const ft=MAPS.cfg&&MAPS.cfg.bg||MAPS.flags.some(f=>(f.photo||[]).length)?await fileToken():"";
   const hit=f=>!MAPS.q||wmatch(MAPS.q,f.search_lc||f.material);const F=MAPS.flags.filter(hit);
   const bg=MAPS.cfg&&MAPS.cfg.bg?`/api/files/smap_cfg/${MAPS.cfg.id}/${encodeURIComponent(MAPS.cfg.bg)}?token=${ft}`:"/img/sklad_sat.jpg";   // 1.9.36: свой снимок ещё не загружен — скриншот с Яндекс Карт
-  const md=MAPS.mode;
+  const md=MAPS.mode;const G=mapGeo();
   $("#main").innerHTML=`<div class="row" style="align-items:center;gap:8px;flex-wrap:wrap"><h1 class="grow" style="margin:0">🗺 Карта склада</h1>
     <span class="muted">${MAPS.flags.length} флажков</span></div>
    <div class="card noprint" style="margin-top:8px"><div class="row" style="gap:6px;flex-wrap:wrap;align-items:center">
@@ -1829,17 +1839,22 @@ async function vMap(id,changed){if(role()===""||S.user.scope)return vHome();if(c
        ${bg?`<label class="row" style="gap:6px;align-items:center" class="muted">прозрачность схемы <input type="range" id="mapop" min="0" max="1" step="0.05" value="${MAPS.op}" style="width:110px"></label>`:""}
        <button class="btn sm ${MAPS.dirty?"acc":""}" id="mapzsave">💾 Сохранить зоны</button>${MAPS.dirty?`<button class="btn sm" id="mapzundo">Отменить</button>`:""}`:""}
     </div>
+    ${W&&md==="zones"?`<div class="row" id="mapext" style="gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center"><span class="muted">📐 Рабочее поле:</span>
+      <button class="btn sm" data-ext="l" title="Добавить место слева">⬅ ＋</button><button class="btn sm" data-ext="r" title="Добавить место справа">＋ ➡</button>
+      <button class="btn sm" data-ext="t" title="Добавить место сверху">⬆ ＋</button><button class="btn sm" data-ext="b" title="Добавить место снизу">⬇ ＋</button>
+      <button class="btn sm" data-ext="all" title="Вдвое шире во все стороны">⤢ Шире везде</button><button class="btn sm" data-ext="fit" title="Убрать пустые поля (объекты не трогаются)">↺ Убрать пустое</button>
+      <span class="muted" id="mapextsz">${G.CW}×${G.CH}${G.CW>MAPW||G.CH>MAPH?` (снимок ${MAPW}×${MAPH})`:""}</span></div>`:""}
     <div class="muted" style="margin-top:6px">${md==="flag"?"Нажмите на карту: там, где лежит материал, — флажок; где КПП, ангар, кран, погрузчик, контейнер, офис — значок.":md==="zones"?"Тяните зону — переместить, угол ◢ — размер; нажмите на название — переименовать / цвет / удалить. Снимок: Яндекс Карты → «Спутник» → скриншот площадки.":MAPS.move?"Нажмите новое место для флажка.":"Нажмите на флажок — что там лежит, фото, кто поставил."}</div></div>
    <div id="mapw" style="overflow:auto;max-height:72vh;border:1px solid var(--line);border-radius:12px;background:#e5e7eb;margin-top:8px;touch-action:${md==="zones"?"none":"auto"}">
-    <div id="mapc" style="position:relative;width:${Math.round(MAPS.zoom*100)}%;min-width:${Math.round(640*MAPS.zoom)}px;aspect-ratio:${MAPW}/${MAPH};background:#f1f5f0;cursor:${md==="flag"||MAPS.move?"crosshair":"default"}">
-     ${bg&&MAPS.sat?`<img src="${bg}" alt="Спутниковый снимок площадки" style="position:absolute;inset:0;width:100%;height:100%;object-fit:fill;pointer-events:none">`:""}
-     <div id="mapzl" style="position:absolute;inset:0;opacity:${bg&&MAPS.sat?MAPS.op:1}">${(MAPS.zones||[]).map((z,i)=>{const c=(MZT[z.t]||MZT.open)[1];return `<div class="mapz" data-zi="${i}" style="position:absolute;left:${z.x/MAPW*100}%;top:${z.y/MAPH*100}%;width:${z.w/MAPW*100}%;height:${z.h/MAPH*100}%;
+    <div id="mapc" style="position:relative;width:${Math.round(MAPS.zoom*100*G.CW/MAPW)}%;min-width:${Math.round(640*MAPS.zoom*G.CW/MAPW)}px;aspect-ratio:${G.CW}/${G.CH};background:${G.CW>MAPW||G.CH>MAPH?"#e8ece4":"#f1f5f0"};cursor:${md==="flag"||MAPS.move?"crosshair":"default"}">
+     ${G.CW>MAPW||G.CH>MAPH?`<div style="position:absolute;left:${G.PX(0)}%;top:${G.PY(0)}%;width:${G.SW(MAPW)}%;height:${G.SH(MAPH)}%;background:#f1f5f0;outline:1px dashed #94a3b8;pointer-events:none"></div>`:""}${bg&&MAPS.sat?`<img src="${bg}" alt="Спутниковый снимок площадки" style="position:absolute;left:${G.PX(0)}%;top:${G.PY(0)}%;width:${G.SW(MAPW)}%;height:${G.SH(MAPH)}%;object-fit:fill;pointer-events:none">`:""}
+     <div id="mapzl" style="position:absolute;inset:0;opacity:${bg&&MAPS.sat?MAPS.op:1}">${(MAPS.zones||[]).map((z,i)=>{const c=(MZT[z.t]||MZT.open)[1];return `<div class="mapz" data-zi="${i}" style="position:absolute;left:${G.PX(z.x)}%;top:${G.PY(z.y)}%;width:${G.SW(z.w)}%;height:${G.SH(z.h)}%;
        ${z.t==="fence"?`background:repeating-linear-gradient(${z.w>=z.h?90:0}deg,${c} 0 3px,#d1d5db 3px 12px);border:1px solid ${c};border-radius:2px;`:`background:${c}22;border:2px ${z.t==="road"?"dashed":"solid"} ${c};border-radius:${z.t==="hangar"?"40px 40px 8px 8px":"6px"};`}box-sizing:border-box;${md==="zones"?"cursor:move;":""}${MAPS.sel===i&&md==="zones"?"outline:3px solid #f59e0b;":""}">
        <span data-zn="${i}" style="${z.t==="fence"&&md!=="zones"?"display:none;":""}${z.t==="fence"?"white-space:nowrap;background:#fff;padding:0 3px;border-radius:3px;":""}position:absolute;left:4px;top:${z.t==="fence"&&z.w>=z.h?"-14px":"2px"};${z.t==="fence"?"":"right:4px;"}font-size:${Math.max(9,Math.round(11*MAPS.zoom))}px;font-weight:700;color:${c};line-height:1.1;${md==="zones"?"cursor:pointer;text-decoration:underline dotted;":""}">${esc(z.n)}</span>
        ${md==="zones"?`<span data-zr="${i}" style="position:absolute;right:0;bottom:0;width:22px;height:22px;background:${c};color:#fff;font-size:13px;text-align:center;line-height:22px;cursor:nwse-resize;border-radius:4px 0 4px 0">◢</span>`:""}</div>`}).join("")}</div>
-     ${MAPS.flags.map(f=>{const on=hit(f),foc=MAPS.focus===f.id;if(f.icon&&MIC[f.icon]){const sz=Math.round((foc?38:28)*Math.min(1.4,Math.max(.8,MAPS.zoom)));return `<button class="mapf" data-fl="${f.id}" title="${esc(f.material)}" aria-label="${esc(MIC[f.icon][0])}: ${esc(f.material)}" style="position:absolute;left:${f.x*100}%;top:${f.y*100}%;transform:translate(-50%,-50%);border:0;background:none;padding:0;cursor:pointer;opacity:${on?1:.25};z-index:${foc?5:3}">${micBadge(f.icon,sz)}
+     ${MAPS.flags.map(f=>{const on=hit(f),foc=MAPS.focus===f.id;if(f.icon&&MIC[f.icon]){const sz=Math.round((foc?38:28)*Math.min(1.4,Math.max(.8,MAPS.zoom)));return `<button class="mapf" data-fl="${f.id}" title="${esc(f.material)}" aria-label="${esc(MIC[f.icon][0])}: ${esc(f.material)}" style="position:absolute;left:${G.PX(f.x*MAPW)}%;top:${G.PY(f.y*MAPH)}%;transform:translate(-50%,-50%);border:0;background:none;padding:0;cursor:pointer;opacity:${on?1:.25};z-index:${foc?5:3}">${micBadge(f.icon,sz)}
        <span style="position:absolute;left:50%;top:100%;transform:translateX(-50%);white-space:nowrap;background:rgba(255,255,255,.9);border-radius:4px;padding:0 3px;font-size:${MAPS.zoom>=1.5?11:9}px;font-weight:700;max-width:160px;overflow:hidden;text-overflow:ellipsis">${esc(f.material)}</span></button>`}
-       return `<button class="mapf" data-fl="${f.id}" title="${esc(f.material)}" aria-label="Флажок: ${esc(f.material)}" style="position:absolute;left:${f.x*100}%;top:${f.y*100}%;transform:translate(-4px,-100%);border:0;background:none;padding:0;cursor:pointer;opacity:${on?1:.18};z-index:${foc?5:on&&MAPS.q?4:2}">
+       return `<button class="mapf" data-fl="${f.id}" title="${esc(f.material)}" aria-label="Флажок: ${esc(f.material)}" style="position:absolute;left:${G.PX(f.x*MAPW)}%;top:${G.PY(f.y*MAPH)}%;transform:translate(-4px,-100%);border:0;background:none;padding:0;cursor:pointer;opacity:${on?1:.18};z-index:${foc?5:on&&MAPS.q?4:2}">
        <svg width="${foc?34:24}" height="${foc?42:30}" viewBox="0 0 24 30"><line x1="3" y1="2" x2="3" y2="30" stroke="#111" stroke-width="2"/><path d="M4 2h17l-5 6 5 6H4z" fill="${FLC[f.color]||FLC.red}" stroke="#111" stroke-width="1"/></svg>
        ${MAPS.zoom>=1.5||(MAPS.q&&on)||foc?`<span style="position:absolute;left:24px;top:0;white-space:nowrap;background:#fff;border:1px solid #111;border-radius:4px;padding:0 4px;font-size:11px;max-width:220px;overflow:hidden;text-overflow:ellipsis">${esc(f.material)}</span>`:""}</button>`}).join("")}
     </div></div>
@@ -1852,7 +1867,7 @@ async function vMap(id,changed){if(role()===""||S.user.scope)return vHome();if(c
   const st=$("#mapsat");if(st)st.onclick=()=>{MAPS.sat=!MAPS.sat;vMap()};
   document.querySelectorAll("[data-show]").forEach(b=>b.onclick=()=>{MAPS.focus=b.dataset.show;if(MAPS.zoom<1.5)MAPS.zoom=1.5;vMap().then(()=>mapScrollTo(b.dataset.show))});
   $("#mapxl").onclick=()=>mapExcel();$("#mappr").onclick=()=>window.print();
-  const c=$("#mapc");const pt=e=>{const r=c.getBoundingClientRect();return {x:Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),y:Math.max(0,Math.min(1,(e.clientY-r.top)/r.height))}};
+  const c=$("#mapc");const pt=e=>G.pt(e,c);
   c.querySelectorAll("[data-fl]").forEach(b=>b.onclick=e=>{e.stopPropagation();if(md==="zones")return;mapFlagView(b.dataset.fl)});
   c.addEventListener("click",e=>{if(e.target.closest("[data-fl]"))return;const p=pt(e);
     if(MAPS.move){const id=MAPS.move;MAPS.move=null;act(null,async()=>{const f=await api("PATCH","/api/collections/smap_flags/records/"+id,{x:p.x,y:p.y,zone:mapZoneAt(p.x*MAPW,p.y*MAPH)});MAPS.flags=MAPS.flags.map(x=>x.id===id?f:x);MAPS.focus=id;vMap()},"Флажок перенесён");return}
@@ -1862,17 +1877,25 @@ async function vMap(id,changed){if(role()===""||S.user.scope)return vHome();if(c
     c.addEventListener("pointerdown",e=>{const r=e.target.closest("[data-zr]"),n=e.target.closest("[data-zn]"),z=e.target.closest("[data-zi]");if(!z)return;const i=+z.dataset.zi;
       if(n&&!r){mapZoneEdit(i);return}
       e.preventDefault();const Z=MAPS.zones[i];drag={i,rs:!!r,sx:e.clientX,sy:e.clientY,o:{...Z},el:z,moved:false};z.setPointerCapture(e.pointerId)});
-    c.addEventListener("pointermove",e=>{if(!drag)return;const rc=c.getBoundingClientRect();const dx=(e.clientX-drag.sx)/rc.width*MAPW,dy=(e.clientY-drag.sy)/rc.height*MAPH;if(Math.abs(dx)+Math.abs(dy)>2)drag.moved=true;const Z=MAPS.zones[drag.i];
-      if(drag.rs){const mn=Z.t==="fence"?6:30;Z.w=Math.max(mn,Math.round(drag.o.w+dx));Z.h=Math.max(Z.t==="fence"?6:20,Math.round(drag.o.h+dy))}else{Z.x=Math.max(0,Math.min(MAPW-Z.w,Math.round(drag.o.x+dx)));Z.y=Math.max(0,Math.min(MAPH-Z.h,Math.round(drag.o.y+dy)))}
-      Object.assign(drag.el.style,{left:Z.x/MAPW*100+"%",top:Z.y/MAPH*100+"%",width:Z.w/MAPW*100+"%",height:Z.h/MAPH*100+"%"})});
+    c.addEventListener("pointermove",e=>{if(!drag)return;const rc=c.getBoundingClientRect();const dx=(e.clientX-drag.sx)/rc.width*G.CW,dy=(e.clientY-drag.sy)/rc.height*G.CH;if(Math.abs(dx)+Math.abs(dy)>2)drag.moved=true;const Z=MAPS.zones[drag.i];
+      if(drag.rs){const mn=Z.t==="fence"?6:30;Z.w=Math.max(mn,Math.round(drag.o.w+dx));Z.h=Math.max(Z.t==="fence"?6:20,Math.round(drag.o.h+dy))}else{Z.x=Math.max(-G.l,Math.min(MAPW+G.r-Z.w,Math.round(drag.o.x+dx)));Z.y=Math.max(-G.t,Math.min(MAPH+G.b-Z.h,Math.round(drag.o.y+dy)))}
+      Object.assign(drag.el.style,{left:G.PX(Z.x)+"%",top:G.PY(Z.y)+"%",width:G.SW(Z.w)+"%",height:G.SH(Z.h)+"%"})});
     const end=()=>{if(!drag)return;const d=drag;drag=null;if(d.moved){MAPS.dirty=true;MAPS.sel=d.i;vMap()}};
     c.addEventListener("pointerup",end);c.addEventListener("pointercancel",end);
-    $("#mapzadd").onclick=()=>{const w=$("#mapw");const r=c.getBoundingClientRect(),wr=w.getBoundingClientRect();const cx=((wr.left+wr.width/2)-r.left)/r.width*MAPW,cy=((wr.top+wr.height/2)-r.top)/r.height*MAPH;
-      MAPS.zones.push({n:"Новая зона",t:"open",x:Math.round(Math.max(0,Math.min(MAPW-200,cx-100))),y:Math.round(Math.max(0,Math.min(MAPH-80,cy-40))),w:200,h:80});MAPS.dirty=true;MAPS.sel=MAPS.zones.length-1;vMap().then(()=>mapZoneEdit(MAPS.zones.length-1))};
-    $("#mapfadd").onclick=()=>{const w=$("#mapw");const r=c.getBoundingClientRect(),wr=w.getBoundingClientRect();const cx=((wr.left+wr.width/2)-r.left)/r.width*MAPW,cy=((wr.top+wr.height/2)-r.top)/r.height*MAPH;
-      MAPS.zones.push({n:"Ограждение",t:"fence",x:Math.round(Math.max(0,Math.min(MAPW-300,cx-150))),y:Math.round(Math.max(0,Math.min(MAPH-10,cy))),w:300,h:8});MAPS.dirty=true;MAPS.sel=MAPS.zones.length-1;vMap();toast("Тяните — переместить, угол ◢ — длина; для вертикального отрезка сделайте его узким и высоким","ok")};
+    $("#mapzadd").onclick=()=>{const w=$("#mapw");const r=c.getBoundingClientRect(),wr=w.getBoundingClientRect();const cx=((wr.left+wr.width/2)-r.left)/r.width*G.CW-G.l,cy=((wr.top+wr.height/2)-r.top)/r.height*G.CH-G.t;
+      MAPS.zones.push({n:"Новая зона",t:"open",x:Math.round(Math.max(-G.l,Math.min(MAPW+G.r-200,cx-100))),y:Math.round(Math.max(-G.t,Math.min(MAPH+G.b-80,cy-40))),w:200,h:80});MAPS.dirty=true;MAPS.sel=MAPS.zones.length-1;vMap().then(()=>mapZoneEdit(MAPS.zones.length-1))};
+    $("#mapfadd").onclick=()=>{const w=$("#mapw");const r=c.getBoundingClientRect(),wr=w.getBoundingClientRect();const cx=((wr.left+wr.width/2)-r.left)/r.width*G.CW-G.l,cy=((wr.top+wr.height/2)-r.top)/r.height*G.CH-G.t;
+      MAPS.zones.push({n:"Ограждение",t:"fence",x:Math.round(Math.max(-G.l,Math.min(MAPW+G.r-300,cx-150))),y:Math.round(Math.max(-G.t,Math.min(MAPH+G.b-10,cy))),w:300,h:8});MAPS.dirty=true;MAPS.sel=MAPS.zones.length-1;vMap();toast("Тяните — переместить, угол ◢ — длина; для вертикального отрезка сделайте его узким и высоким","ok")};
     $("#mapzsave").onclick=e=>act(e.target,async()=>{await mapSaveZones();await mapRezone();vMap()},"Зоны сохранены");
     const u=$("#mapzundo");if(u)u.onclick=()=>{MAPS.dirty=false;S.mapLoaded=0;vMap()};
+    document.querySelectorAll("[data-ext]").forEach(b=>b.onclick=()=>{const k=b.dataset.ext,E=MAPS.ext,N=mapNeed(),w=$("#mapw"),sl=w.scrollLeft,stp=w.scrollTop,old={...E};
+      const add=(s,v,mx)=>{E[s]=Math.min(mx,(+E[s]||0)+v)};
+      if(k==="l")add("l",MAPW/4,MEXT_MAX.x);else if(k==="r")add("r",MAPW/4,MEXT_MAX.x);else if(k==="t")add("t",MAPH/4,MEXT_MAX.y);else if(k==="b")add("b",MAPH/4,MEXT_MAX.y);
+      else if(k==="all"){add("l",MAPW/2,MEXT_MAX.x);add("r",MAPW/2,MEXT_MAX.x);add("t",MAPH/2,MEXT_MAX.y);add("b",MAPH/2,MEXT_MAX.y)}
+      else if(k==="fit"){E.l=N.l;E.r=N.r;E.t=N.t;E.b=N.b}
+      if(JSON.stringify(old)===JSON.stringify(E)){toast(k==="fit"?"Пустых полей нет":"Поле уже максимальное");return}
+      MAPS.dirty=true;vMap().then(()=>{const w2=$("#mapw"),c2=$("#mapc");if(!w2||!c2)return;const G2=mapGeo(),px=c2.getBoundingClientRect().width/G2.CW;   // снимок остаётся на месте на экране
+        w2.scrollLeft=sl+(E.l-old.l)*px;w2.scrollTop=stp+(E.t-old.t)*px;toast("Рабочее поле: "+G2.CW+"×"+G2.CH+" — не забудьте «💾 Сохранить зоны»","ok")})});
     const op=$("#mapop");if(op)op.oninput=()=>{MAPS.op=+op.value;MAPS.dirty=true;$("#mapzl").style.opacity=MAPS.op};
     const bf=$("#mapbg");if(bf)bf.onchange=e=>{const f=e.target.files[0];e.target.value="";if(!f)return;act(null,async()=>{if(!MAPS.cfg)await mapSaveZones();const fd=new FormData();fd.append("bg",await shrinkImg(f,4000).catch(()=>f));if(MAPS.cfg.bg_opacity==null||!MAPS.cfg.bg)fd.append("bg_opacity","0.6");
       MAPS.cfg=await api("PATCH","/api/collections/smap_cfg/records/"+MAPS.cfg.id,fd,true);MAPS.op=MAPS.cfg.bg_opacity||.6;MAPS.sat=true;vMap()},"Снимок загружен — подвиньте зоны по нему")}}
@@ -2258,14 +2281,14 @@ async function tunRecv(){await sugFresh(["supplier","sender","vehicle","ship_pla
     read:(b)=>{c.qd=$("#tqd",b).value;c.qf=$("#tqf",b).value;c.dm=$("#tdm",b).value;c.nt=$("#tnt",b).value},
     save:async()=>{await api("POST","/api/vs/receipt/update",{receipt:c.rid,qty_doc:c.qd,qty_fact:c.qf,damage:c.dm,notes:c.nt});await R()}},
    {t:"Где выгрузили",sub:"Нажмите на схеме место выгрузки — встанет флажок «УПД № … — поставщик». Можно «Пропустить».",
-    html:async()=>{if(!S.mapLoaded){await mapLoad();S.mapLoaded=1}return `<div id="tmapw" style="overflow:auto;border:1px solid var(--line);border-radius:12px;background:#e5e7eb"><div id="tmap" style="position:relative;width:100%;min-width:560px;aspect-ratio:${MAPW}/${MAPH};background:#f1f5f0;cursor:crosshair">
-       ${(MAPS.zones||[]).map(z=>{const cc=(MZT[z.t]||MZT.open)[1];return `<div style="position:absolute;pointer-events:none;left:${z.x/MAPW*100}%;top:${z.y/MAPH*100}%;width:${z.w/MAPW*100}%;height:${z.h/MAPH*100}%;background:${cc}22;border:2px solid ${cc};border-radius:6px;box-sizing:border-box"><span style="position:absolute;left:3px;top:1px;font-size:10px;font-weight:700;color:${cc}">${esc(z.n)}</span></div>`}).join("")}
-       <span id="tmf" style="position:absolute;display:${c.flag?"block":"none"};left:${c.flag?c.flag.x*100:0}%;top:${c.flag?c.flag.y*100:0}%;transform:translate(-4px,-100%);font-size:30px;line-height:1;pointer-events:none">🚩</span></div></div>
+    html:async()=>{if(!S.mapLoaded){await mapLoad();S.mapLoaded=1}return `<div id="tmapw" style="overflow:auto;border:1px solid var(--line);border-radius:12px;background:#e5e7eb"><div id="tmap" style="position:relative;width:${Math.round(100*mapGeo().CW/MAPW)}%;min-width:${Math.round(560*mapGeo().CW/MAPW)}px;aspect-ratio:${mapGeo().CW}/${mapGeo().CH};background:#f1f5f0;cursor:crosshair">
+       ${(MAPS.zones||[]).map(z=>{const G=mapGeo(),cc=(MZT[z.t]||MZT.open)[1];return `<div style="position:absolute;pointer-events:none;left:${G.PX(z.x)}%;top:${G.PY(z.y)}%;width:${G.SW(z.w)}%;height:${G.SH(z.h)}%;background:${cc}22;border:2px solid ${cc};border-radius:6px;box-sizing:border-box"><span style="position:absolute;left:3px;top:1px;font-size:10px;font-weight:700;color:${cc}">${esc(z.n)}</span></div>`}).join("")}
+       <span id="tmf" style="position:absolute;display:${c.flag?"block":"none"};left:${c.flag?mapGeo().PX(c.flag.x*MAPW):0}%;top:${c.flag?mapGeo().PY(c.flag.y*MAPH):0}%;transform:translate(-4px,-100%);font-size:30px;line-height:1;pointer-events:none">🚩</span></div></div>
       <div id="tmz" class="muted" style="margin-top:6px">${c.flag?"📍 "+esc(c.flag.zone||"вне зон"):"Место не выбрано"}</div>
       <label class="f">Что выгрузили (подпись флажка)</label><input id="tmm" value="${esc(c.fm||("УПД № "+c.num+(c.sup?" — "+c.sup:"")))}">
       <label class="f">Примечание (ряд, ярус)</label><input id="tmn" value="${esc(c.fn||"")}">`},
-    bind:(box)=>{const m=$("#tmap",box);m.onclick=e=>{const r=m.getBoundingClientRect();const x=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),y=Math.max(0,Math.min(1,(e.clientY-r.top)/r.height));
-      c.flag={x,y,zone:mapZoneAt(x*MAPW,y*MAPH)};const f=$("#tmf",box);Object.assign(f.style,{display:"block",left:x*100+"%",top:y*100+"%"});$("#tmz",box).textContent="📍 "+(c.flag.zone||"вне зон")}},
+    bind:(box)=>{const m=$("#tmap",box);m.onclick=e=>{const G=mapGeo(),p=G.pt(e,m),x=p.x,y=p.y;
+      c.flag={x,y,zone:mapZoneAt(x*MAPW,y*MAPH)};const f=$("#tmf",box);Object.assign(f.style,{display:"block",left:G.PX(x*MAPW)+"%",top:G.PY(y*MAPH)+"%"});$("#tmz",box).textContent="📍 "+(c.flag.zone||"вне зон")}},
     read:(b)=>{c.fm=$("#tmm",b).value.trim();c.fn=$("#tmn",b).value.trim()},
     save:async()=>{if(!c.flag||c.flagId)return;const f=await api("POST","/api/collections/smap_flags/records",{x:c.flag.x,y:c.flag.y,zone:c.flag.zone,material:c.fm||("УПД № "+c.num),note:c.fn,color:"green",created_by:S.user.id});c.flagId=f.id;if(MAPS.flags)MAPS.flags.unshift(f)}},
    {t:"Чек-лист приёмки",when:()=>c.items&&c.items.length>0,html:()=>c.items.map(i=>`<label class="chk ${i.done?"done":""}" style="display:flex;gap:10px;align-items:flex-start;padding:10px;margin-top:6px;background:#fff;border-radius:10px"><input type="checkbox" data-tci="${i.id}" ${i.done?"checked":""} style="width:26px;height:26px;flex:none"><span><b>${esc(i.title)}</b>${i.required?"":" <span class='muted'>(необязательно)</span>"}</span></label>`).join(""),
