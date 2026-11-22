@@ -42,9 +42,13 @@ function codesList(app) {
   return out;
 }
 function codesListCalc(app) {
-  const D = load(app); const M = {}, CO = {};
-  const add = (raw, src) => (CO[raw] || (CO[raw] = codesOf(raw))).forEach((c) => { const n = codeN(c); if (n.length < 5) return; const o = M[n] = M[n] || { code: c, n, req: 0, app: 0, oper: 0 }; o[src]++; });
-  D.ar.forEach((r) => add(r.project_code, "req")); D.it.forEach((r) => add(r.code, "app")); D.op.forEach((r) => add(r.code, "oper"));
+  // 1.9.49: только РАЗНЫЕ шифры со счётчиками (SQL GROUP BY) — раньше в память грузились все строки оперативки, на сервере это вешало программу
+  const M = {}, CO = {};
+  const add = (raw, src, k) => (CO[raw] || (CO[raw] = codesOf(raw))).forEach((c) => { const n = codeN(c); if (n.length < 5) return; const o = M[n] = M[n] || { code: c, n, req: 0, app: 0, oper: 0 }; o[src] += k; });
+  const grp = (sql) => q(app, sql, { c: "", k: 0 });
+  grp("SELECT project_code AS c, count(*) AS k FROM request_archive WHERE project_code != '' GROUP BY project_code").forEach((r) => add(r.c, "req", r.k));
+  grp("SELECT ri.objcode AS c, count(*) AS k FROM request_items ri JOIN requests r ON r.id = ri.request WHERE ri.objcode != '' GROUP BY ri.objcode").forEach((r) => add(r.c, "app", r.k));
+  grp("SELECT code AS c, count(*) AS k FROM oper_rows WHERE code != '' GROUP BY code").forEach((r) => add(r.c, "oper", r.k));
   return Object.keys(M).map((k) => M[k]).sort((a, b) => (b.req + b.app + b.oper) - (a.req + a.app + a.oper)).slice(0, 3000);
 }
 function codeReport(app, code) {

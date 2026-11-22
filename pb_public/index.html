@@ -792,12 +792,28 @@ async function pickHistFill(items,rid){if(!document.querySelector("[data-phn]"))
   items.forEach((it,i)=>{const el=document.querySelector(`[data-phn="${it.id}"]`);const h=res[i];if(el&&h&&(h.pick||h.unload)){el.innerHTML=pickBadge(h);n++}});
   if(n&&!PHN.has(rid)&&items.some(i=>!i.pick_place)){PHN.add(rid);toast(`📍 По ${n} поз. есть место из прошлых заявок / прихода — смотрите у позиции`,"ok")}}
 // 1.9.40: где грузить — флажки карты с фото по названию материала (не обязательно дословно); раньше поставленный — первым (сначала старый материал)
+
+/* 1.9.49: при КАЖДОМ открытии заявки — «сначала старые запасы» с фото обхода склада (флажки «🕰 Старый запас») */
+async function oldStockRemind(r,items){if(!r||["closed","cancelled"].includes(r.status))return;const rid=r.id;
+  let F=[];try{F=(await all("smap_flags","old=true","created")).filter(f=>!f.icon)}catch(_){}
+  if(S.route!=="request/"+rid||!S.curReq||S.curReq.r.id!==rid)return;
+  const hits=[];for(const it of items){const w=qWords(it.material).filter(x=>x.length>=3).slice(0,3).join(" ");if(!w)continue;
+    const L=F.filter(f=>wmatch(w,f.search_lc||f.material));if(L.length)hits.push({it,L:L.slice(0,4)})}
+  const box=$("#oldrem");if(box)box.innerHTML=`<div class="banner yellow noprint" style="font-size:15px">🕰 <b>Сначала — старые запасы.</b> ${hits.length?`По ${hits.length} поз. есть старый материал на складе — <a href="#" id="oldremo">показать фото</a>.`:`По этой заявке старых запасов на карте не отмечено.`} <a href="#/map/old">Все старые запасы</a></div>`;
+  const show=async()=>{const ft=hits.some(h=>h.L.some(f=>(f.photo||[]).length))?await fileToken():"";
+    modal(`<h3>🕰 Сначала берите старые запасы!</h3><div class="muted">Этот материал уже лежит на складе с прошлых поставок — выдавайте его в первую очередь.</div>
+     ${hits.map(h=>`<div class="card" style="margin-top:8px;padding:8px"><b>${esc(h.it.material)}</b> <span class="muted">${fmtQ(h.it.qty_ordered)} ${esc(h.it.unit||"")}</span>
+      ${h.L.map(f=>`<div class="row" style="gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap"><a href="#/map/f=${f.id}" data-close style="flex:1;min-width:150px"><b>📍 ${esc(f.zone||"на карте")}</b> · ${esc(f.material)}${f.qty?" — "+esc(f.qty)+" "+esc(f.unit||""):""}<div class="muted">лежит с ${dmy(String(f.created).slice(0,10))}${f.note?" · "+esc(f.note):""}</div></a>
+       ${(f.photo||[]).slice(0,4).map(n=>`<a href="/api/files/smap_flags/${f.id}/${encodeURIComponent(n)}?token=${ft}" target="_blank" rel="noopener"><img src="/api/files/smap_flags/${f.id}/${encodeURIComponent(n)}?thumb=240x240&token=${ft}" alt="Старый запас: ${esc(f.material)}" style="width:84px;height:84px;object-fit:cover;border-radius:8px"></a>`).join("")}</div>`).join("")}</div>`).join("")}
+     <div class="row" style="margin-top:14px"><button class="btn p grow" data-close id="oldok">ПОНЯТНО</button></div>`)};
+  const o=$("#oldremo");if(o)o.onclick=e=>{e.preventDefault();show()};
+  if(hits.length&&!$("#modal"))show()}
 async function mapPhotoFill(items){if(!document.querySelector("[data-mfl]"))return;let F;try{F=await all("smap_flags","","created")}catch(_){return}
-  F=F.filter(f=>!f.icon&&(f.photo||[]).length||!f.icon&&f.zone);if(!F.length)return;let ft="";
+  F=F.filter(f=>!f.icon&&(f.photo||[]).length||!f.icon&&f.zone);if(!F.length)return;let ft="";F.sort((a,b)=>(b.old?1:0)-(a.old?1:0));   // 1.9.49: «старый запас» — первым
   for(const it of items){const el=document.querySelector(`[data-mfl="${it.id}"]`);if(!el)continue;const w=qWords(it.material).filter(x=>x.length>=3).slice(0,3).join(" ");if(!w)continue;
     const L=F.filter(f=>wmatch(w,f.search_lc||f.material)).slice(0,4);if(!L.length)continue;if(!ft&&L.some(f=>(f.photo||[]).length))ft=await fileToken();
     el.innerHTML=`<div class="card" style="padding:8px;margin-top:6px;background:#f0fdf4"><b>📍 Где грузить</b> <span class="muted">— сначала старый материал</span>${L.map((f,k)=>`<div class="row" style="gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">
-      <span class="pill ${k===0?"g":"gr"}">${k===0?"1 — СТАРЫЙ":k+1}</span><a href="#/map/f=${f.id}" style="flex:1;min-width:150px"><b>${esc(f.zone||"на карте")}</b> · ${esc(f.material)}${f.qty?" — "+esc(f.qty)+" "+esc(f.unit||""):""}<div class="muted">лежит с ${dmy(String(f.created).slice(0,10))}${f.note?" · "+esc(f.note):""}</div></a>
+      <span class="pill ${k===0||f.old?"g":"gr"}">${f.old?"🕰 СТАРЫЙ ЗАПАС":k===0?"1 — СТАРЫЙ":k+1}</span><a href="#/map/f=${f.id}" style="flex:1;min-width:150px"><b>${esc(f.zone||"на карте")}</b> · ${esc(f.material)}${f.qty?" — "+esc(f.qty)+" "+esc(f.unit||""):""}<div class="muted">лежит с ${dmy(String(f.created).slice(0,10))}${f.note?" · "+esc(f.note):""}</div></a>
       ${(f.photo||[]).slice(0,3).map(n=>`<a href="/api/files/smap_flags/${f.id}/${encodeURIComponent(n)}?token=${ft}" target="_blank" rel="noopener"><img src="/api/files/smap_flags/${f.id}/${encodeURIComponent(n)}?thumb=240x240&token=${ft}" alt="Где лежит: ${esc(f.material)}" style="width:72px;height:72px;object-fit:cover;border-radius:8px"></a>`).join("")}</div>`).join("")}</div>`}}
 async function actCheckFill(items){const els=[...document.querySelectorAll("[data-acn]")];if(!els.length)return;
   const res=await actCheck(items.map(i=>i.material));items.forEach((it,i)=>{const el=document.querySelector(`[data-acn="${it.id}"]`);if(el)el.innerHTML=actBadge(res[i])})}
@@ -1103,7 +1119,7 @@ async function vRequest(id,changedCols){
   const missing=SIGNS.filter(x=>!sig[x[0]]);
   $("#main").innerHTML=`<div class="row noprint" style="margin-bottom:8px"><a class="btn sm" href="#/requests">← К заявкам</a><div class="grow"></div>
    ${W?`<button class="btn sm" id="rqedit">✏ Изменить</button>`:""}<button class="btn sm" id="rqprint">🖨 Печать / PDF</button><button class="btn sm" id="rqxl">⬇ Excel</button>${!can.zay()?`<button class="btn sm acc" id="rqsh" title="Позиции с фото и видео — распечатать или отправить стропальщикам на телефон">🖼 Отчёт с фото для стропальщиков</button>`:""}${W&&!can.zay()?`<button class="btn sm" id="rqmsg" title="Сообщение получателю: сколько осталось и до какого числа забрать">✉ Сообщение заявителю</button>`:""}</div>
-  <h1>Заявка № ${esc(r.number)} <span class="pill ${s[1]}" style="vertical-align:middle">${s[0]}</span> ${uchetPill(r)}</h1>
+  <h1>Заявка № ${esc(r.number)} <span class="pill ${s[1]}" style="vertical-align:middle">${s[0]}</span> ${uchetPill(r)}</h1><div id="oldrem"></div>
   ${rqMail(r)?`<div class="banner orange noprint" id="rqmb">📬 ЗАЯВКА НА ПОЧТЕ — заявитель ещё не передал её на склад<small>Прочитана с PDF, но пока не считается: нет в «Открытых», в счётчиках и в 7-дневном сроке. Неделя пойдёт с даты «Принято».</small>
     ${W&&!can.zay()?`<div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center"><input id="rqhd" type="date" value="${new Date(Date.now()+180*60000).toISOString().slice(0,10)}" style="max-width:180px"><button class="btn p" id="rqhb">✔ ПРИНЯТО — заявитель передал заявку</button></div>`:""}</div>`:""}
   ${r.status==="open"&&r.handed_at?`<div class="muted noprint" style="margin:-6px 0 10px">📥 Передана на склад ${dmy(String(r.handed_at).slice(0,10))}${r.handed_by?" ("+esc(uname(r.handed_by))+")":""} · <b style="color:${rqDays(r)>=7?"var(--r)":"inherit"}">в работе ${rqDays(r)} дн.</b>${W&&!can.zay()?` · <a href="#" id="rqhu">вернуть «на почту»</a>`:""}</div>`:""}
@@ -1169,7 +1185,7 @@ async function vRequest(id,changedCols){
     sugFresh(["sign_"+key]).then(()=>modal(`<h3>${esc(d[1])}</h3><label class="f">Кто подписал (ФИО)</label><input id="sgw" placeholder="например: Вернер В.А." data-sug="sign_${key}" data-prefill data-chips>
      <div class="row" style="margin-top:14px"><button class="btn g grow" id="mok">ОТМЕТИТЬ ПОДПИСЬ</button><button class="btn" data-close>Отмена</button></div>`,
     box=>{sugAttach(box);$("#mok",box).onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/request/sign",{request:id,key,value:true,who:$("#sgw",box).value});closeModal();await refresh()},"Подпись отмечена")}))});
-  bindShip(id,refresh);actCheckFill(items);pickHistFill(items,id);mapPhotoFill(items);
+  bindShip(id,refresh);actCheckFill(items);pickHistFill(items,id);mapPhotoFill(items);oldStockRemind(r,items);
   document.querySelectorAll("[data-pick]").forEach(b=>b.onclick=()=>{const it=items.find(x=>x.id===b.dataset.pick);const h=(PHK[it.material]||{}).pick||{},u=(PHK[it.material]||{}).unload||{};
     sugFresh(["pick_place","pick_tool","unload_place"]).then(()=>modal(`<h3>📍 Откуда взяли и чем</h3><div><b>${esc(it.material)}</b></div>
      ${h.place||u.place?`<div class="muted" style="margin-top:4px">${h.place?`В прошлый раз: ${esc(h.place)}${h.tool?", "+esc(h.tool):""} (заявка № ${esc(h.number)})`:""}${u.place?`${h.place?"<br>":""}Выгружали: ${esc(u.place)} (УПД № ${esc(u.number)})`:""}</div>`:""}
@@ -1821,15 +1837,16 @@ async function mapSaveZones(){const body={zones:MAPS.zones,bg_opacity:MAPS.op,ex
   MAPS.cfg=MAPS.cfg?await api("PATCH","/api/collections/smap_cfg/records/"+MAPS.cfg.id,body):await api("POST","/api/collections/smap_cfg/records",body);MAPS.dirty=false}
 async function vMap(id,changed){if(role()===""||S.user.scope)return vHome();if(changed&&$("#mapc"))return;   // обновления в реальном времени не сбивают правку зон
   if(id&&id.startsWith("f="))MAPS.focus=id.slice(2);
+  if(id==="old")MAPS.oldOnly=true;   // 1.9.49: «Все старые запасы» из заявки
   if(!MAPS.cfg||!MAPS.zones||!S.mapLoaded){await mapLoad();S.mapLoaded=1}
   if(!S.route.startsWith("map"))return;const W=can.write();const ft=MAPS.cfg&&MAPS.cfg.bg||MAPS.flags.some(f=>(f.photo||[]).length)?await fileToken():"";
-  const hit=f=>!MAPS.q||wmatch(MAPS.q,f.search_lc||f.material);const F=MAPS.flags.filter(hit);
+  const hit=f=>(!MAPS.oldOnly||f.old)&&(!MAPS.q||wmatch(MAPS.q,f.search_lc||f.material));const F=MAPS.flags.filter(hit);const nOld=MAPS.flags.filter(f=>f.old&&!f.icon).length;
   const bg=MAPS.cfg&&MAPS.cfg.bg?`/api/files/smap_cfg/${MAPS.cfg.id}/${encodeURIComponent(MAPS.cfg.bg)}?token=${ft}`:"/img/sklad_sat.jpg";   // 1.9.36: свой снимок ещё не загружен — скриншот с Яндекс Карт
   const md=MAPS.mode;const G=mapGeo();
   $("#main").innerHTML=`<div class="row" style="align-items:center;gap:8px;flex-wrap:wrap"><h1 class="grow" style="margin:0">🗺 Карта склада</h1>
     <span class="muted">${MAPS.flags.length} флажков</span></div>
    <div class="card noprint" style="margin-top:8px"><div class="row" style="gap:6px;flex-wrap:wrap;align-items:center">
-    <input id="mapq" class="grow" style="min-width:200px" placeholder="🔎 где лежит: кабель 3х2,5, утеплитель, фланец 159…" value="${esc(MAPS.q)}">
+    <input id="mapq" class="grow" style="min-width:200px" placeholder="🔎 где лежит: кабель 3х2,5, утеплитель, фланец 159…" value="${esc(MAPS.q)}"><button class="btn sm ${MAPS.oldOnly?"acc":""}" id="mapold" title="Показать только старые запасы">🕰 Старые запасы (${nOld})</button>
     <button class="btn sm" data-z="-1" aria-label="Уменьшить">−</button><span class="muted" style="min-width:42px;text-align:center">${Math.round(MAPS.zoom*100)}%</span><button class="btn sm" data-z="1" aria-label="Увеличить">＋</button>
     ${bg?`<button class="btn sm ${MAPS.sat?"p":""}" id="mapsat">🛰 Спутник</button>`:""}</div>
     <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">
@@ -1855,7 +1872,7 @@ async function vMap(id,changed){if(role()===""||S.user.scope)return vHome();if(c
      ${MAPS.flags.map(f=>{const on=hit(f),foc=MAPS.focus===f.id;if(f.icon&&MIC[f.icon]){const sz=Math.round((foc?38:28)*Math.min(1.4,Math.max(.8,MAPS.zoom)));return `<button class="mapf" data-fl="${f.id}" title="${esc(f.material)}" aria-label="${esc(MIC[f.icon][0])}: ${esc(f.material)}" style="position:absolute;left:${G.PX(f.x*MAPW)}%;top:${G.PY(f.y*MAPH)}%;transform:translate(-50%,-50%);border:0;background:none;padding:0;cursor:pointer;opacity:${on?1:.25};z-index:${foc?5:3}">${micBadge(f.icon,sz)}
        <span style="position:absolute;left:50%;top:100%;transform:translateX(-50%);white-space:nowrap;background:rgba(255,255,255,.9);border-radius:4px;padding:0 3px;font-size:${MAPS.zoom>=1.5?11:9}px;font-weight:700;max-width:160px;overflow:hidden;text-overflow:ellipsis">${esc(f.material)}</span></button>`}
        return `<button class="mapf" data-fl="${f.id}" title="${esc(f.material)}" aria-label="Флажок: ${esc(f.material)}" style="position:absolute;left:${G.PX(f.x*MAPW)}%;top:${G.PY(f.y*MAPH)}%;transform:translate(-4px,-100%);border:0;background:none;padding:0;cursor:pointer;opacity:${on?1:.18};z-index:${foc?5:on&&MAPS.q?4:2}">
-       <svg width="${foc?34:24}" height="${foc?42:30}" viewBox="0 0 24 30"><line x1="3" y1="2" x2="3" y2="30" stroke="#111" stroke-width="2"/><path d="M4 2h17l-5 6 5 6H4z" fill="${FLC[f.color]||FLC.red}" stroke="#111" stroke-width="1"/></svg>
+       <svg width="${foc?34:24}" height="${foc?42:30}" viewBox="0 0 24 30"><line x1="3" y1="2" x2="3" y2="30" stroke="#111" stroke-width="2"/><path d="M4 2h17l-5 6 5 6H4z" fill="${FLC[f.color]||FLC.red}" stroke="#111" stroke-width="1"/></svg>${f.old?`<span style="position:absolute;left:-6px;top:-8px;font-size:13px" title="Старый запас">🕰</span>`:""}
        ${MAPS.zoom>=1.5||(MAPS.q&&on)||foc?`<span style="position:absolute;left:24px;top:0;white-space:nowrap;background:#fff;border:1px solid #111;border-radius:4px;padding:0 4px;font-size:11px;max-width:220px;overflow:hidden;text-overflow:ellipsis">${esc(f.material)}</span>`:""}</button>`}).join("")}
     </div></div>
    ${MAPS.q?`<div class="card" style="margin-top:8px"><b>Найдено флажков: ${F.length}</b>${F.map(f=>`<div class="row" style="gap:8px;padding:6px 0;border-bottom:1px dashed var(--line);align-items:center">${flIcon(f)}<div class="grow"><b>${esc(f.material)}</b>${f.qty?` — ${esc(f.qty)} ${esc(f.unit||"")}`:""}<div class="muted">${esc(f.zone||"вне зон")}${f.note?" · "+esc(f.note):""}</div></div><button class="btn sm" data-show="${f.id}">Показать</button></div>`).join("")||'<div class="muted">Нет флажков с такими словами. Ищите в «Поиске» — там МПЗ, оперативка, заявки.</div>'}</div>`:""}
@@ -1865,6 +1882,7 @@ async function vMap(id,changed){if(role()===""||S.user.scope)return vHome();if(c
   document.querySelectorAll("[data-z]").forEach(b=>b.onclick=()=>{const k=[.6,1,1.5,2,3,4];let i=k.findIndex(v=>v>=MAPS.zoom-1e-6);i=Math.max(0,Math.min(k.length-1,i+(+b.dataset.z)));MAPS.zoom=k[i];vMap()});
   document.querySelectorAll("[data-md]").forEach(b=>b.onclick=()=>{if(MAPS.dirty&&b.dataset.md!=="zones"&&!confirm("Зоны изменены, но не сохранены. Выйти без сохранения?"))return;if(MAPS.dirty&&b.dataset.md!=="zones"){MAPS.dirty=false;S.mapLoaded=0}MAPS.mode=b.dataset.md;MAPS.move=null;MAPS.sel=-1;vMap()});
   const st=$("#mapsat");if(st)st.onclick=()=>{MAPS.sat=!MAPS.sat;vMap()};
+  {const ob=$("#mapold");if(ob)ob.onclick=()=>{MAPS.oldOnly=!MAPS.oldOnly;vMap()}}
   document.querySelectorAll("[data-show]").forEach(b=>b.onclick=()=>{MAPS.focus=b.dataset.show;if(MAPS.zoom<1.5)MAPS.zoom=1.5;vMap().then(()=>mapScrollTo(b.dataset.show))});
   $("#mapxl").onclick=()=>mapExcel();$("#mappr").onclick=()=>window.print();
   const c=$("#mapc");const pt=e=>G.pt(e,c);
@@ -1915,7 +1933,7 @@ async function mapFlagForm(f,p){await sugFresh(["map_mat","map_unit"]);const W=c
    <label class="f">Что ставим</label><div class="row" style="gap:6px;flex-wrap:wrap"><button type="button" class="btn sm" data-ic="">⚑ Материал</button>${Object.keys(MIC).map(k=>`<button type="button" class="btn sm" data-ic="${k}" style="gap:6px">${micBadge(k,20)} ${MIC[k][0]}</button>`).join("")}</div>
    <label class="f" id="fml">Что лежит *</label><input id="fm" list="fmdl" autocomplete="off" value="${esc(f?f.material:"")}" placeholder="начните писать — подсказки из МПЗ: кабель ВВГнг 3х2,5, фланец 159"><datalist id="fmdl"></datalist><div id="fmh" class="muted"></div>
    <label class="f">Примечание (ряд, ярус, чей)</label><input id="fn" value="${esc(f?f.note:"")}" placeholder="2-й ряд от ангара, под тентом">
-   <div id="fmat"><div class="g2x"><div><label class="f">Количество</label><input id="fq" value="${esc(f?f.qty:"")}" inputmode="decimal"></div><div><label class="f">Ед.</label><input id="fu" data-sug="map_unit" value="${esc(f?f.unit:"")}" placeholder="шт, м, т, пал."></div></div>
+   <div id="fmat"><label class="row" style="gap:6px;align-items:center;margin-top:8px;background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:8px"><input type="checkbox" id="fold" ${f&&f.old?"checked":""} style="width:auto"> <b>🕰 Старый запас</b> <span class="muted">— брать в первую очередь (напоминание в заявках)</span></label><div class="g2x"><div><label class="f">Количество</label><input id="fq" value="${esc(f?f.qty:"")}" inputmode="decimal"></div><div><label class="f">Ед.</label><input id="fu" data-sug="map_unit" value="${esc(f?f.unit:"")}" placeholder="шт, м, т, пал."></div></div>
    <label class="f">Цвет флажка</label><div class="row" style="gap:6px">${Object.keys(FLC).map(k=>`<label style="display:flex;align-items:center;gap:3px"><input type="radio" name="fc" value="${k}" ${(f?f.color||"red":"red")===k?"checked":""} style="width:auto"><span style="display:inline-block;width:18px;height:18px;background:${FLC[k]};border-radius:4px"></span></label>`).join("")}</div></div>
    <label class="f">Фото (до 20)</label><input type="file" id="fp" accept="image/*" capture="environment" multiple>
    <div class="row" style="margin-top:12px"><button class="btn p grow" id="mok">СОХРАНИТЬ</button><button class="btn" data-close>Отмена</button></div>`,box=>{sugAttach(box);
@@ -1931,7 +1949,7 @@ async function mapFlagForm(f,p){await sugFresh(["map_mat","map_unit"]);const W=c
    box.querySelectorAll("[data-ic]").forEach(b=>b.onclick=()=>{const was=ic;ic=b.dataset.ic;if(!f&&MIC[was]&&$("#fm",box).value===MIC[was][0].split(" (")[0])$("#fm",box).value="";sic()});sic();
    $("#mok",box).onclick=e=>act(e.target,async()=>{const m=$("#fm",box).value.trim();if(!m)throw new Error(ic?"Напишите подпись.":"Напишите, что лежит.");MAPS.lastIcon=f?MAPS.lastIcon:ic;
      const fd=new FormData();fd.append("material",m);fd.append("qty",$("#fq",box).value.trim());fd.append("unit",$("#fu",box).value.trim());fd.append("note",$("#fn",box).value.trim());
-     fd.append("color",(box.querySelector('input[name="fc"]:checked')||{}).value||"red");fd.append("icon",ic);if(ic){fd.set("qty","");fd.set("unit","")}
+     fd.append("color",(box.querySelector('input[name="fc"]:checked')||{}).value||"red");fd.append("icon",ic);fd.append("old",!ic&&$("#fold",box).checked?"true":"false");if(ic){fd.set("qty","");fd.set("unit","")}
      const pf=[...$("#fp",box).files];if(pf.length+(f&&f.photo?f.photo.length:0)>20)throw new Error("У флажка — до 20 фото.");for(const x of pf)fd.append("photo+",await shrinkImg(x,2400).catch(()=>x));
      let r;if(f)r=await api("PATCH","/api/collections/smap_flags/records/"+f.id,fd,true);
      else{fd.append("x",String(p.x));fd.append("y",String(p.y));fd.append("zone",zone);fd.append("created_by",S.user.id);r=await api("POST","/api/collections/smap_flags/records",fd,true)}
@@ -1947,9 +1965,9 @@ async function mapFlagView(id){const f=MAPS.flags.find(x=>x.id===id);if(!f)retur
    const e1=$("#fed",box);if(e1)e1.onclick=()=>mapFlagForm(f);
    const e2=$("#fmv",box);if(e2)e2.onclick=()=>{MAPS.move=id;MAPS.mode="view";closeModal();vMap();toast("Нажмите на карте новое место","ok")};
    const e3=$("#fdel",box);if(e3)e3.onclick=()=>{if(!confirm("Убрать флажок «"+f.material+"»? (материала там больше нет)"))return;act(e3,async()=>{await api("DELETE","/api/collections/smap_flags/records/"+id);MAPS.flags=MAPS.flags.filter(x=>x.id!==id);closeModal();vMap()},"Флажок убран")}})}
-function mapExcel(){const T=XS.cC;const L=MAPS.flags.filter(f=>!MAPS.q||wmatch(MAPS.q,f.search_lc||f.material)).slice().sort((a,b)=>(a.zone||"яя").localeCompare(b.zone||"яя","ru")||a.material.localeCompare(b.material,"ru"));
-  const r=[[{v:"Карта склада — что где лежит",s:XS.title}],[{v:`На ${dt(new Date().toISOString())}${MAPS.q?" · поиск: "+MAPS.q:""} · флажков: ${L.length}`,s:T}],[],["Зона","Тип","Что лежит / подпись","Кол-во","Ед.","Примечание","Поставил","Когда"].map(v=>({v,s:XS.head}))];
-  let last=null;L.forEach(f=>{const z=f.zone||"Вне зон";r.push([{v:z===last?"":z,s:z===last?T:XS.lbl||T},{v:f.icon&&MIC[f.icon]?MIC[f.icon][0]:"Материал",s:f.icon?XS.sY:T},{v:f.material,s:T},{v:f.qty,s:T},{v:f.unit,s:T},{v:f.note,s:T},{v:uname(f.created_by),s:T},{v:dt(f.updated),s:T}]);last=z});
+function mapExcel(){const T=XS.cC;const L=MAPS.flags.filter(f=>(!MAPS.oldOnly||f.old)&&(!MAPS.q||wmatch(MAPS.q,f.search_lc||f.material))).slice().sort((a,b)=>(a.zone||"яя").localeCompare(b.zone||"яя","ru")||a.material.localeCompare(b.material,"ru"));
+  const r=[[{v:"Карта склада — что где лежит",s:XS.title}],[{v:`На ${dt(new Date().toISOString())}${MAPS.q?" · поиск: "+MAPS.q:""}${MAPS.oldOnly?" · только старые запасы":""} · флажков: ${L.length}`,s:T}],[],["Зона","Тип","Что лежит / подпись","Кол-во","Ед.","Примечание","Поставил","Когда"].map(v=>({v,s:XS.head}))];
+  let last=null;L.forEach(f=>{const z=f.zone||"Вне зон";r.push([{v:z===last?"":z,s:z===last?T:XS.lbl||T},{v:f.icon&&MIC[f.icon]?MIC[f.icon][0]:f.old?"🕰 Старый запас":"Материал",s:f.icon?XS.sY:f.old?XS.cG:T},{v:f.material,s:T},{v:f.qty,s:T},{v:f.unit,s:T},{v:f.note,s:T},{v:uname(f.created_by),s:T},{v:dt(f.updated),s:T}]);last=z});
   saveBlob(xlsxBlob([{name:"Что где лежит",cols:[30,22,44,10,7,34,18,17],rows:r,merges:["A1:H1","A2:H2"],freeze:4}]),"Karta_sklada.xlsx")}
 
 /* ===================== 1.9.35: КАЛЬКУЛЯТОР МЕТАЛЛОПРОКАТА ===================== */
@@ -2468,7 +2486,8 @@ function cdFilter(q){const n=lcq(q||"").replace(/\s+/g,"").replace(/о/g,"0");re
 function cdChips(L){return L.map(c=>`<button class="btn sm" data-cd="${esc(c.code)}" title="заявок: ${c.req+c.app}, оперативка: ${c.oper}">${esc(c.code)} <span class="muted">${c.req+c.app}/${c.oper}</span></button>`).join("")||'<span class="muted">Шифров не найдено — загрузите архив заявок и оперативку.</span>'}
 async function vCodes(id,changed){if(role()===""||S.user.scope)return vHome();if(changed&&$("#cdsr"))return;
   if(id&&!CDS.code){CDS.code=decodeURIComponent(id);CDS.q=CDS.code}
-  if(!CDS.list){try{CDS.list=(await api("GET","/api/vs/codes/list")).codes}catch(e){CDS.list=[];toast(e.message,"err")}}
+  if(!CDS.list){$("#main").innerHTML=`<h1>⇄ Сверка по шифрам</h1><div class="card muted" id="cdload">⏳ Собираю список шифров из архива заявок и оперативки…</div>`;   // 1.9.49: сразу видно, что идёт загрузка
+    try{CDS.list=(await Promise.race([api("GET","/api/vs/codes/list"),new Promise((_,no)=>setTimeout(()=>no(new Error("Сервер долго собирает список шифров — впишите шифр вручную.")),60000))])).codes}catch(e){CDS.list=[];toast(e.message,"err")}}
   if(S.route!=="codes")return;
   const L=cdFilter(CDS.q);
   $("#main").innerHTML=`<h1>⇄ Сверка по шифрам</h1><div class="muted" style="margin:-6px 0 10px">Шифр с заявки (архив заявок и заявки в программе) → что поставлено под этот шифр по оперативке (УПД, кто принял — из сводного отчёта) → что сейчас есть в остатках МПЗ. Видно, какой материал по шифру уже на складе и его можно выдать.</div>
@@ -2476,16 +2495,42 @@ async function vCodes(id,changed){if(role()===""||S.user.scope)return vHome();if
     <button class="btn p" id="cdgo">ПОКАЗАТЬ</button>${CDS.rep?`<button class="btn" id="cdx">⬇ Excel</button>`:""}</div>
     <div class="row" id="cdchips" style="gap:6px;flex-wrap:wrap;margin-top:8px">${cdChips(L)}</div>
     <div class="muted" style="margin-top:4px">Цифры у шифра: строк в заявках / строк в оперативке.</div></div>
-   <div id="cdsr">${CDS.rep?codesHtml(CDS.rep):""}</div>`;
+   <div id="cdsr">${CDS.rep?cdFiltBar(CDS.rep)+`<div id="cdtab">${codesHtml(codesFilter(CDS.rep))}</div>`:""}</div>`;
   const go=v=>{CDS.code=v.trim();CDS.q=CDS.code;if(!CDS.code)return;act($("#cdgo"),async()=>{$("#cdsr").innerHTML='<div class="card muted">⏳ Сверяю заявки, оперативку, сводный отчёт и МПЗ…</div>';
-    try{CDS.rep=await Promise.race([api("GET","/api/vs/codes/report?code="+encodeURIComponent(CDS.code)),new Promise((_,no)=>setTimeout(()=>no(new Error("Сервер считает слишком долго — попробуйте шифр точнее или позже.")),120000))]);vCodes()}
+    try{CDS.rep=await Promise.race([api("GET","/api/vs/codes/report?code="+encodeURIComponent(CDS.code)),new Promise((_,no)=>setTimeout(()=>no(new Error("Сервер считает слишком долго — попробуйте шифр точнее или позже.")),120000))]);Object.assign(CDF,{q:"",st:{},need:false,stock:false,extra:true});vCodes()}
     catch(e){CDS.rep=null;const r=$("#cdsr");if(r)r.innerHTML=`<div class="card" id="cderr" style="border-left:4px solid var(--r,#b91c1c)">⚠ ${esc(e.message||String(e))}</div>`}})};
   $("#cdgo").onclick=()=>go($("#cdq").value);$("#cdq").onkeydown=e=>{if(e.key==="Enter")go(e.target.value)};
   const bindChips=()=>document.querySelectorAll("[data-cd]").forEach(b=>b.onclick=()=>go(b.dataset.cd));
   // 1.9.45: при наборе обновляются только кнопки шифров, а не вся страница с большой таблицей
   let t=0;$("#cdq").oninput=e=>{clearTimeout(t);t=setTimeout(()=>{CDS.q=e.target.value;const c=$("#cdchips");if(c){c.innerHTML=cdChips(cdFilter(CDS.q));bindChips()}},250)};
   bindChips();
-  const x=$("#cdx");if(x)x.onclick=()=>codesExcel(CDS.rep)}
+  const x=$("#cdx");if(x)x.onclick=()=>codesExcel(codesFilter(CDS.rep));cdFiltBind()}
+
+/* 1.9.49: ручной фильтр отчёта сверки — по словам, итогу, «нужно > 0», «есть на складе»; Excel — только отфильтрованное */
+const CDF={q:"",st:{},need:false,stock:false,extra:true};
+function cdFiltOn(){return !!(CDF.q.trim()||Object.values(CDF.st).some(v=>v===false)||CDF.need||CDF.stock||!CDF.extra)}
+function codesFilter(R){if(!R)return R;const q=CDF.q.trim();
+  const hit=(...t)=>!q||wmatch(q,t.filter(Boolean).join(" "));
+  const G=R.groups.filter(g=>CDF.st[g.st]!==false&&(!CDF.need||g.need>0)&&(!CDF.stock||g.stock>0)&&
+    hit(g.material,g.mpz.map(m=>m.name).join(" "),g.oper.map(o=>o.name+" "+(o.torg||"")).join(" "),g.reqs.map(r=>(r.no||"")+" "+(r.who||"")).join(" ")));
+  const X=CDF.extra?R.extra.filter(o=>(!CDF.stock||o.stock>0)&&hit(o.name,o.torg,(o.mpz[0]||{}).name)):[];
+  return Object.assign({},R,{groups:G,extra:X,filtered:cdFiltOn(),total:R.groups.length})}
+function cdFiltBar(R){const cnt={};R.groups.forEach(g=>cnt[g.st]=(cnt[g.st]||0)+1);
+  return `<div class="card noprint" id="cdfb" style="margin-bottom:8px"><div class="row" style="gap:6px;flex-wrap:wrap;align-items:center">
+    <input id="cdfq" value="${esc(CDF.q)}" placeholder="🔎 фильтр: материал, № заявки, кто, УПД (несколько слов)" style="flex:1;min-width:200px">
+    <label class="row" style="gap:4px;align-items:center"><input type="checkbox" id="cdfn" ${CDF.need?"checked":""} style="width:auto"> нужно &gt; 0</label>
+    <label class="row" style="gap:4px;align-items:center"><input type="checkbox" id="cdfs" ${CDF.stock?"checked":""} style="width:auto"> есть на складе</label>
+    <label class="row" style="gap:4px;align-items:center"><input type="checkbox" id="cdfe" ${CDF.extra?"checked":""} style="width:auto"> «без заявок»</label>
+    <button class="btn sm" id="cdfr">✕ Сбросить</button></div>
+   <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">${Object.keys(CST).map(k=>`<button class="pill ${CDF.st[k]===false?"":CST[k][1]}" data-cdst="${k}" style="cursor:pointer;border:1px solid var(--line,#ddd);${CDF.st[k]===false?"opacity:.45;text-decoration:line-through":""}" title="Показать/скрыть">${CST[k][0]}: ${cnt[k]||0}</button>`).join("")}</div>
+   <div class="muted" id="cdfi" style="margin-top:4px"></div></div>`}
+function cdFiltBind(){const tab=$("#cdtab");if(!tab)return;
+  const redraw=()=>{const F=codesFilter(CDS.rep);tab.innerHTML=codesHtml(F);const i=$("#cdfi");if(i)i.textContent=F.filtered?`Показано ${F.groups.length} из ${F.total} материалов${CDF.extra?", без заявок: "+F.extra.length:""} — в Excel уйдёт только показанное`:""};
+  let t=0;$("#cdfq").oninput=e=>{clearTimeout(t);t=setTimeout(()=>{CDF.q=e.target.value;redraw()},250)};
+  $("#cdfn").onchange=e=>{CDF.need=e.target.checked;redraw()};$("#cdfs").onchange=e=>{CDF.stock=e.target.checked;redraw()};$("#cdfe").onchange=e=>{CDF.extra=e.target.checked;redraw()};
+  document.querySelectorAll("[data-cdst]").forEach(b=>b.onclick=()=>{const k=b.dataset.cdst;CDF.st[k]=CDF.st[k]===false;b.className="pill "+(CDF.st[k]===false?"":CST[k][1]);b.style.opacity=CDF.st[k]===false?".45":"";b.style.textDecoration=CDF.st[k]===false?"line-through":"";redraw()});
+  $("#cdfr").onclick=()=>{CDF.q="";CDF.st={};CDF.need=false;CDF.stock=false;CDF.extra=true;$("#cdsr").innerHTML=cdFiltBar(CDS.rep)+`<div id="cdtab"></div>`;cdFiltBind()};
+  redraw()}
 function codesHtml(R){const G=R.groups,cnt={};G.forEach(g=>cnt[g.st]=(cnt[g.st]||0)+1);
   const eso=o=>(o.eso||[]).map(u=>`<div class="muted">сводный: № ${esc(u.no)}${u.gm?" ("+esc(u.gm)+")":""} · принял ${esc(u.keeper||"—")} ${dmy(u.date)}${u.status?" · "+esc(u.status):""}</div>`).join("");
   return `<div class="card"><div class="row" style="gap:8px;flex-wrap:wrap;align-items:center"><b class="grow">Шифр: ${esc(R.code)}</b>${Object.keys(CST).map(k=>`<span class="pill ${CST[k][1]}">${CST[k][0]}: ${cnt[k]||0}</span>`).join("")}</div>
@@ -2500,7 +2545,7 @@ function codesHtml(R){const G=R.groups,cnt={};G.forEach(g=>cnt[g.st]=(cnt[g.st]|
    ${R.extra.length?`<div class="card" style="margin-top:10px"><b>Поставлено под шифр, а заявок на это нет — ${R.extra.length}</b><div class="tw" style="margin-top:6px"><table><tr><th>Материал (оперативка)</th><th>Поставлено</th><th>УПД / сводный</th><th>На складе (МПЗ)</th></tr>${R.extra.map(o=>`<tr><td>${esc(o.name)}</td><td>${fmtQ(o.delivered)} из ${fmtQ(o.qty)} ${esc(o.unit)}</td><td>${esc(o.torg||"")}${eso(o)}</td><td><b style="color:${o.stock>0?"var(--g)":"inherit"}">${fmtQ(o.stock)}</b>${o.mpz.length?`<div class="muted">${esc(o.mpz[0].name)}</div>`:""}</td></tr>`).join("")}</table></div></div>`:""}
    <div class="muted" style="margin-top:6px">Названия сравниваются по словам и размерам (не дословно), поэтому проверяйте строки «${CST.part[0].toLowerCase()}» и «${CST.gone[0].toLowerCase()}» глазами. На складе — по последней выгрузке МПЗ, для всех шифров вместе.</div>`}
 function codesExcel(R){const T=XS.cC;const ST={stock:XS.cG,part:XS.sY,gone:XS.sY,none:XS.cR,issued:T};
-  const a=[[{v:"Сверка по шифру: "+R.code,s:XS.title}],[{v:"Заявки ↔ оперативка ↔ сводный отчёт ↔ МПЗ · "+dt(new Date().toISOString()),s:T}],[],["Материал по заявкам","Ед.","Заявлено","Выдано","Нужно","На складе (МПЗ)","Названия в МПЗ","Поставлено под шифр (оперативка)","УПД","Принял (сводный)","Заявки","Итог"].map(v=>({v,s:XS.head}))];
+  const a=[[{v:"Сверка по шифру: "+R.code,s:XS.title}],[{v:"Заявки ↔ оперативка ↔ сводный отчёт ↔ МПЗ · "+dt(new Date().toISOString())+(R.filtered?` · ФИЛЬТР: ${R.groups.length} из ${R.total}${CDF.q.trim()?" «"+CDF.q.trim()+"»":""}`:""),s:T}],[],["Материал по заявкам","Ед.","Заявлено","Выдано","Нужно","На складе (МПЗ)","Названия в МПЗ","Поставлено под шифр (оперативка)","УПД","Принял (сводный)","Заявки","Итог"].map(v=>({v,s:XS.head}))];
   R.groups.forEach(g=>a.push([{v:g.material,s:T},{v:g.unit,s:T},{v:g.ordered,s:XS.cN},{v:g.issued,s:XS.cN},{v:g.need,s:XS.cN},{v:g.stock,s:g.stock>0?XS.cG:XS.cN},{v:g.mpz.slice(0,3).map(m=>m.name+" — "+m.qty).join("; "),s:T},
     {v:g.oper.slice(0,3).map(o=>o.name+": "+o.delivered+" из "+o.qty+" "+o.unit).join("; "),s:T},{v:g.oper.slice(0,3).map(o=>o.torg).filter(Boolean).join("; "),s:T},{v:g.oper.flatMap(o=>o.eso).slice(0,3).map(u=>(u.keeper||"")+" "+dmy(u.date)).join("; "),s:T},{v:g.reqs.map(r=>r.no).filter(Boolean).slice(0,15).join(", "),s:T},{v:CST[g.st][0],s:ST[g.st]}]));
   const b=[[{v:"Поставлено под шифр, заявок нет: "+R.code,s:XS.title}],[],["Материал (оперативка)","Ед.","Кол-во","Поставлено","УПД","Принял (сводный)","На складе (МПЗ)","Название в МПЗ"].map(v=>({v,s:XS.head}))];
@@ -2595,13 +2640,21 @@ const MON=["января","февраля","марта","апреля","мая",
 const hhmm=s=>{const d=pd(s);return d?d.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"}):""};
 function shipObj(sh){const ids=[...new Set([sh.request].concat(jarr(sh.requests)))];const rq=ids.map(x=>(S.data.requests||[]).find(r=>r.id===x)||(S.curReq&&S.curReq.r.id===x?S.curReq.r:null)).filter(Boolean);
   return {nums:shipNums(sh),objects:[...new Set(rq.map(r=>r.object).filter(Boolean))],recipients:[...new Set(rq.map(r=>r.recipient).filter(Boolean))]}}
+
+/* 1.9.49: подсказки названий из МПЗ для любого поля (пропуск вручную) — выбор подставляет единицу */
+function mpzSug(inp,dl,onPick){let t=0,seq=0,L=[];
+  inp.addEventListener("input",()=>{clearTimeout(t);const v=inp.value.trim();const m=L.find(x=>x.name===v);if(m){onPick&&onPick(m);return}
+    if(v.length<3){return}t=setTimeout(async()=>{const my=++seq;let R=[];
+      try{R=await api("GET","/api/collections/mpz_stock/records?perPage=25&skipTotal=1&sort=-qty_end&filter="+encodeURIComponent(wfil(lcq(v)))).then(j=>j.items)}catch(_){}
+      if(my!==seq)return;L=R;const seen=new Set();dl.innerHTML=R.filter(x=>!seen.has(x.name)&&seen.add(x.name)).map(x=>`<option value="${esc(x.name)}">${esc(fmtQ(x.qty_end)+" "+(x.unit||""))}</option>`).join("")},300)})}
+function passManual(){passForm({lines:[],driver:uname(S.user.id),created_by:S.user.id,vehicle:""})}
 function passForm(sh){
   const o=shipObj(sh),d=new Date(),t=hhmm(sh.sent_at)||"";const who=sh.driver||uname(sh.created_by);const dest=o.objects.join(", ");
   const objOf=id=>{const r=(S.data.requests||[]).find(x=>x.id===id)||(S.curReq&&S.curReq.r.id===id?S.curReq.r:null);return r&&r.object||""};
   const rows=jarr(sh.lines).map(l=>({n:l.material,q:(l.unit?l.unit+" ":"")+fmtQ(l.qty),t,w:who,d:objOf(l.request)||dest}));if(!rows.length)rows.push({n:"",q:"",t,w:who,d:dest});
-  const rowH=(r,i)=>`<tr data-pr="${i}"><td><input data-k="n" value="${esc(r.n)}" placeholder="Наименование"></td><td><input data-k="q" value="${esc(r.q)}" style="width:80px"></td><td><input data-k="t" value="${esc(r.t)}" style="width:62px" placeholder="чч:мм"></td>
+  const rowH=(r,i)=>`<tr data-pr="${i}"><td><input data-k="n" value="${esc(r.n)}" placeholder="Наименование — начните писать (подсказки из МПЗ)" list="pdl" autocomplete="off"></td><td><input data-k="q" value="${esc(r.q)}" style="width:80px"></td><td><input data-k="t" value="${esc(r.t)}" style="width:62px" placeholder="чч:мм"></td>
     <td><input data-k="w" value="${esc(r.w)}" data-sug="pass_resp"></td><td><input data-k="d" value="${esc(r.d)}" data-sug="pass_dest"></td><td><button class="btn sm" data-prx="${i}" aria-label="Удалить строку">✕</button></td></tr>`;
-  modal(`<h3>🛡 Материальный пропуск для охраны</h3><div class="muted">Всё можно исправить. Пустые строки печатаются пустыми (до 20).</div>
+  modal(`<h3>🛡 Материальный пропуск для охраны</h3><div class="muted">Всё можно исправить. Пустые строки печатаются пустыми (до 20). Наименование — вручную или из МПЗ (подсказки при наборе).</div><datalist id="pdl"></datalist>
    <div class="g2x" style="margin-top:8px"><div><label class="f">№ пропуска</label><input id="pn" value="${esc(o.nums.join(", "))}"></div><div><label class="f">Дата</label><input id="pd" type="date" value="${d.toISOString().slice(0,10)}"></div></div>
    <label class="f">Машина</label><input id="pv" value="${esc(sh.vehicle||"")}" data-sug="vehicle">
    <div class="tw" style="margin-top:8px"><table class="pr"><tr><th>Наименование имущества</th><th>Кол-во</th><th>Время</th><th>Ответственный</th><th>Куда</th><th></th></tr><tbody id="prb">${rows.map(rowH).join("")}</tbody></table></div>
@@ -2611,7 +2664,9 @@ function passForm(sh){
    <div class="row" style="margin-top:14px"><button class="btn p grow" id="mok">🖨 ПЕЧАТЬ / PDF</button><button class="btn" data-close>Отмена</button></div>`,
   box=>{const tb=$("#prb",box);const st=document.createElement("style");st.textContent="#modal table.pr input{min-height:38px;padding:6px;width:100%;min-width:90px}#modal table.pr td{padding:3px}";box.appendChild(st);
     const bindX=()=>box.querySelectorAll("[data-prx]").forEach(b=>b.onclick=()=>b.closest("tr").remove());bindX();sugAttach(box);
-    $("#pra",box).onclick=()=>{tb.insertAdjacentHTML("beforeend",rowH({n:"",q:"",t,w:who,d:dest},Date.now()));bindX();sugAttach(tb.lastElementChild)};
+    const dl=$("#pdl",box);const bindN=tr=>{const inp=tr.querySelector('[data-k="n"]');mpzSug(inp,dl,m=>{const q=tr.querySelector('[data-k="q"]');if(q&&!q.value.trim())q.value=(m.unit||"")+" "})};
+    tb.querySelectorAll("tr").forEach(bindN);
+    $("#pra",box).onclick=()=>{tb.insertAdjacentHTML("beforeend",rowH({n:"",q:"",t,w:who,d:dest},Date.now()));bindX();sugAttach(tb.lastElementChild);bindN(tb.lastElementChild);tb.lastElementChild.querySelector('[data-k="n"]').focus()};
     $("#mok",box).onclick=()=>{const L=[...tb.querySelectorAll("tr")].map(tr=>{const g=k=>tr.querySelector(`[data-k="${k}"]`).value.trim();return {n:g("n"),q:g("q"),t:g("t"),w:g("w"),d:g("d")}}).filter(r=>r.n||r.q);
       const dd=$("#pd",box).value?new Date($("#pd",box).value+"T12:00"):new Date();
       try{localStorage.setItem("vs_pass_last",JSON.stringify({h:$("#ph",box).value,m:$("#pm",box).value}))}catch(_){}
@@ -2984,9 +3039,10 @@ async function vMpz(_id,changed){if(changed&&$("#mpzl"))return; // обновл�
    <div class="row" style="margin-top:8px"><input id="mpzq" placeholder="🔎 Название или код (можно несколько слов: «сетка 4вр»)" value="${esc(MPZ.q)}" style="flex:1;min-width:200px"><button class="btn p sm" id="mpzb">Найти</button></div>
    <div class="row" style="margin-top:8px"><select id="mpzw" style="flex:1;min-width:180px;width:auto"><option value="">Все склады</option>${m.warehouses.map(w=>`<option value="${esc(w.v)}" ${MPZ.wh===w.v?"selected":""}>${esc(whShort(w.v))} (${w.n})</option>`).join("")}</select>
     <select id="mpzql" style="flex:1;min-width:160px;width:auto"><option value="">Любое качество</option>${m.qualities.map(w=>`<option value="${esc(w.v)}" ${MPZ.ql===w.v?"selected":""}>${esc(w.v||"—")} (${w.n})</option>`).join("")}</select>
-    <span class="grow"></span><button class="btn sm" id="mpzx">⬇ Excel найденного</button>${W?`<label class="btn sm acc">⬆ Загрузить ведомость МПЗ (.xlsx)<input type="file" id="mpzf" accept=".xlsx" hidden></label>`:""}</div>
+    <span class="grow"></span>${W?`<button class="btn sm" id="mpzpass">🛡 Пропуск вручную</button>`:""}<button class="btn sm" id="mpzx">⬇ Excel найденного</button>${W?`<label class="btn sm acc">⬆ Загрузить ведомость МПЗ (.xlsx)<input type="file" id="mpzf" accept=".xlsx" hidden></label>`:""}</div>
    <div class="muted" id="mpzp" style="margin-top:6px">${esc(MPZ.last)}</div></div><div id="mpzl"><div class="card empty">Загрузка…</div></div>`;
   if(inSkk)bindSkkTabs();
+  const pb=$("#mpzpass");if(pb)pb.onclick=passManual;
   const go=()=>{MPZ.q=$("#mpzq").value.trim();MPZ.wh=$("#mpzw").value;MPZ.ql=$("#mpzql").value;MPZ.page=1;mpzList()};
   $("#mpzb").onclick=go;$("#mpzq").onkeydown=e=>{if(e.key==="Enter")go()};$("#mpzw").onchange=go;$("#mpzql").onchange=go;
   $("#mpzx").onclick=e=>act(e.target,mpzExcel);
