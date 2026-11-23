@@ -388,7 +388,7 @@ async function boot(){
 }
 
 /* ---------- Каркас ---------- */
-const NAV=[["home","Главная","⌂"],["receive","Приёмка","▣"],["requests","Заявки","▤"],["resources","Ресурсы","⚙"],["history","История","☰"],["rules","Инструкции","⚑"],["split","Поставщики","⇄"],["skk","Склад / СКК","✔"],["topics","Задачи и согласования","☑"],["report","Отчёт дня","☰"],["mpz","Остатки МПЗ","▦"],["codes","Сверка по шифрам","⇄"],["map","Карта склада","🗺"],["tools","Инструменты","🧰"],["users","Пользователи","👥"]];
+const NAV=[["home","Главная","⌂"],["receive","Приёмка","▣"],["requests","Заявки","▤"],["resources","Ресурсы","⚙"],["history","История","☰"],["rules","Инструкции","⚑"],["skk","Склад / СКК","✔"],["topics","Задачи и согласования","☑"],["report","Отчёт дня","☰"],["mpz","Остатки МПЗ","▦"],["map","Карта склада","🗺"],["tools","Инструменты","🧰"],["users","Пользователи","👥"]];
 /* ----- 1.9.27: приложение для телефона (Android) — только заявки и всё, что с ними связано ----- */
 const APPM=/VSApp\//.test(navigator.userAgent);
 const MOB=APPM||/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Macintosh/.test(navigator.userAgent));   // 1.9.30: телефон/планшет
@@ -424,7 +424,7 @@ function render(changedCols,force){
   if(!S.user||!$("#main"))return;
   const [p,id]=S.route.split("/");
   document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("on",a.dataset.n===(p==="receipt"?"receive":p==="request"||p==="leftovers"||p==="fstock"?"requests":/^(upd|updedit|skkact|skkactedit|oper)$/.test(p)?"skk":p==="topic"?"topics":p)));
-  const V={codes:vCodes,mznorms:vMzNorms,map:vMap,tools:vTools,mzlang:vMzLang,mzdocs:vMzDocs,mzdoc:vMzDoc,mzjournal:vMzJournal,mz:vMz,mzitem:vMzItem,mztasks:vMzTasks,mztopics:vMzTopics,mztopic:vMzTopic,mzhelp:vMzHelp,ureg:vUreg,walk:vWalk,bc:vBc,zreg:vZreg,backup:vBackup,find:vFind,leftovers:vLeftovers,fstock:vFstock,fields:vFields,home:vHome,receive:vReceive,receipt:vReceipt,requests:vRequests,request:vRequest,resources:vResources,history:vHistory,rules:vRules,users:vUsers,split:vSplit,report:vReport,mpz:vMpz,skk:vSkk,upd:vUpd,updedit:vUpdEdit,skkact:vSkkAct,skkactedit:vSkkActEdit,oper:vOper,topics:vTopics,topic:vTopic}[p]||vHome;
+  const V={mznorms:vMzNorms,map:vMap,tools:vTools,mzlang:vMzLang,mzdocs:vMzDocs,mzdoc:vMzDoc,mzjournal:vMzJournal,mz:vMz,mzitem:vMzItem,mztasks:vMzTasks,mztopics:vMzTopics,mztopic:vMzTopic,mzhelp:vMzHelp,ureg:vUreg,walk:vWalk,bc:vBc,zreg:vZreg,backup:vBackup,find:vFind,leftovers:vLeftovers,fstock:vFstock,fields:vFields,home:vHome,receive:vReceive,receipt:vReceipt,requests:vRequests,request:vRequest,resources:vResources,history:vHistory,rules:vRules,users:vUsers,report:vReport,mpz:vMpz,skk:vSkk,upd:vUpd,updedit:vUpdEdit,skkact:vSkkAct,skkactedit:vSkkActEdit,oper:vOper,topics:vTopics,topic:vTopic}[p]||vHome;
   if((p==="users"||p==="fields")&&!can.admin())return vHome();
   const key=S.route;if(key!==lastKey){window.scrollTo(0,0);lastKey=key;dirty.clear()}
   // Обновление пришло, пока человек вводит данные: сохраняем введённое, фокус и курсор
@@ -480,7 +480,7 @@ function vHome(){
    <div class="kpi v" data-go="#/requests" data-debt><div class="n">${(S.data.debt||[]).length}</div><div class="t">Долг: закрытые заявки без подписей</div></div>
    <div class="kpi o" data-go="#/history" data-ovr><div class="n">${(S.data.overrides||[]).length}</div><div class="t">Обходы запретов за 7 дней</div></div>
   </div>
-  <div class="row noprint" style="margin:12px 0 0"><a class="btn sm" href="/zametki/" target="_blank" rel="noopener">📝 Мои заметки (в телефоне, без интернета)</a>${urOk()?`<a class="btn sm" href="#/ureg">📗 Сводный отчёт прихода</a>`:""}${!APPM?`<a class="btn sm" href="/app/velesstroy-zayavki.apk" download title="Android: заявки, поиск, отгрузки, фото — без VPN">📱 Приложение «Заявки» (Android)</a>`:""}${can.write()?`<button class="btn sm" id="hStrop">📋 Задача</button>`:""}<a class="btn sm" href="#/split">⇄ Распределение поставщиков</a><a class="btn sm" href="#/report">☰ Отчёт за день</a><a class="btn sm" href="#/mpz">▦ Остатки МПЗ</a><a class="btn sm" href="#/skk">✔ Склад / СКК</a></div>
+  <div class="row noprint" style="margin:12px 0 0"><a class="btn sm" href="/zametki/" target="_blank" rel="noopener">📝 Мои заметки (в телефоне, без интернета)</a>${urOk()?`<a class="btn sm" href="#/ureg">📗 Сводный отчёт прихода</a>`:""}${!APPM?`<a class="btn sm" href="/app/velesstroy-zayavki.apk" download title="Android: заявки, поиск, отгрузки, фото — без VPN">📱 Приложение «Заявки» (Android)</a>`:""}${can.write()?`<button class="btn sm" id="hStrop">📋 Задача</button>`:""}<a class="btn sm" href="#/report">☰ Отчёт за день</a><a class="btn sm" href="#/mpz">▦ Остатки МПЗ</a><a class="btn sm" href="#/skk">✔ Склад / СКК</a></div>
   <h2>Отгрузки сейчас</h2><div class="card list">${shipmentsBoard()}
    ${can.write()?`<div class="row noprint" style="margin-top:10px"><button class="btn sm" id="shAny">🚚 Новая отгрузка (из нескольких заявок)</button></div>`:""}</div>
   ${can.manage()?`<h2>Ожидают вашего решения (${aps.length})</h2><div class="card list">${aps.length?aps.map(apRow).join(""):`<div class="empty">Нет запросов</div>`}</div>`:""}
