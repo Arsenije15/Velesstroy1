@@ -96,6 +96,24 @@ routerAdd("POST", "/api/vs/shipment/update", (e) => {
         ch.push("«" + String(l.material).slice(0, 60) + "»: " + l.qty + " → " + (q || "снято") + " " + l.unit);
         if (q > 0) { l.qty = q; nl.push(l); }
       });
+      // 1.9.52: добавить позиции и после формирования (пока отгрузка готовится или в пути)
+      const add = Array.isArray(b.add) ? b.add : [];
+      if (add.length && st !== "preparing" && st !== "sent") throw new BadRequestError("Отгрузка уже доставлена — добавить позицию нельзя. Подготовьте новую отгрузку.");
+      const reqs = X.shipRequests(s).slice();
+      add.forEach((x) => {
+        const it = tx.findRecordById("request_items", L.str(x && x.item));
+        const rq = tx.findRecordById("requests", it.getString("request"));
+        if (rq.getString("status") !== "open") throw new BadRequestError("Заявка № " + rq.getString("number") + " не открыта — позицию из неё добавить нельзя.");
+        let q = Math.round(parseFloat(String(x.qty === undefined || x.qty === null ? "" : x.qty).replace(",", ".")) * 1000) / 1000;
+        if (isNaN(q)) q = Math.max(0, Math.round((it.getFloat("qty_ordered") - it.getFloat("qty_issued")) * 1000) / 1000);
+        if (!(q > 0)) throw new BadRequestError("«" + it.getString("material") + "»: укажите количество больше нуля.");
+        const ex = nl.filter((l) => l.item === it.id)[0];
+        if (ex) ex.qty = Math.round((ex.qty + q) * 1000) / 1000;
+        else nl.push(Object.assign({ item: it.id, request: rq.id, number: rq.getString("number"), material: it.getString("material"), unit: it.getString("unit"), qty: q }, X.planOf(L, x)));
+        if (reqs.indexOf(rq.id) < 0) reqs.push(rq.id);
+        ch.push("добавлено: № " + rq.getString("number") + " «" + it.getString("material").slice(0, 60) + "» " + q + " " + it.getString("unit"));
+      });
+      if (add.length) s.set("requests", reqs);
       if (!nl.length) throw new BadRequestError("В отгрузке должна остаться хотя бы одна позиция (или отмените отгрузку).");
       s.set("lines", nl);
     }

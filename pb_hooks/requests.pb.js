@@ -118,7 +118,21 @@ routerAdd("POST", "/api/vs/request/status", (e) => {
     const r = tx.findRecordById("requests", L.str(b.request));
     const st = r.getString("status");
     const items = tx.findRecordsByFilter("request_items", "request = {:r}", "sort", 0, 0, { r: r.id });
-    const short = items.filter((x) => x.getFloat("qty_issued") + 1e-9 < x.getFloat("qty_ordered"));
+    // 1.9.52: при закрытии можно поправить «заказано» (сколько осталось вывезти считается от него)
+    const qch = [];
+    if (act === "close" && st === "open" && Array.isArray(b.qty)) {
+      b.qty.forEach((x) => {
+        const it = items.filter((i) => i.id === L.str(x && x.item))[0];
+        if (!it) throw new BadRequestError("Позиция не из этой заявки.");
+        const q = Math.round(parseFloat(String(x.qty_ordered).replace(",", ".")) * 1000) / 1000;
+        if (isNaN(q) || q < 0) throw new BadRequestError("«" + it.getString("material") + "»: укажите количество 0 или больше.");
+        if (Math.abs(q - it.getFloat("qty_ordered")) < 1e-9) return;
+        if (q + 1e-9 < it.getFloat("qty_issued")) throw new BadRequestError("«" + it.getString("material") + "»: заказано не может быть меньше уже выданного (" + String(it.getFloat("qty_issued")).replace(".", ",") + " " + it.getString("unit") + ").");
+        qch.push("«" + it.getString("material").slice(0, 60) + "»: заказано " + it.getFloat("qty_ordered") + " → " + q + " " + it.getString("unit"));
+        it.set("qty_ordered", q); tx.save(it);
+      });
+    }
+    const short =items.filter((x) => x.getFloat("qty_issued") + 1e-9 < x.getFloat("qty_ordered"));
     let text = "";
     if (act === "close") {
       if (st !== "open") throw new BadRequestError("Заявка уже закрыта.");
@@ -132,6 +146,7 @@ routerAdd("POST", "/api/vs/request/status", (e) => {
       if (L.authId(a)) r.set("closed_by", a.id);
       r.set("close_comment", comment);
       text = "Заявка № " + r.getString("number") + " закрыта" + (short.length ? " (выдано не полностью: " + short.length + " поз.)" : " (выдано полностью)");
+      if (qch.length) text += "; изменено количество: " + qch.join("; ");
       // 1.9.15: невыданный остаток — в отдельный спиcок «Невыданное по заявкам», выдать потом без заявки
       if (b.leftover && short.length) {
         const pick = Array.isArray(b.leftover_items) && b.leftover_items.length ? b.leftover_items.map((x) => L.str(x)) : short.map((x) => x.id);

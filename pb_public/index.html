@@ -174,12 +174,12 @@ function role(){return S.user?S.user.role:""}
 function uname(id){const u=(S.data.users||[]).find(x=>x.id===id);return u?(u.name||u.username):"—"}
 
 /* ---------- API ---------- */
-async function api(method,path,body,isForm){
+async function api(method,path,body,isForm,opt){
   const h={};if(S.auth)h.Authorization=S.auth;
   if(body&&!isForm)h["Content-Type"]="application/json";
   let r;
-  try{r=await fetch(path,{method,headers:h,body:body?(isForm?body:JSON.stringify(body)):undefined})}
-  catch(e){setOnline(false);const er=new Error("Нет связи с сервером. Проверьте интернет и повторите.");er.net=true;throw er}
+  try{r=await fetch(path,{method,headers:h,body:body?(isForm?body:JSON.stringify(body)):undefined,signal:opt&&opt.signal})}
+  catch(e){if(e&&e.name==="AbortError"){const er=new Error("Отменено");er.abort=true;throw er}setOnline(false);const er=new Error("Нет связи с сервером. Проверьте интернет и повторите.");er.net=true;throw er}
   setOnline(true);
   let j=null;try{j=await r.json()}catch(_){}
   if(r.status===401&&S.auth){logout(true);throw new Error("Сессия истекла — войдите снова.")}
@@ -423,8 +423,8 @@ let lastKey="";
 function render(changedCols,force){
   if(!S.user||!$("#main"))return;
   const [p,id]=S.route.split("/");
-  document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("on",a.dataset.n===(p==="receipt"?"receive":p==="request"||p==="leftovers"?"requests":/^(upd|updedit|skkact|skkactedit|oper)$/.test(p)?"skk":p==="topic"?"topics":p)));
-  const V={codes:vCodes,mznorms:vMzNorms,map:vMap,tools:vTools,mzlang:vMzLang,mzdocs:vMzDocs,mzdoc:vMzDoc,mzjournal:vMzJournal,mz:vMz,mzitem:vMzItem,mztasks:vMzTasks,mztopics:vMzTopics,mztopic:vMzTopic,mzhelp:vMzHelp,ureg:vUreg,walk:vWalk,bc:vBc,zreg:vZreg,backup:vBackup,find:vFind,leftovers:vLeftovers,fields:vFields,home:vHome,receive:vReceive,receipt:vReceipt,requests:vRequests,request:vRequest,resources:vResources,history:vHistory,rules:vRules,users:vUsers,split:vSplit,report:vReport,mpz:vMpz,skk:vSkk,upd:vUpd,updedit:vUpdEdit,skkact:vSkkAct,skkactedit:vSkkActEdit,oper:vOper,topics:vTopics,topic:vTopic}[p]||vHome;
+  document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("on",a.dataset.n===(p==="receipt"?"receive":p==="request"||p==="leftovers"||p==="fstock"?"requests":/^(upd|updedit|skkact|skkactedit|oper)$/.test(p)?"skk":p==="topic"?"topics":p)));
+  const V={codes:vCodes,mznorms:vMzNorms,map:vMap,tools:vTools,mzlang:vMzLang,mzdocs:vMzDocs,mzdoc:vMzDoc,mzjournal:vMzJournal,mz:vMz,mzitem:vMzItem,mztasks:vMzTasks,mztopics:vMzTopics,mztopic:vMzTopic,mzhelp:vMzHelp,ureg:vUreg,walk:vWalk,bc:vBc,zreg:vZreg,backup:vBackup,find:vFind,leftovers:vLeftovers,fstock:vFstock,fields:vFields,home:vHome,receive:vReceive,receipt:vReceipt,requests:vRequests,request:vRequest,resources:vResources,history:vHistory,rules:vRules,users:vUsers,split:vSplit,report:vReport,mpz:vMpz,skk:vSkk,upd:vUpd,updedit:vUpdEdit,skkact:vSkkAct,skkactedit:vSkkActEdit,oper:vOper,topics:vTopics,topic:vTopic}[p]||vHome;
   if((p==="users"||p==="fields")&&!can.admin())return vHome();
   const key=S.route;if(key!==lastKey){window.scrollTo(0,0);lastKey=key;dirty.clear()}
   // Обновление пришло, пока человек вводит данные: сохраняем введённое, фокус и курсор
@@ -853,7 +853,7 @@ async function lftList(){const L=await lftItems();const box=$("#lfl");if(!box)re
       return `<tr><td><b>${esc(x.material)}</b>${log.length?`<div class="lfh" style="margin-top:4px">${log.map((l,k)=>`<div style="padding:4px 0;border-top:1px dashed var(--line)"><span class="muted">${k+1}.</span> ${dt(l.at)}: ${l.qty?`<b>${fmtQ(l.qty)} ${esc(x.unit)}</b> → ${esc(l.to)}`:esc(l.note)}${l.qty&&l.note?` <span class="muted">— ${esc(l.note)}</span>`:""} <span class="muted">(${esc(l.by)})</span>${l.qty&&W?` <label class="btn sm" style="padding:2px 8px" title="Добавить фото к этой выдаче">📷<input type="file" accept="image/*" multiple hidden data-lfp="${x.id}" data-lfat="${esc(l.at)}"></label>`:""}<div>${phHtml(x,l)}</div></div>`).join("")}</div>`:""}</td>
        <td style="text-align:right;white-space:nowrap"><b style="font-size:17px;color:${left>0?"var(--r)":"var(--g)"}">${fmtQ(left)}</b> ${esc(x.unit)}<div class="muted">из ${fmtQ(x.qty)}</div></td>
        <td><a href="#/request/${x.request}">№ ${esc(x.number)}</a><div class="muted">${dt(x.created).slice(0,10)}</div></td><td>${esc(x.recipient||"")}</td><td>${fmtQ(x.issued)}</td>
-       <td class="noprint" style="white-space:nowrap">${W&&x.status==="open"?`<button class="btn sm g" data-lfi="${x.id}">Выдать</button> <button class="btn sm" data-lfc="${x.id}">Убрать</button>`:x.status==="done"?'<span class="pill g">ЗАКРЫТО</span>':""}</td></tr>`}).join("")}</tbody></table></div>`).join("")||`<div class="card empty">${LFT.st==="open"?"Невыданного нет":"Ничего не найдено"}</div>`;
+       <td class="noprint" style="white-space:nowrap">${W&&x.status==="open"?`<button class="btn sm g" data-lfi="${x.id}">Выдать</button> <button class="btn sm" data-lfq="${x.id}" title="Изменить, сколько осталось вывезти">✏ Кол-во</button> <button class="btn sm" data-lfc="${x.id}">Убрать</button>`:x.status==="done"?'<span class="pill g">ЗАКРЫТО</span>':""}</td></tr>`}).join("")}</tbody></table></div>`).join("")||`<div class="card empty">${LFT.st==="open"?"Невыданного нет":"Ничего не найдено"}</div>`;
   const byId=id=>L.find(x=>x.id===id);
   box.querySelectorAll("[data-lfi]").forEach(b=>b.onclick=()=>{const x=byId(b.dataset.lfi);const left=Math.round((num(x.qty)-num(x.issued))*1000)/1000;
     modal(`<h3>Выдать без заявки</h3><div><b>${esc(x.material)}</b></div><div class="muted">${esc(x.object||"")} · по заявке № ${esc(x.number)} · осталось ${fmtQ(left)} ${esc(x.unit)}</div>
@@ -865,6 +865,14 @@ async function lftList(){const L=await lftItems();const box=$("#lfl");if(!box)re
      let fs=[];$("#lph",mb).onchange=ev=>{fs=[...ev.target.files];$("#lphn",mb).textContent=fs.length?`📷 ${fs.length} фото`:""};
      $("#mok",mb).onclick=e=>act(e.target,async()=>{const r=await api("POST","/api/vs/leftover/issue",{id:x.id,qty:$("#lq",mb).value,to:$("#lt",mb).value,note:$("#ln",mb).value});
        if(fs.length&&r.at)await lftPhotoUp(x.id,r.at,fs);closeModal();S.lftN=null;await lftList()},"Выдано")})});
+  box.querySelectorAll("[data-lfq]").forEach(b=>b.onclick=()=>{const x=byId(b.dataset.lfq);const left=Math.round((num(x.qty)-num(x.issued))*1000)/1000;   // 1.9.52
+    modal(`<h3>✏ Сколько осталось вывезти</h3><div><b>${esc(x.material)}</b></div><div class="muted">Заявка № ${esc(x.number)} · уже выдано ${fmtQ(x.issued)} ${esc(x.unit)}</div>
+     <label class="f" for="lfqv">Осталось вывезти, ${esc(x.unit)}</label><input id="lfqv" inputmode="decimal" value="${fmtQ(left)}" style="font-size:20px;font-weight:800">
+     <label class="f" for="lfqr">Причина</label><input id="lfqr" placeholder="например: пересчитали, часть уже не нужна">
+     <div class="muted">0 — позиция закроется.</div>
+     <div class="row" style="margin-top:14px"><button class="btn p grow" id="mok">СОХРАНИТЬ</button><button class="btn" data-close>Отмена</button></div>`,mb=>{
+     $("#mok",mb).onclick=e=>act(e.target,async()=>{const v=$("#lfqv",mb).value.trim();if(v===""||isNaN(num(v))||num(v)<0)throw new Error("Укажите количество (0 или больше).");
+       const r=await api("POST","/api/vs/leftover/qty",{id:x.id,left:v,reason:$("#lfqr",mb).value});closeModal();S.lftN=null;await lftList();if(!r.changed)toast("Изменений нет")},"Количество изменено")})});
   box.querySelectorAll("[data-lfp]").forEach(inp=>inp.onchange=ev=>{const fs=[...ev.target.files];ev.target.value="";if(fs.length)act(null,async()=>{await lftPhotoUp(inp.dataset.lfp,inp.dataset.lfat,fs);await lftList()},"Фото добавлено")});
   box.querySelectorAll("[data-lfc]").forEach(b=>b.onclick=()=>{const x=byId(b.dataset.lfc);
     modal(`<h3>Убрать из списка</h3><div><b>${esc(x.material)}</b></div><label class="f" for="ln">Почему *</label><textarea id="ln" placeholder="например: не нужен, вернули поставщику"></textarea>
@@ -878,12 +886,116 @@ async function lftExcel(){const L=await lftItems();if(!L.length)throw new Error(
     r.push([{v:x.object,s:T},{v:x.material,s:T},{v:x.unit,s:T},{v:left,s:left>0?XS.sR:XS.sG},{v:num(x.qty),s:XS.num},{v:num(x.issued),s:XS.num},{v:x.number,s:T},{v:dmy(String(x.created).slice(0,10)),s:T},{v:x.recipient,s:T},{v:x.status==="open"?"к выдаче":"закрыто",s:x.status==="open"?XS.sR:XS.sG},
       {v:jarr(x.log).map(l=>dmy(String(l.at).slice(0,10))+": "+(l.qty?l.qty+" → "+l.to:l.note)).join("; "),s:T}])});
   saveBlob(xlsxBlob([{name:"Невыданное",cols:[30,50,8,11,9,9,12,11,22,12,40],rows:r,merges:["A1:K1","A2:K2"],freeze:4,filter:"A4:K"+(4+L.length)}]),"Nevydannoe_po_zayavkam.xlsx")}
+/* ===================== 1.9.52: ФАКТИЧЕСКИЙ ОСТАТОК СКЛАДА =====================
+   Позиции с количеством: − выдача по заявкам и по «Невыданному», + приход по УПД. Начать — из ведомости МПЗ или с пустого списка.
+   Название из заявки / УПД не совпало — движение ждёт в «Не сопоставлено»: привязали один раз — название запоминается. */
+const FST={q:"",neg:false};
+const fsKey=s=>String(s||"").toLowerCase().replace(/ё/g,"е").replace(/x/g,"х").replace(/(\d),(?=\d)/g,"$1.").replace(/[«»"'“”„`]/g,"").replace(/\s+/g," ").trim().slice(0,1500);
+const fsQ=v=>String(v).replace(/\\/g,"\\\\").replace(/"/g,'\\"');
+const fsOk=()=>!!S.user&&!S.user.scope&&!can.coord()&&!can.zay()&&!can.linkOnly();
+const FSK={init:["Начало","gr"],in:["Приход","g"],out:["Расход","o"],count:["Пересчёт","b"],add:["Новая позиция","b"]};
+const FSSRC={request:"заявка",leftover:"невыданное",upd:"УПД",manual:"вручную",mpz:"МПЗ"};
+async function fstFind(names){const K=[...new Set(names.map(fsKey).filter(Boolean))];if(!K.length)return {};const R=[];
+  for(let i=0;i<K.length;i+=25){const p=K.slice(i,i+25);try{R.push(...(await api("GET","/api/collections/fstock/records?perPage=200&skipTotal=1&filter="+encodeURIComponent(p.map(k=>`key="${fsQ(k)}"||alias_lc~"|${fsQ(k)}|"`).join("||")))).items)}catch(_){}}
+  const M={};K.forEach(k=>{const s=R.find(x=>x.key===k)||R.find(x=>(x.alias_lc||"").includes("|"+k+"|"));if(s)M[k]=s});return M}
+// в карточке заявки: «📊 на складе (факт): …» у каждой позиции
+async function fstFill(items){if(!fsOk()||!items.length)return;let M;try{M=await fstFind(items.map(i=>i.material))}catch(_){return}
+  items.forEach(i=>{const d=document.querySelector(`[data-fst="${i.id}"]`);const s=M[fsKey(i.material)];if(!d||!s)return;
+    d.innerHTML=`<a href="#/fstock/${encodeURIComponent(s.name.split(/\s+/).slice(0,4).join(" "))}" class="pill ${num(s.qty)>0?"g":"r"}" style="text-decoration:none;margin-top:4px;display:inline-block">📊 Факт. на складе: ${fmtQ(s.qty)} ${esc(s.unit||"")}${s.place?" · 📍 "+esc(s.place):""}</a>`})}
+async function vFstock(id,changed){if(!fsOk())return vHome();if(changed&&$("#fsl"))return;
+  if(id&&!changed){FST.q=decodeURIComponent(id)}
+  const M=can.manage(),W=can.write();
+  let first=[];try{first=(await api("GET","/api/collections/fstock/records?perPage=1&skipTotal=1")).items}catch(e){$("#main").innerHTML=`<div class="banner red">${esc(e.message)}</div>`;return}
+  let pend=0;try{pend=(await api("GET","/api/collections/fstock_moves/records?perPage=1&filter="+encodeURIComponent("pending=true"))).totalItems}catch(_){}
+  if(!S.route.startsWith("fstock"))return;
+  $("#main").innerHTML=`<div class="row noprint"><a class="btn sm" href="#/requests">← К заявкам</a></div><h1>📊 Фактический остаток склада</h1>
+   <div class="muted" style="margin:-6px 0 10px">Сколько материала физически на складе. <b>Уменьшается</b> при выдаче по заявкам (и из «Невыданного»), <b>увеличивается</b> по УПД нового прихода. Пересчитали — исправьте кнопкой «Пересчёт».</div>
+   ${!first.length?`<div class="card"><h3 style="margin-top:0">Список пока пуст</h3><div>С чего начать:</div>
+     <ul><li><b>Из ведомости МПЗ</b> — возьмём последнюю загруженную ведомость (наименование, ед., остаток), дальше остаток будет меняться сам.</li><li><b>С пустого списка</b> — позиции добавляете сами («＋ Позиция»), приход по УПД будет ждать в «Не сопоставлено».</li></ul>
+     ${M?`<div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn p" id="fsimpz">⬇ Начать из ведомости МПЗ</button><button class="btn" id="fsiemp">Начать с пустого списка</button></div>`:`<div class="muted">Начать может руководитель или администратор.</div>`}</div>`
+   :`<div class="card noprint"><div class="row" style="gap:6px;flex-wrap:wrap"><input id="fsq" value="${esc(FST.q)}" placeholder="🔎 материал, код, место — слова в любом порядке" style="flex:1;min-width:200px" autocomplete="off">
+     <label class="row" style="gap:6px;width:auto"><input type="checkbox" id="fsneg" ${FST.neg?"checked":""} style="width:20px;height:20px"> только 0 и меньше</label><button class="btn p" id="fsb">Найти</button></div>
+     <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">${W?`<button class="btn acc" id="fsadd">＋ Позиция</button>`:""}<button class="btn" id="fsx">⬇ Excel</button>${M?`<button class="btn" id="fsre">↺ Начать заново</button>`:""}</div></div>
+     ${pend?`<div class="banner orange noprint" style="font-size:15px;cursor:pointer" id="fspb">⚠ НЕ СОПОСТАВЛЕНО: ${pend}<small>Выдача или приход с названием, которого нет в списке. Нажмите — привяжите к позиции (запомнится) или создайте новую.</small></div>`:""}
+     <div id="fsl"><div class="card empty">Загрузка…</div></div>`}`;
+  const ini=from=>{modal(`<h3>${from==="mpz"?"⬇ Начать из ведомости МПЗ":"Начать с пустого списка"}</h3>${first.length?`<div class="banner red" style="font-size:14px">Весь текущий фактический остаток и его движение будут удалены и начаты заново.</div>`:""}
+     <div class="muted">${from==="mpz"?"Позиции и остатки — из последней загруженной ведомости МПЗ. Одинаковые названия складываются.":"Список будет пустым — позиции добавите сами."}</div>
+     <label class="f" for="fsin">Примечание</label><input id="fsin" placeholder="например: инвентаризация 23.11">
+     <div class="row" style="margin-top:14px"><button class="btn p grow" id="mok">НАЧАТЬ</button><button class="btn" data-close>Отмена</button></div>`,mb=>{
+     $("#mok",mb).onclick=e=>act(e.target,async()=>{const j=await api("POST","/api/vs/fstock/init",{from,confirm:true,note:$("#fsin",mb).value});closeModal();FST.q="";await vFstock();return j},from==="mpz"?"Остаток начат из МПЗ":"Список начат")})};
+  {const a=$("#fsimpz");if(a)a.onclick=()=>ini("mpz");const b=$("#fsiemp");if(b)b.onclick=()=>ini("");const c=$("#fsre");if(c)c.onclick=()=>modal(`<h3>↺ Начать заново</h3><div class="row" style="gap:6px;margin-top:10px;flex-wrap:wrap"><button class="btn p" id="r1">Из ведомости МПЗ</button><button class="btn" id="r2">С пустого списка</button><button class="btn" data-close>Отмена</button></div>`,mb=>{$("#r1",mb).onclick=()=>ini("mpz");$("#r2",mb).onclick=()=>ini("")})}
+  if(!first.length)return;
+  const go=()=>{FST.q=$("#fsq").value.trim();FST.neg=$("#fsneg").checked;history.replaceState(null,"","#/fstock"+(FST.q?"/"+encodeURIComponent(FST.q):""));S.route="fstock"+(FST.q?"/"+encodeURIComponent(FST.q):"");fstList()};
+  $("#fsb").onclick=go;$("#fsneg").onchange=go;$("#fsq").onkeydown=e=>{if(e.key==="Enter")go()};
+  {const a=$("#fsadd");if(a)a.onclick=()=>fstEdit(null)}$("#fsx").onclick=e=>act(e.target,fstExcel);{const p=$("#fspb");if(p)p.onclick=()=>fstPending()}
+  await fstList()}
+const fstFilter=()=>[FST.neg?"qty<=0":"",FST.q?wfil(FST.q):""].filter(Boolean).join("&&");
+async function fstList(){const box=$("#fsl");if(!box)return;let j;
+  try{j=await api("GET","/api/collections/fstock/records?perPage=300&sort=name&filter="+encodeURIComponent(fstFilter()))}catch(e){box.innerHTML=`<div class="banner red">${esc(e.message)}</div>`;return}
+  const L=j.items.filter(x=>!FST.q||wmatch(FST.q,x.search_lc));const W=can.write(),M=can.manage();if(!$("#fsl"))return;
+  box.innerHTML=L.length?`<div class="muted" style="margin:6px 0">Позиций: ${j.totalItems}${j.totalItems>j.items.length?` — показаны первые ${j.items.length}, уточните поиск`:""}</div>
+   <div class="card" style="padding:0;overflow:auto"><table class="tbl"><thead><tr><th>Наименование</th><th style="text-align:right">Остаток</th><th>Место</th><th class="noprint"></th></tr></thead><tbody>
+   ${L.map(x=>`<tr><td><b>${hlq(x.name,FST.q)}</b>${x.code?` <span class="muted">· ${esc(x.code)}</span>`:""}${x.note?`<div class="muted">${esc(x.note)}</div>`:""}</td>
+    <td style="text-align:right;white-space:nowrap"><b style="font-size:17px;color:${num(x.qty)>0?"var(--g)":"var(--r)"}">${fmtQ(x.qty)}</b> ${esc(x.unit||"")}</td><td>${esc(x.place||"")}</td>
+    <td class="noprint" style="white-space:nowrap"><button class="btn sm" data-fsh="${x.id}">История</button>${W?` <button class="btn sm" data-fsc="${x.id}">Пересчёт</button> <button class="btn sm" data-fse="${x.id}" aria-label="Изменить">✏</button>`:""}${M?` <button class="btn sm" data-fsd="${x.id}" aria-label="Удалить">🗑</button>`:""}</td></tr>`).join("")}</tbody></table></div>`
+   :`<div class="card empty">Ничего не найдено${FST.q?" по «"+esc(FST.q)+"»":""}</div>`;
+  const by=id=>L.find(x=>x.id===id);
+  box.querySelectorAll("[data-fsh]").forEach(b=>b.onclick=()=>fstHist(by(b.dataset.fsh)));
+  box.querySelectorAll("[data-fse]").forEach(b=>b.onclick=()=>fstEdit(by(b.dataset.fse)));
+  box.querySelectorAll("[data-fsc]").forEach(b=>b.onclick=()=>{const x=by(b.dataset.fsc);
+    modal(`<h3>Пересчёт</h3><div><b>${esc(x.name)}</b></div><div class="muted">Сейчас в учёте: ${fmtQ(x.qty)} ${esc(x.unit||"")}</div>
+     <label class="f" for="fcq">Фактически на складе, ${esc(x.unit||"")}</label><input id="fcq" inputmode="decimal" value="${fmtQ(x.qty)}" style="font-size:20px;font-weight:800">
+     <label class="f" for="fcr">Причина *</label><input id="fcr" placeholder="пересчёт, пересорт, брак, нашли на площадке…">
+     <div class="row" style="margin-top:14px"><button class="btn p grow" id="mok">СОХРАНИТЬ</button><button class="btn" data-close>Отмена</button></div>`,mb=>{
+     $("#mok",mb).onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/fstock/count",{id:x.id,qty:$("#fcq",mb).value,reason:$("#fcr",mb).value});closeModal();await fstList()},"Остаток исправлен")})});
+  box.querySelectorAll("[data-fsd]").forEach(b=>b.onclick=()=>{const x=by(b.dataset.fsd);if(!confirm("Удалить позицию «"+x.name+"» вместе с её историей?"))return;
+    act(b,async()=>{await api("POST","/api/vs/fstock/del",{id:x.id});await fstList()},"Позиция удалена")})}
+function fstEdit(x){modal(`<h3>${x?"✏ Изменить позицию":"＋ Новая позиция"}</h3><datalist id="fsdl"></datalist>
+   <label class="f" for="fen">Наименование *</label><input id="fen" list="fsdl" autocomplete="off" value="${esc(x?x.name:"")}" placeholder="начните писать — подсказки из МПЗ">
+   <div class="g2x"><div><label class="f" for="feu">Ед.</label><input id="feu" value="${esc(x?x.unit:"")}" placeholder="шт, м, т"></div>${x?"":`<div><label class="f" for="feq">Остаток сейчас</label><input id="feq" inputmode="decimal" placeholder="0"></div>`}</div>
+   <label class="f" for="fep">Место на складе</label><input id="fep" data-sug="ship_place" value="${esc(x?x.place:"")}">
+   <label class="f" for="fem">Примечание</label><input id="fem" value="${esc(x?x.note:"")}">
+   <div class="row" style="margin-top:14px"><button class="btn p grow" id="mok">СОХРАНИТЬ</button><button class="btn" data-close>Отмена</button></div>`,mb=>{sugAttach(mb);
+   mpzSug($("#fen",mb),$("#fsdl",mb),m=>{const u=$("#feu",mb);if(!u.value.trim())u.value=m.unit||""});
+   $("#mok",mb).onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/fstock/save",{id:x?x.id:"",name:$("#fen",mb).value,unit:$("#feu",mb).value,qty:x?undefined:$("#feq",mb).value,place:$("#fep",mb).value,note:$("#fem",mb).value});closeModal();await fstList()},"Сохранено")})}
+const fstRef=m=>m.src==="request"&&m.ref?`<a href="#/request/${esc(m.ref)}">${esc(m.ref_no||"заявка")}</a>`:m.src==="upd"&&m.ref?`<a href="#/upd/${esc(m.ref)}">${esc(m.ref_no||"УПД")}</a>`:m.src==="leftover"?`<a href="#/leftovers">${esc(m.ref_no||"невыданное")}</a>`:esc(m.ref_no||FSSRC[m.src]||"");
+async function fstHist(x){let L=[];try{L=(await api("GET","/api/collections/fstock_moves/records?perPage=300&skipTotal=1&sort=-created&filter="+encodeURIComponent(`stock="${x.id}"`))).items}catch(e){toast(e.message,"err");return}
+  modal(`<h3>История — ${esc(x.name)}</h3><div style="font-size:18px">Остаток: <b>${fmtQ(x.qty)} ${esc(x.unit||"")}</b></div>
+   <div style="max-height:56vh;overflow:auto;margin-top:8px">${L.length?`<table class="tbl"><tr><th>Когда</th><th>Что</th><th style="text-align:right">±</th><th style="text-align:right">Стало</th><th>Документ</th></tr>
+   ${L.map(m=>{const k=FSK[m.kind]||[m.kind,"gr"];return `<tr><td style="white-space:nowrap">${dt(m.created)}</td><td><span class="pill ${k[1]}">${k[0]}</span>${m.note?`<div class="muted">${esc(m.note)}</div>`:""}${m.name&&fsKey(m.name)!==x.key?`<div class="muted">«${esc(m.name)}»</div>`:""}</td>
+     <td style="text-align:right;white-space:nowrap;color:${num(m.delta)>0?"var(--g)":num(m.delta)<0?"var(--r)":"inherit"}"><b>${num(m.delta)>0?"+":""}${fmtQ(m.delta)}</b></td><td style="text-align:right">${fmtQ(m.after)}</td><td>${fstRef(m)}${m.by_name?` <span class="muted">(${esc(m.by_name)})</span>`:""}</td></tr>`}).join("")}</table>`:`<div class="muted">Движений пока нет</div>`}</div>
+   <div class="row" style="margin-top:12px"><button class="btn" data-close>Закрыть</button></div>`,mb=>mb.querySelectorAll("a[href^='#/']").forEach(a=>a.addEventListener("click",()=>closeModal())))}
+async function fstPending(){let L=[];try{L=(await api("GET","/api/collections/fstock_moves/records?perPage=200&skipTotal=1&sort=-created&filter="+encodeURIComponent("pending=true"))).items}catch(e){toast(e.message,"err");return}
+  const W=can.write();
+  modal(`<h3>⚠ Не сопоставлено — ${L.length}</h3><div class="muted">Названия из заявок / УПД, которых нет в списке. Привяжите к позиции — название запомнится, следующие такие же учтутся сами.</div><datalist id="fspdl"></datalist>
+   <div style="max-height:60vh;overflow:auto;margin-top:8px">${L.map(m=>`<div class="card" style="padding:10px;margin-top:8px" data-fpm="${m.id}"><div><b>${esc(m.name)}</b> <b style="color:${num(m.delta)>0?"var(--g)":"var(--r)"}">${num(m.delta)>0?"+":""}${fmtQ(m.delta)} ${esc(m.unit||"")}</b></div>
+     <div class="muted">${dt(m.created)} · ${fstRef(m)}</div>
+     ${W?`<div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap"><input data-fpq="${m.id}" list="fspdl" placeholder="позиция из списка — начните писать" autocomplete="off" style="flex:1;min-width:180px" value="${esc(m.name.split(/\s+/).slice(0,2).join(" "))}"><button class="btn sm p" data-fpl="${m.id}">Привязать</button>
+      <button class="btn sm" data-fpn="${m.id}">＋ Новая позиция</button><button class="btn sm" data-fps="${m.id}">Не учитывать</button></div>`:""}</div>`).join("")||`<div class="muted">Всё сопоставлено</div>`}</div>
+   <div class="row" style="margin-top:12px"><button class="btn" data-close>Закрыть</button></div>`,mb=>{
+   const dl=$("#fspdl",mb);let found=[];let t=0,seq=0;
+   const sug=inp=>{clearTimeout(t);const v=inp.value.trim();if(v.length<2)return;t=setTimeout(async()=>{const my=++seq;let R=[];
+     try{R=(await api("GET","/api/collections/fstock/records?perPage=25&skipTotal=1&sort=name&filter="+encodeURIComponent(wfil(v)))).items}catch(_){}if(my!==seq)return;found=R;
+     dl.innerHTML=R.map(x=>`<option value="${esc(x.name)}">${esc(fmtQ(x.qty)+" "+(x.unit||""))}</option>`).join("")},250)};
+   mb.querySelectorAll("[data-fpq]").forEach(i=>{i.addEventListener("input",()=>sug(i));i.addEventListener("focus",()=>sug(i))});
+   const done=async()=>{closeModal();await vFstock()};
+   mb.querySelectorAll("[data-fpl]").forEach(b=>b.onclick=()=>act(b,async()=>{const v=mb.querySelector(`[data-fpq="${b.dataset.fpl}"]`).value.trim();
+     let s=found.find(x=>x.name===v);if(!s){const R=(await api("GET","/api/collections/fstock/records?perPage=2&skipTotal=1&filter="+encodeURIComponent(`name="${fsQ(v)}"`))).items;s=R[0]}
+     if(!s)throw new Error("Выберите позицию из подсказок (или «＋ Новая позиция»).");
+     const r=await api("POST","/api/vs/fstock/link",{move:b.dataset.fpl,stock:s.id});toast(`Учтено: «${s.name}» — теперь ${fmtQ(r.qty)} ${s.unit||""}${r.more?" (и ещё "+r.more+" таких же)":""}`,"ok");await done()}));
+   mb.querySelectorAll("[data-fpn]").forEach(b=>b.onclick=()=>act(b,async()=>{await api("POST","/api/vs/fstock/link",{move:b.dataset.fpn,action:"new"});await done()},"Новая позиция создана"));
+   mb.querySelectorAll("[data-fps]").forEach(b=>b.onclick=()=>{const why=prompt("Почему не учитывать? (например: материал не со склада)");if(why==null)return;
+     act(b,async()=>{await api("POST","/api/vs/fstock/link",{move:b.dataset.fps,action:"skip",reason:why});await done()},"Не учитывается")})})}
+async function fstExcel(){const L=await all("fstock",fstFilter(),"name");const R=L.filter(x=>!FST.q||wmatch(FST.q,x.search_lc));if(!R.length)throw new Error("Нечего выгружать.");const T=XS.txt;
+  const r=[[{v:"ФАКТИЧЕСКИЙ ОСТАТОК СКЛАДА",s:XS.title}],[{v:"Выгружено "+dt(new Date().toISOString())+(FST.q?" · поиск: "+FST.q:"")+(FST.neg?" · только 0 и меньше":""),s:T}],[],["Наименование","Код","Ед.","Остаток","Место","Примечание","Другие названия (заявки / УПД)","Изменено"].map(v=>({v,s:XS.head}))];
+  R.forEach(x=>r.push([{v:x.name,s:T},{v:x.code||"",s:T},{v:x.unit||"",s:T},{v:num(x.qty),s:num(x.qty)>0?XS.sG:XS.sR},{v:x.place||"",s:T},{v:x.note||"",s:T},{v:String(x.alias_lc||"").split("|").filter(Boolean).join("; "),s:T},{v:dt(x.updated),s:T}]));
+  saveBlob(xlsxBlob([{name:"Факт. остаток",cols:[60,14,8,12,22,30,50,17],rows:r,merges:["A1:H1","A2:H2"],freeze:4,filter:"A4:H"+(4+R.length)}]),"Fakticheskiy_ostatok_"+new Date().toISOString().slice(0,10)+".xlsx")}
 async function vRequests(){
   if(RQ.status==="archive")return vArchive();
   if(!can.linkOnly()&&!S.lftT){S.lftT=1;api("GET","/api/collections/leftovers/records?perPage=1&filter="+encodeURIComponent('status="open"')).then(j=>{S.lftN=j.totalItems;S.lftT=0;const b=document.querySelector('a[href="#/leftovers"]');if(b&&j.totalItems&&!b.querySelector(".pill"))b.insertAdjacentHTML("beforeend",` <span class="pill y">${j.totalItems}</span>`)}).catch(()=>{S.lftT=0})}
   const W=can.write();
   $("#main").innerHTML=`<h1>Заявки на выдачу ТМЦ</h1>${offCanUse()&&location.protocol!=="https:"&&!/^(localhost|127\.)/.test(location.hostname)?`<div class="muted noprint" style="margin:-4px 0 8px">📴 Работа без интернета на телефоне доступна только по адресу https — попросите администратора включить (bash install.sh auto).</div>`:""}
-  ${!can.zay()?`<a class="btn noprint" href="#/leftovers" style="margin-bottom:10px;display:inline-flex;gap:6px">📦 Невыданное по заявкам${S.lftN?` <span class="pill y">${S.lftN}</span>`:""}</a>`:""}${zrOk()?` <a class="btn noprint" href="#/zreg" style="margin-bottom:10px;display:inline-flex;gap:6px">📒 Реестр заявок</a>`:""}${!can.zay()&&!can.linkOnly()?` <button class="btn acc noprint" id="rqshm" style="margin-bottom:10px">🖼 Отчёт с фото для стропальщиков</button>`:""}
+  ${!can.zay()?`<a class="btn noprint" href="#/leftovers" style="margin-bottom:10px;display:inline-flex;gap:6px">📦 Невыданное по заявкам${S.lftN?` <span class="pill y">${S.lftN}</span>`:""}</a>`:""}${fsOk()?` <a class="btn noprint" href="#/fstock" style="margin-bottom:10px;display:inline-flex;gap:6px">📊 Фактический остаток</a>`:""}${zrOk()?` <a class="btn noprint" href="#/zreg" style="margin-bottom:10px;display:inline-flex;gap:6px">📒 Реестр заявок</a>`:""}${!can.zay()&&!can.linkOnly()?` <button class="btn acc noprint" id="rqshm" style="margin-bottom:10px">🖼 Отчёт с фото для стропальщиков</button>`:""}
   ${W?`<div class="row noprint" style="margin-bottom:14px"><button class="btn acc big grow" id="rqNew" style="width:auto">＋ НОВАЯ ЗАЯВКА</button>${can.zay()?"":`<button class="btn big grow" id="rqShip" style="width:auto">🚚 Отгрузка из нескольких заявок</button>`}</div>`:""}
   ${rqTabs()}
   <div class="card noprint"><div class="row">
@@ -1154,7 +1266,7 @@ async function vRequest(id,changedCols){
     ${xfLine("request_item",it.extra)?`<div class="muted">${xfLine("request_item",it.extra)}</div>`:""}${acts.length?`<div style="color:var(--v);font-weight:700;margin-top:4px">⚠ Неустранённый акт № ${acts.map(a=>esc(a.act_no)).filter((v,k,a)=>a.indexOf(v)===k).join(", ")} — служебная записка</div>`:""}<div data-acn="${it.id}"></div>
     ${it.pick_place||it.pick_tool?`<div class="pickl">📍 Взяли: <b>${esc(it.pick_place||"—")}</b>${it.pick_tool?` · чем: <b>${esc(it.pick_tool)}</b>`:""} <span class="muted">(${esc(it.pick_by_name||"")}, ${dt(it.pick_at)})</span></div>`:""}
     ${imedStrip(files.filter(f=>f.item===it.id),ft,WS)}${WS?`<label class="btn sm acc noprint" style="margin-top:4px">📷 Фото / 🎬 видео<input type="file" data-imup="${it.id}" accept="image/*,video/*" multiple hidden></label> `:""}
-    <div data-phn="${it.id}"></div><div data-mfl="${it.id}"></div>${WS&&!can.zay()?`<button class="btn sm noprint" data-pick="${it.id}" style="margin-top:4px">📍 ${it.pick_place||it.pick_tool?"Изменить, откуда и чем":"Откуда взяли и чем"}</button>`:""}</div><span class="pill ${st[1]}">${st[0]}</span></div>
+    <div data-phn="${it.id}"></div><div data-mfl="${it.id}"></div><div data-fst="${it.id}"></div>${WS&&!can.zay()?`<button class="btn sm noprint" data-pick="${it.id}" style="margin-top:4px">📍 ${it.pick_place||it.pick_tool?"Изменить, откуда и чем":"Откуда взяли и чем"}</button>`:""}</div><span class="pill ${st[1]}">${st[0]}</span></div>
    <div class="row" style="margin-top:10px;align-items:flex-end">
     <div class="grow"><label class="f">Заказано</label><div style="min-height:48px;padding:10px 12px;border:1px dashed var(--line);border-radius:8px;background:var(--bg);font-weight:800">${fmtQ(it.qty_ordered)} ${esc(it.unit)}</div></div>
     <div class="grow"><label class="f">Выдано${it.unit?", "+esc(it.unit):""}</label>${W?`<input id="iq_${it.id}" data-iq="${it.id}" inputmode="decimal" value="${fmtQ(it.qty_issued)}" style="font-weight:800">`
@@ -1218,7 +1330,7 @@ async function vRequest(id,changedCols){
        <label class="f">Комментарий (обязательно) *</label><textarea id="ccm" placeholder="например: остаток выдадим по новой заявке"></textarea>
        <div class="card" style="background:#f0f7ff;margin-top:10px;padding:10px"><label class="row" style="gap:8px;font-weight:800"><input type="checkbox" id="cclo" checked style="width:22px;height:22px"> 📦 Невыданное — в отдельный список «Невыданное по заявкам»</label>
         <div class="muted">Потом этот материал можно выдать без заявки — из списка.</div>
-        <div id="ccli">${short.map(i=>`<label class="row" style="gap:8px;margin-top:4px"><input type="checkbox" data-lo="${i.id}" checked style="width:20px;height:20px"><span style="flex:1">${esc(i.material)}</span><b>${fmtQ(Math.max(0,num(i.qty_ordered)-num(i.qty_issued)))} ${esc(i.unit)}</b></label>`).join("")}</div></div>`
+        <div id="ccli">${short.map(i=>`<label class="row" style="gap:8px;margin-top:4px;flex-wrap:wrap"><input type="checkbox" data-lo="${i.id}" checked style="width:20px;height:20px"><span style="flex:1;min-width:140px">${esc(i.material)}</span><span class="muted">заказано</span><input data-cqo="${i.id}" inputmode="decimal" value="${fmtQ(i.qty_ordered)}" style="width:86px;min-height:38px" aria-label="Заказано"><span class="muted">осталось</span><b data-cql="${i.id}">${fmtQ(Math.max(0,num(i.qty_ordered)-num(i.qty_issued)))} ${esc(i.unit)}</b></label>`).join("")}</div></div>`
       :`<div class="banner green" style="font-size:15px">ВСЕ ПОЗИЦИИ ВЫДАНЫ ПОЛНОСТЬЮ</div><label class="f">Комментарий</label><textarea id="ccm"></textarea>`}
      <label class="f">Фото — обязательно ${hasPh?"(уже есть "+files.filter(f=>f.kind==="close").length+", можно добавить)":"*"}</label>
      <div class="row"><label class="btn acc grow">📷 Сфотографировать<input type="file" id="ccp" accept="image/*" capture="environment" hidden></label>
@@ -1233,7 +1345,9 @@ async function vRequest(id,changedCols){
         if(!picked.length&&!hasPh&&!M)throw new Error("Добавьте фото — без фото заявку закрыть нельзя. Разрешить без фото может руководитель или администратор.");
         if(picked.length){await uploadReqFiles(id,picked,"close");picked=[];upd()}
         const cm=$("#ccm",box).value;const lo=$("#cclo",box);const lit=[...box.querySelectorAll("[data-lo]:checked")].map(c=>c.dataset.lo);
-        await api("POST","/api/vs/request/status",{request:id,action:"close",comment:cm,leftover:!!(lo&&lo.checked&&lit.length),leftover_items:lit});closeModal();await refresh()},"Заявка закрыта");
+        const qty=[...box.querySelectorAll("[data-cqo]")].map(x=>{const i=short.find(y=>y.id===x.dataset.cqo);return {item:i.id,qty_ordered:x.value.trim()===""?num(i.qty_ordered):num(x.value),was:num(i.qty_ordered)}}).filter(x=>Math.abs(x.qty_ordered-x.was)>1e-9);
+        await api("POST","/api/vs/request/status",{request:id,action:"close",comment:cm,leftover:!!(lo&&lo.checked&&lit.length),leftover_items:lit,qty});closeModal();await refresh()},"Заявка закрыта");
+      box.querySelectorAll("[data-cqo]").forEach(inp=>inp.oninput=()=>{const i=short.find(y=>y.id===inp.dataset.cqo);box.querySelector(`[data-cql="${i.id}"]`).textContent=fmtQ(Math.max(0,Math.round((num(inp.value)-num(i.qty_issued))*1000)/1000))+" "+i.unit});
       const lo=$("#cclo",box);if(lo)lo.onchange=()=>{$("#ccli",box).style.opacity=lo.checked?1:.4}})};
   if(cl)cl.onclick=()=>tunCloseReq(Object.assign({},r,{signs:sigsOf(r)}),items,files,ships,refresh,oldClose);   // 1.9.36: закрытие по шагам
   const reason=(title,action,cls,okMsg)=>modal(`<h3>${title}</h3><label class="f">Причина *</label><textarea id="ccm"></textarea>
@@ -1256,7 +1370,7 @@ async function vRequest(id,changedCols){
      $("#mok",mb).onclick=e=>act(e.target,async()=>{const v=$("#rmd",mb).value;if(!v)throw new Error("Выберите дату и время.");await api("POST","/api/vs/request/note",{note:n.id,remind_at:new Date(v).toISOString()});closeModal();await refresh();ntfLoad()},"Напоминание сохранено");
      const d=$("#mdel",mb);if(d)d.onclick=()=>act(d,async()=>{await api("POST","/api/vs/request/note",{note:n.id,remind_at:""});closeModal();await refresh();ntfLoad()},"Напоминание убрано")})});
   document.querySelectorAll("[data-note]").forEach(c=>c.onchange=()=>act(null,async()=>{await api("POST","/api/vs/request/note",{note:c.dataset.note,done:c.checked});await refresh()},c.checked?"Отмечено: сделано":"Снята отметка"));
-  bindUchet(r,items,refresh);
+  bindUchet(r,items,refresh);fstFill(items);
   const rc=$("#rqcancel");if(rc)rc.onclick=()=>reason("Аннулировать заявку","cancel","r","Заявка аннулирована");
 }
 // Номера заявок отгрузки (по позициям; для старых отгрузок — основная заявка)
@@ -1282,10 +1396,11 @@ function shipCard(sh,curId,files,ft,WS){const ss=SHS[sh.status];const rs=jarr(sh
     ${ln.length&&sh.status!=="cancelled"?`<div class="row noprint" style="margin-top:8px"><button class="btn sm acc" data-shplan="${sh.id}">🗺 План погрузки${ln.some(l=>l.place||l.load)?"":" — заполнить"}</button></div>`:""}
     ${WS&&sh.status!=="cancelled"?`<div class="row noprint" style="margin-top:8px"><button class="btn sm" data-shx="pass" data-sh="${sh.id}">🛡 Пропуск для охраны</button>
       ${live?`<button class="btn sm" data-shx="share" data-sh="${sh.id}">🔗 Ссылка получателю</button>`:""}<button class="btn sm" data-shx="strop" data-sh="${sh.id}">📋 Задача</button>${live||(sh.status==="delivered"&&can.manage())?`<button class="btn sm" data-shx="edit" data-sh="${sh.id}">✏ Изменить</button>`:""}</div>`:""}
-    ${WS&&live?`<div class="row noprint" style="margin-top:10px">
-      <label class="btn acc sm">📷 Фото погрузки<input type="file" accept="image/*" capture="environment" data-shp="${sh.id}" hidden></label>
+    ${WS&&sh.status!=="cancelled"?`<div class="row noprint" style="margin-top:10px">
+      <label class="btn acc sm">📷 Фото${live?" погрузки":""}<input type="file" accept="image/*" capture="environment" data-shp="${sh.id}" hidden></label>
       <label class="btn sm">Из галереи<input type="file" accept="image/*,application/pdf" multiple data-shp="${sh.id}" hidden></label>
-      ${sh.status==="preparing"?`<button class="btn p sm" data-sha="send" data-sh="${sh.id}">ОТПРАВИТЬ</button><button class="btn sm" data-sha="cancel" data-sh="${sh.id}">Отменить</button>`:`<button class="btn g sm" data-sha="deliver" data-sh="${sh.id}">ДОСТАВЛЕНО</button>`}</div>`:""}
+      ${!live?"":sh.status==="preparing"?`<button class="btn p sm" data-sha="send" data-sh="${sh.id}">ОТПРАВИТЬ</button><button class="btn sm" data-sha="cancel" data-sh="${sh.id}">Отменить</button>`:`<button class="btn g sm" data-sha="deliver" data-sh="${sh.id}">ДОСТАВЛЕНО</button>`}</div>`:""}
+    ${WS&&(can.manage()||((sh.status==="preparing"||sh.status==="cancelled")&&sh.created_by===S.user.id))?`<div class="row noprint" style="margin-top:8px"><button class="btn sm r" data-shdel="${sh.id}" title="Удалить отгрузку совсем (с причиной, запись в журнале)">🗑 Удалить отгрузку</button></div>`:""}
    </div>`}
 function bindShip(curId,refresh){
   const shOf=id=>(S.curReq&&S.curReq.ships||[]).find(x=>x.id===id)||(S.data.shipments||[]).find(x=>x.id===id);
@@ -1298,11 +1413,22 @@ function bindShip(curId,refresh){
   document.querySelectorAll("[data-shplan]").forEach(b=>b.onclick=()=>{const sh=shOf(b.dataset.shplan);if(sh)shipPlan(sh,refresh)});
   document.querySelectorAll("[data-shx]").forEach(b=>b.onclick=()=>{const sh=shOf(b.dataset.sh);if(!sh)return;const a=b.dataset.shx;
     if(a==="pass")passForm(sh);else if(a==="share")shareForm(sh);else if(a==="edit")shipEditForm(sh,refresh);else stropForm(sh)});
+  document.querySelectorAll("[data-shdel]").forEach(b=>b.onclick=()=>{const sh=shOf(b.dataset.shdel);if(sh)shipDelete(sh,refresh)});
   document.querySelectorAll("[data-sha]").forEach(b=>b.onclick=()=>{const a=b.dataset.sha,sh=shOf(b.dataset.sh);
     if(a==="deliver")return deliverForm(sh,refresh);
     if(a==="cancel"&&!confirm("Отменить отгрузку?"))return;
     act(b,async()=>{await api("POST","/api/vs/request/shipment/action",{shipment:b.dataset.sh,action:a});await refresh()},{send:"Отправлено",cancel:"Отгрузка отменена"}[a])});
 }
+// 1.9.52: удалить отгрузку совсем — причина обязательна, запись в журнале; доставленная с записанной выдачей — выданное вернётся
+function shipDelete(sh,done){const ln=jarr(sh.lines);const ph=(S.curReq&&S.curReq.files||[]).filter(f=>f.shipment===sh.id).length;
+  modal(`<h3>🗑 Удалить отгрузку</h3><div><b>🚚 ${esc(sh.vehicle)}</b> · ${esc((SHS[sh.status]||[sh.status])[0])}</div>
+   <div class="muted">${ln.length} поз.${ph?" · фото: "+ph:""} — отгрузка, её фото и ссылки получателю удалятся совсем. Отменить удаление нельзя.</div>
+   ${sh.status==="delivered"&&sh.issue_done?`<div class="banner yellow" style="font-size:14px">Выдача по этой отгрузке записана в заявки — выданное уменьшится обратно.</div>`:""}
+   ${sh.status==="sent"?`<div class="banner yellow" style="font-size:14px">Отгрузка в пути — техника и люди освободятся.</div>`:""}
+   <label class="f" for="sdr">Причина удаления *</label><input id="sdr" placeholder="например: создана по ошибке, дубль">
+   <div class="row" style="margin-top:14px"><button class="btn r grow" id="sdok">УДАЛИТЬ</button><button class="btn" data-close>Отмена</button></div>`,box=>{
+   $("#sdok",box).onclick=e=>act(e.target,async()=>{const why=$("#sdr",box).value.trim();if(why.length<3)throw new Error("Укажите причину удаления.");
+     await api("POST","/api/vs/shipment/delete",{shipment:sh.id,reason:why});closeModal();if(S.curReq)S.curReq=null;await load(["shipments","reservations"]).catch(()=>{});await done()},"Отгрузка удалена")})}
 // 1.9.15: изменить отгрузку — машина, водитель, позиции (не поехало — 0 или ✕); и после доставки (руководитель)
 function shipEditForm(sh,done){const ln=jarr(sh.lines);
   modal(`<h3>✏ Изменить отгрузку</h3>${sh.status==="delivered"&&sh.issue_done?`<div class="banner yellow" style="font-size:14px">Отгрузка доставлена, выдача записана в заявки — при изменении количества выданное в заявке поправится на разницу.</div>`:""}
@@ -1310,11 +1436,23 @@ function shipEditForm(sh,done){const ln=jarr(sh.lines);
    <label class="f" for="seh">Время в пути, ч</label><input id="seh" inputmode="decimal" value="${fmtQ(sh.hours||4)}">
    <h3 style="margin-top:12px">Позиции</h3><div class="muted">Не поехало — поставьте 0 или нажмите ✕.</div>
    ${ln.map((l,i)=>`<div class="line" data-sel="${i}"><div style="flex:1;min-width:0"><b>№ ${esc(l.number)}</b> · ${esc(l.material)}</div><input data-seq="${i}" inputmode="decimal" value="${fmtQ(l.qty)}" style="width:90px;min-height:40px"><span class="muted">${esc(l.unit)}</span><button class="btn sm" data-sex="${i}" aria-label="Убрать">✕</button></div>`).join("")}
+   ${sh.status==="preparing"||sh.status==="sent"?`<div id="seadd"></div><button type="button" class="btn sm acc" id="seab" style="margin-top:6px">＋ Добавить позицию</button>
+    <div id="seap" style="display:none;margin-top:6px"><input id="seaq" placeholder="Найти: № заявки или материал (открытые заявки)" autocomplete="off"><div id="seal" style="max-height:260px;overflow:auto;margin-top:4px"></div></div>`:""}
    <label class="f" for="sen">Примечание</label><input id="sen" value="${esc(sh.note||"")}"><label class="f" for="ser">Причина изменения</label><input id="ser" placeholder="например: часть материала не поместилась">
    <div class="row" style="margin-top:14px"><button class="btn p grow" id="mok">СОХРАНИТЬ</button><button class="btn" data-close>Отмена</button></div>`,box=>{sugAttach(box);
    box.querySelectorAll("[data-sex]").forEach(b=>b.onclick=()=>{$(`[data-seq="${b.dataset.sex}"]`,box).value="0";b.closest(".line").style.opacity=.4});
+   const add=new Map();const ab=$("#seab",box);   // 1.9.52: добавить позицию после формирования
+   if(ab)ab.onclick=async()=>{const pnl=$("#seap",box);if(pnl.style.display!=="none"){pnl.style.display="none";return}pnl.style.display="";
+     let items=[];try{items=await all("request_items",'request.status="open"',"sort","request")}catch(e){toast(e.message,"err");return}
+     const rest=i=>Math.max(0,Math.round((num(i.qty_ordered)-num(i.qty_issued))*1000)/1000);const have=new Set(ln.map(l=>l.item));
+     const draw=()=>{const q=$("#seaq",box).value.trim();const L=items.filter(i=>!have.has(i.id)&&!add.has(i.id)&&rest(i)>0&&(!q||wmatch(q,((i.expand&&i.expand.request&&i.expand.request.number)||"")+" "+i.material+" "+((i.expand&&i.expand.request&&i.expand.request.object)||"")))).slice(0,40);
+       $("#seal",box).innerHTML=L.map(i=>`<div class="line"><div style="flex:1;min-width:0"><b>№ ${esc(i.expand&&i.expand.request?i.expand.request.number:"")}</b> · ${esc(i.material)}<div class="muted">осталось ${fmtQ(rest(i))} ${esc(i.unit)}</div></div><button type="button" class="btn sm p" data-sea="${i.id}">＋</button></div>`).join("")||`<div class="muted">Ничего не найдено</div>`;
+       box.querySelectorAll("[data-sea]").forEach(b=>b.onclick=()=>{const i=items.find(x=>x.id===b.dataset.sea);add.set(i.id,{i,qty:rest(i)});paint();draw()})};
+     const paint=()=>{$("#seadd",box).innerHTML=[...add.values()].map(({i,qty})=>`<div class="line" style="background:#f0fdf4"><div style="flex:1;min-width:0">＋ <b>№ ${esc(i.expand&&i.expand.request?i.expand.request.number:"")}</b> · ${esc(i.material)}</div><input data-seaq="${i.id}" inputmode="decimal" value="${fmtQ(qty)}" style="width:90px;min-height:40px"><span class="muted">${esc(i.unit)}</span><button type="button" class="btn sm" data-seax="${i.id}" aria-label="Убрать">✕</button></div>`).join("");
+       box.querySelectorAll("[data-seaq]").forEach(x=>x.oninput=()=>{add.get(x.dataset.seaq).qty=x.value});box.querySelectorAll("[data-seax]").forEach(x=>x.onclick=()=>{add.delete(x.dataset.seax);paint();draw()})};
+     let t=0;$("#seaq",box).oninput=()=>{clearTimeout(t);t=setTimeout(draw,200)};draw();$("#seaq",box).focus()};
    $("#mok",box).onclick=e=>act(e.target,async()=>{const lines=ln.map((l,i)=>({item:l.item,qty:$(`[data-seq="${i}"]`,box).value}));
-     const r=await api("POST","/api/vs/shipment/update",{shipment:sh.id,vehicle:$("#sev",box).value.trim(),driver:$("#sed",box).value.trim(),hours:$("#seh",box).value,note:$("#sen",box).value,reason:$("#ser",box).value,lines});
+     const r=await api("POST","/api/vs/shipment/update",{shipment:sh.id,vehicle:$("#sev",box).value.trim(),driver:$("#sed",box).value.trim(),hours:$("#seh",box).value,note:$("#sen",box).value,reason:$("#ser",box).value,lines,add:[...add.values()].map(({i,qty})=>({item:i.id,qty:String(qty).replace(",",".")}))});
      closeModal();await done();if(!r.changed)toast("Изменений нет")},"Отгрузка изменена")})}
 // Доставка: подтвердить и (по желанию) записать выданное в заявки
 async function deliverForm(sh,done){
@@ -1945,7 +2083,51 @@ function fitRow(x){return `<div class="row" data-fit style="gap:4px;margin-top:4
 function flMats(f){return [{m:f.material,q:f.qty,u:f.unit}].concat((f.items||[]).filter(x=>x&&x.m))}
 // какой из материалов флажка подошёл к позиции (для подписи «где грузить»)
 function flHit(f,w){const L=flMats(f);const h=L.find(x=>wmatch(w,x.m));return h||L[0]}
-async function mapFlagForm(f,p){await sugFresh(["map_mat","map_unit"]);const W=can.write();if(!W)return;
+/* 1.9.52: флажок по шагам (туннель) — по одному материалу, пока не «Довольно»; фото к каждому материалу, всего до 30 */
+async function mapFlagTun(f,p){await sugFresh(["map_mat","map_unit"]);if(!can.write())return;
+  const zone=f?f.zone:mapZoneAt(p.x*MAPW,p.y*MAPH);const have=f?(f.photo||[]).length:0;const MAXP=30;
+  const c={mats:[],cur:{m:"",q:"",u:""},photos:[],note:f?f.note||"":"",old:f?!!f.old:false,color:f?f.color||"red":"red"};
+  const matCard=(x,k)=>`<div class="line" style="background:#f0fdf4"><div style="flex:1;min-width:0"><b>${k+1}. ${esc(x.m)}</b>${x.q?` — ${esc(x.q)} ${esc(x.u||"")}`:""}${x.n?` <span class="muted">📷 ${x.n}</span>`:""}</div><button type="button" class="btn sm" data-ftx="${k}" aria-label="Убрать">✕</button></div>`;
+  const readCur=b=>{c.cur={m:$("#ftm",b).value.trim(),q:$("#ftq",b).value.trim(),u:$("#ftu",b).value.trim()}};
+  tunnel({title:f?"Добавить материал — "+f.material:"Новый флажок — "+(zone||"вне зон"),okLast:"СОХРАНИТЬ ФЛАЖОК",c,exitAsk:"Выйти? Флажок не сохранится.",steps:[
+   {t:"Материал",sub:"По одному: название, количество, фото. «＋ Следующий материал» — ещё один на этом же месте. Всё внесли — «Довольно».",ok:"ДОВОЛЬНО — ДАЛЬШЕ →",skip:false,
+    html:()=>`${c.mats.length?`<div class="card" style="padding:8px"><b>Уже внесено: ${c.mats.length}</b>${c.mats.map(matCard).join("")}</div>`:""}
+     ${tunCard(`<div style="font-size:18px"><b>Материал ${(f?(f.items||[]).length+1:0)+c.mats.length+1}</b></div><datalist id="ftdl"></datalist>
+      <label class="f" for="ftm">Что лежит *</label><input id="ftm" list="ftdl" autocomplete="off" value="${esc(c.cur.m)}" placeholder="начните писать — подсказки из МПЗ" style="font-size:18px">
+      <div class="row" style="gap:6px;margin-top:6px"><input id="ftq" inputmode="decimal" placeholder="Кол-во" value="${esc(c.cur.q)}" style="flex:1"><input id="ftu" data-sug="map_unit" placeholder="Ед.: шт, м, т" value="${esc(c.cur.u)}" style="flex:1"></div>
+      <label class="f">Фото этого материала <span class="muted">(у флажка всего до ${MAXP})</span></label>${tunFiles("ftp","Из галереи",true,true,"image/*")}`)}
+     <button type="button" class="btn acc big" id="ftnext" style="width:100%;margin-top:10px">＋ СЛЕДУЮЩИЙ МАТЕРИАЛ</button>
+     ${f?"":`<div style="margin-top:16px"><button type="button" class="btn sm" id="ftform">📝 Одна форма / другая отметка (ворота, ангар, техника…)</button></div>`}`,
+    bind:(box,_,T)=>{const fs=[];c.curFiles=fs;const lim=()=>{if(have+c.photos.length+fs.length>MAXP){fs.splice(Math.max(0,MAXP-have-c.photos.length));toast(`У флажка — до ${MAXP} фото.`,"err");tunFileBind(box,"ftp",fs,lim)}};
+      tunFileBind(box,"ftp",fs,lim);
+      mpzSug($("#ftm",box),$("#ftdl",box),m=>{const u=$("#ftu",box);if(u&&!u.value.trim())u.value=m.unit||""});
+      const commit=()=>{readCur(box);if(!c.cur.m)return false;c.photos.push(...fs);c.mats.push(Object.assign({n:fs.length},c.cur));c.cur={m:"",q:"",u:c.cur.u};fs.length=0;return true};
+      T.commit=commit;
+      $("#ftnext",box).onclick=()=>{if(!commit()){toast("Напишите, что лежит.","err");$("#ftm",box).focus();return}T.paint();setTimeout(()=>{const m=document.querySelector("#tun #ftm");if(m)m.focus()},50)};
+      box.querySelectorAll("[data-ftx]").forEach(b=>b.onclick=()=>{readCur(box);c.mats.splice(+b.dataset.ftx,1);T.paint()});
+      const fm=$("#ftform",box);if(fm)fm.onclick=()=>{tunClose();mapFlagForm(null,p,true)};
+      setTimeout(()=>{const m=$("#ftm",box);if(m&&!c.cur.m)m.focus()},50)},
+    read:(b)=>{if(TUNS.cur&&TUNS.cur.commit)TUNS.cur.commit()},
+    check:()=>c.mats.length?"":"Напишите хотя бы один материал."},
+   {t:"Где и как",sub:"Примечание к месту, старый запас, цвет флажка.",
+    html:()=>`<label class="f" for="ftn">Примечание (ряд, ярус, чей)</label><input id="ftn" value="${esc(c.note)}" placeholder="2-й ряд от ангара, под тентом">
+     <label class="row" style="gap:8px;align-items:center;margin-top:12px;background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:10px"><input type="checkbox" id="ftold" ${c.old?"checked":""} style="width:24px;height:24px"> <b>🕰 Старый запас</b> <span class="muted">— брать в первую очередь</span></label>
+     ${f?"":`<label class="f">Цвет флажка</label><div class="row" style="gap:10px">${Object.keys(FLC).map(k=>`<label style="display:flex;align-items:center;gap:4px"><input type="radio" name="ftc" value="${k}" ${c.color===k?"checked":""} style="width:22px;height:22px"><span style="display:inline-block;width:26px;height:26px;background:${FLC[k]};border-radius:5px"></span></label>`).join("")}</div>`}`,
+    read:(b)=>{c.note=$("#ftn",b).value.trim();c.old=$("#ftold",b).checked;const r=b.querySelector('input[name="ftc"]:checked');if(r)c.color=r.value}},
+   {t:"Проверьте и сохраните",html:()=>tunCard(`<div style="font-size:18px"><b>${f?"⚑ "+esc(f.material):"Новый флажок"}</b> · 📍 ${esc(zone||"вне зон")}</div>${c.note?`<div class="muted">${esc(c.note)}</div>`:""}${c.old?`<div class="pill g" style="margin-top:4px">🕰 Старый запас</div>`:""}`)+
+     tunCard(`<b>${f?"Добавится материалов":"Материалов"}: ${c.mats.length}</b>${c.mats.map((x,k)=>`<div style="padding:6px 0;border-bottom:1px dashed var(--line)">${k+1}. ${esc(x.m)}${x.q?` — <b>${esc(x.q)} ${esc(x.u||"")}</b>`:""}</div>`).join("")}<div class="muted" style="margin-top:6px">📷 Фото: ${c.photos.length}${have?" (+ уже было "+have+")":""}</div>`)}],
+   done:async()=>{const fd=new FormData();
+     if(f){const items=(f.items||[]).concat(c.mats.map(x=>({m:x.m,q:x.q,u:x.u})));if(items.length>60)throw new Error("На одном флажке — до 60 материалов.");
+       fd.append("items",JSON.stringify(items));fd.append("note",c.note);fd.append("old",c.old?"true":"false")}
+     else{const a=c.mats[0];fd.append("material",a.m);fd.append("qty",a.q);fd.append("unit",a.u);fd.append("items",JSON.stringify(c.mats.slice(1).map(x=>({m:x.m,q:x.q,u:x.u}))));
+       fd.append("note",c.note);fd.append("color",c.color);fd.append("icon","");fd.append("old",c.old?"true":"false");fd.append("x",String(p.x));fd.append("y",String(p.y));fd.append("zone",zone||"");fd.append("created_by",S.user.id)}
+     if(have+c.photos.length>MAXP)throw new Error(`У флажка — до ${MAXP} фото.`);
+     for(const x of c.photos)fd.append("photo+",await shrinkImg(x,2400).catch(()=>x));
+     const r=f?await api("PATCH","/api/collections/smap_flags/records/"+f.id,fd,true):await api("POST","/api/collections/smap_flags/records",fd,true);
+     MAPS.lastIcon="";MAPS.flags=[r].concat((MAPS.flags||[]).filter(x=>x.id!==r.id));MAPS.focus=r.id;toast(f?"Материал добавлен на флажок":"Флажок сохранён","ok");
+     if(S.route.startsWith("map"))vMap();else location.hash="#/map"}})}
+async function mapFlagForm(f,p,one){if(!f&&!one&&!MAPS.lastIcon&&localStorage.getItem("vs_flag_form")!=="modal")return mapFlagTun(null,p);   // 1.9.52: материал — по шагам
+  await sugFresh(["map_mat","map_unit"]);const W=can.write();if(!W)return;
   const zone=f?f.zone:mapZoneAt(p.x*MAPW,p.y*MAPH);
   let ic=f?(f.icon||""):(MAPS.lastIcon||"");
   modal(`<h3>${f?"✎ Изменить":"📍 Новая отметка"}</h3><div class="muted">Зона: <b>${esc(zone||"вне зон")}</b></div>
@@ -1955,7 +2137,7 @@ async function mapFlagForm(f,p){await sugFresh(["map_mat","map_unit"]);const W=c
    <div id="fmat"><label class="row" style="gap:6px;align-items:center;margin-top:8px;background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:8px"><input type="checkbox" id="fold" ${f&&f.old?"checked":""} style="width:auto"> <b>🕰 Старый запас</b> <span class="muted">— брать в первую очередь (напоминание в заявках)</span></label><div class="g2x"><div><label class="f">Количество</label><input id="fq" value="${esc(f?f.qty:"")}" inputmode="decimal"></div><div><label class="f">Ед.</label><input id="fu" data-sug="map_unit" value="${esc(f?f.unit:"")}" placeholder="шт, м, т, пал."></div></div>
    <div style="margin-top:8px"><b>Ещё материал на этом месте</b> <span class="muted">— сколько угодно разных</span><div id="fitl">${(f&&f.items||[]).map(x=>fitRow(x)).join("")}</div><datalist id="fidl"></datalist><button type="button" class="btn sm" id="fita" style="margin-top:4px">＋ Ещё материал</button></div>
    <label class="f">Цвет флажка</label><div class="row" style="gap:6px">${Object.keys(FLC).map(k=>`<label style="display:flex;align-items:center;gap:3px"><input type="radio" name="fc" value="${k}" ${(f?f.color||"red":"red")===k?"checked":""} style="width:auto"><span style="display:inline-block;width:18px;height:18px;background:${FLC[k]};border-radius:4px"></span></label>`).join("")}</div></div>
-   <label class="f">Фото (до 20)</label><input type="file" id="fp" accept="image/*" capture="environment" multiple>
+   <label class="f">Фото (до 30)</label><input type="file" id="fp" accept="image/*" capture="environment" multiple>
    <div class="row" style="margin-top:12px"><button class="btn p grow" id="mok">СОХРАНИТЬ</button><button class="btn" data-close>Отмена</button></div>`,box=>{sugAttach(box);
    const sic=()=>{box.querySelectorAll("[data-ic]").forEach(b=>b.classList.toggle("p",b.dataset.ic===ic));$("#fmat",box).style.display=ic?"none":"";$("#fml",box).textContent=ic?"Подпись * (что за объект)":"Что лежит *";
      $("#fm",box).placeholder=ic?{gate:"Ворота № 1 (въезд)",kpp:"КПП-1 (главный въезд)",hangar:"Ангар № 1",crane:"Кран Liebherr 50 т",fork:"Погрузчик Hyster 3 т",cont:"Контейнер 40' — инструмент",office:"Офис склада / бытовка 2"}[ic]:"Кабель ВВГнг 3х2,5 / утеплитель / фланец 159";
@@ -1973,7 +2155,7 @@ async function mapFlagForm(f,p){await sugFresh(["map_mat","map_unit"]);const W=c
      const fd=new FormData();fd.append("material",m);fd.append("qty",$("#fq",box).value.trim());fd.append("unit",$("#fu",box).value.trim());fd.append("note",$("#fn",box).value.trim());
      fd.append("items",JSON.stringify(ic?[]:[...box.querySelectorAll("#fitl [data-fit]")].map(r=>({m:r.querySelector('[data-k="m"]').value.trim(),q:r.querySelector('[data-k="q"]').value.trim(),u:r.querySelector('[data-k="u"]').value.trim()})).filter(x=>x.m)));
      fd.append("color",(box.querySelector('input[name="fc"]:checked')||{}).value||"red");fd.append("icon",ic);fd.append("old",!ic&&$("#fold",box).checked?"true":"false");if(ic){fd.set("qty","");fd.set("unit","")}
-     const pf=[...$("#fp",box).files];if(pf.length+(f&&f.photo?f.photo.length:0)>20)throw new Error("У флажка — до 20 фото.");for(const x of pf)fd.append("photo+",await shrinkImg(x,2400).catch(()=>x));
+     const pf=[...$("#fp",box).files];if(pf.length+(f&&f.photo?f.photo.length:0)>30)throw new Error("У флажка — до 30 фото.");for(const x of pf)fd.append("photo+",await shrinkImg(x,2400).catch(()=>x));
      let r;if(f)r=await api("PATCH","/api/collections/smap_flags/records/"+f.id,fd,true);
      else{fd.append("x",String(p.x));fd.append("y",String(p.y));fd.append("zone",zone);fd.append("created_by",S.user.id);r=await api("POST","/api/collections/smap_flags/records",fd,true)}
      MAPS.flags=[r].concat(MAPS.flags.filter(x=>x.id!==r.id));MAPS.focus=r.id;closeModal();vMap()},"Флажок сохранён")})}
@@ -1985,8 +2167,8 @@ async function mapFlagView(id){const f=MAPS.flags.find(x=>x.id===id);if(!f)retur
    <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">${(f.photo||[]).map(n=>`<a href="/api/files/smap_flags/${f.id}/${encodeURIComponent(n)}?token=${ft}" target="_blank" rel="noopener"><img src="/api/files/smap_flags/${f.id}/${encodeURIComponent(n)}?thumb=240x240&token=${ft}" alt="Фото: ${esc(f.material)}" style="width:110px;height:110px;object-fit:cover;border-radius:8px"></a>`).join("")}</div>
    <div class="muted" style="margin-top:6px">Поставил: ${esc(uname(f.created_by))} · ${dt(f.created)}${f.updated!==f.created?` · изменён ${dt(f.updated)}${f.updated_by&&f.updated_by!==f.created_by?" ("+esc(uname(f.updated_by))+")":""}`:""}</div>
    <div class="row" style="margin-top:12px;gap:6px;flex-wrap:wrap"><a class="btn" href="#/find/${encodeURIComponent(f.material.split(/\s+/).slice(0,3).join(" "))}">🔎 Найти в МПЗ / заявках</a>
-    ${W?`<button class="btn" id="fed">✎ Изменить</button><button class="btn" id="fmv">↔ Переместить</button><button class="btn r" id="fdel">Убрать</button>`:""}<button class="btn" data-close>Закрыть</button></div>`,box=>{
-   const e1=$("#fed",box);if(e1)e1.onclick=()=>mapFlagForm(f);
+    ${W&&!f.icon?`<button class="btn acc" id="fadd">＋ Материал (по одному)</button>`:""}${W?`<button class="btn" id="fed">✎ Изменить</button><button class="btn" id="fmv">↔ Переместить</button><button class="btn r" id="fdel">Убрать</button>`:""}<button class="btn" data-close>Закрыть</button></div>`,box=>{
+   const e1=$("#fed",box);if(e1)e1.onclick=()=>mapFlagForm(f);const e0=$("#fadd",box);if(e0)e0.onclick=()=>{closeModal();mapFlagTun(f)};
    const e2=$("#fmv",box);if(e2)e2.onclick=()=>{MAPS.move=id;MAPS.mode="view";closeModal();vMap();toast("Нажмите на карте новое место","ok")};
    const e3=$("#fdel",box);if(e3)e3.onclick=()=>{if(!confirm("Убрать флажок «"+f.material+"»? (материала там больше нет)"))return;act(e3,async()=>{await api("DELETE","/api/collections/smap_flags/records/"+id);MAPS.flags=MAPS.flags.filter(x=>x.id!==id);closeModal();vMap()},"Флажок убран")}})}
 function mapExcel(){const T=XS.cC;const L=MAPS.flags.filter(f=>(!MAPS.oldOnly||f.old)&&(!MAPS.q||wmatch(MAPS.q,f.search_lc||f.material))).slice().sort((a,b)=>(a.zone||"яя").localeCompare(b.zone||"яя","ru")||a.material.localeCompare(b.material,"ru"));
@@ -2267,7 +2449,8 @@ async function tunReq(){await sugFresh(["object","recipient","material","unit","
 function tunCloseReq(r,items,files,ships,refresh,oldForm){const M=can.manage();const id=r.id;
   const short=items.filter(i=>itemState(i)!=="full"),transit=ships.filter(x=>x.status==="preparing"||x.status==="sent"),over=items.filter(i=>overQ(i)>0);
   const hasPh=files.some(f=>f.kind==="close"&&f.request===id);const sig=r.signs&&typeof r.signs==="object"?r.signs:{};
-  const c={photos:[],lo:true,lit:short.map(i=>i.id),cm:"",sig:{}};
+  const c={photos:[],lo:true,lit:short.map(i=>i.id),cm:"",sig:{},qo:{}};
+  const qoOf=i=>i.id in c.qo?c.qo[i.id]:num(i.qty_ordered);const leftOf=i=>Math.max(0,Math.round((qoOf(i)-num(i.qty_issued))*1000)/1000);   // 1.9.52: при закрытии можно поправить «заказано»
   tunnel({title:"Закрытие заявки № "+r.number,okLast:"ЗАКРЫТЬ ЗАЯВКУ",c,steps:[
    {t:"Что выдано",html:()=>`${transit.length?`<div class="banner red" style="font-size:15px">ЕСТЬ НЕЗАВЕРШЁННАЯ ОТГРУЗКА<small>Сначала отметьте доставку или отмените её.${M?" Руководитель может закрыть в обход, с объяснением.":""}</small></div>`:""}
      ${over.length?`<div class="banner orange" style="font-size:15px">ВЫДАНО СВЕРХ ЗАКАЗА<small>${over.map(i=>esc(i.material)+": +"+fmtQ(overQ(i))+" "+esc(i.unit)).join("\n")}</small></div>`:""}
@@ -2277,10 +2460,16 @@ function tunCloseReq(r,items,files,ships,refresh,oldForm){const M=can.manage();c
     bind:(box)=>{$("#tunform",box).onclick=()=>{tunClose();oldForm()}},check:()=>transit.length&&!M?"Есть незавершённая отгрузка — закрыть нельзя.":""},
    {t:"Невыданное",sub:"Остаток уйдёт в список «Невыданное по заявкам» — его можно выдать потом без заявки.",when:()=>short.length>0,
     html:()=>`<label class="row" style="gap:8px;font-weight:800"><input type="checkbox" id="tlo" ${c.lo?"checked":""} style="width:24px;height:24px"> 📦 Отправить невыданное в отдельный список</label>
-     ${short.map(i=>`<label class="row" style="gap:8px;margin-top:8px"><input type="checkbox" data-tlo="${i.id}" ${c.lit.includes(i.id)?"checked":""} style="width:22px;height:22px"><span class="grow">${esc(i.material)}</span><b>${fmtQ(Math.max(0,num(i.qty_ordered)-num(i.qty_issued)))} ${esc(i.unit)}</b></label>`).join("")}
+     <div class="muted" style="margin-top:6px">Можно исправить «заказано» — тогда изменится, сколько осталось вывезти.</div>
+     ${short.map(i=>`<div class="card" style="padding:8px;margin-top:8px"><label class="row" style="gap:8px"><input type="checkbox" data-tlo="${i.id}" ${c.lit.includes(i.id)?"checked":""} style="width:22px;height:22px"><span class="grow"><b>${esc(i.material)}</b></span></label>
+      <div class="row" style="gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px"><span class="muted">заказано</span><input data-tqo="${i.id}" inputmode="decimal" value="${fmtQ(qoOf(i))}" style="width:100px;min-height:40px;font-weight:800"><span class="muted">${esc(i.unit)} · выдано ${fmtQ(i.qty_issued)} · осталось вывезти</span><b data-tql="${i.id}">${fmtQ(leftOf(i))} ${esc(i.unit)}</b></div></div>`).join("")}
      <label class="f" style="margin-top:12px">Комментарий (обязательно) *</label><textarea id="tcm" placeholder="например: остаток выдадим по новой заявке">${esc(c.cm)}</textarea>`,
-    read:(b)=>{c.lo=$("#tlo",b).checked;c.lit=[...b.querySelectorAll("[data-tlo]:checked")].map(x=>x.dataset.tlo);c.cm=$("#tcm",b).value.trim()},
-    check:()=>c.cm?"":"Выдано не полностью — напишите комментарий.",skip:false},
+    bind:(b)=>b.querySelectorAll("[data-tqo]").forEach(inp=>inp.oninput=()=>{const i=short.find(x=>x.id===inp.dataset.tqo);const v=num(inp.value);
+      const L=b.querySelector(`[data-tql="${i.id}"]`);L.textContent=fmtQ(Math.max(0,Math.round((v-num(i.qty_issued))*1000)/1000))+" "+i.unit;L.style.color=v<num(i.qty_issued)?"var(--r)":""}),
+    read:(b)=>{c.lo=$("#tlo",b).checked;c.lit=[...b.querySelectorAll("[data-tlo]:checked")].map(x=>x.dataset.tlo);c.cm=$("#tcm",b).value.trim();
+      b.querySelectorAll("[data-tqo]").forEach(x=>{const i=short.find(y=>y.id===x.dataset.tqo);const v=x.value.trim()===""?num(i.qty_ordered):num(x.value);if(Math.abs(v-num(i.qty_ordered))>1e-9)c.qo[i.id]=v;else delete c.qo[i.id]})},
+    check:()=>{const bad=short.find(i=>qoOf(i)+1e-9<num(i.qty_issued));if(bad)return `«${bad.material}»: заказано не может быть меньше выданного (${fmtQ(bad.qty_issued)} ${bad.unit}).`;
+      return c.cm||!short.some(i=>leftOf(i)>0)?"":"Выдано не полностью — напишите комментарий."},skip:false},
    {t:"Подписи",sub:"Кто подписал бумажную заявку. Не подписано — «Пропустить», заявка будет в «Долгах по подписям».",
     html:async()=>{await sugFresh(SIGNS.map(s=>"sign_"+s[0]));return SIGNS.map(s=>tunCard(sig[s[0]]?`✔ <b>${esc(s[1])}</b> <span class="muted">— уже отмечено</span>`:`<label class="row" style="gap:8px;font-weight:700"><input type="checkbox" data-sg="${s[0]}" ${c.sig[s[0]]?"checked":""} style="width:22px;height:22px"> ${esc(s[1])}</label>
       <input data-sgw="${s[0]}" data-sug="sign_${s[0]}" placeholder="Кто подписал (ФИО)" value="${esc((c.sig[s[0]]||{}).who||"")}" style="margin-top:6px">`)).join("")},
@@ -2293,7 +2482,7 @@ function tunCloseReq(r,items,files,ships,refresh,oldForm){const M=can.manage();c
     read:(b)=>{const t=$("#tcm2",b);if(t)c.cm=t.value.trim()},check:()=>!c.photos.length&&!hasPh&&!M?"Нужно фото — вернитесь на шаг «Фото закрытия». Без фото закрыть может руководитель.":""}],
    done:async()=>{for(const k of Object.keys(c.sig))await api("POST","/api/vs/request/sign",{request:id,key:k,value:true,who:c.sig[k].who||""});
      if(c.photos.length)await uploadReqFiles(id,c.photos,"close");
-     await api("POST","/api/vs/request/status",{request:id,action:"close",comment:c.cm,leftover:!!(short.length&&c.lo&&c.lit.length),leftover_items:short.length?c.lit:[]});
+     await api("POST","/api/vs/request/status",{request:id,action:"close",comment:c.cm,leftover:!!(short.length&&c.lo&&c.lit.length),leftover_items:short.length?c.lit:[],qty:Object.keys(c.qo).map(k=>({item:k,qty_ordered:c.qo[k]}))});
      toast("Заявка закрыта","ok");await refresh()}})}
 
 /* ----- 3) Приёмка материала: УПД → поставщик и машина → проверка → фото груза → количество → где выгрузили (карта) → чек-лист → завершить ----- */
@@ -2600,19 +2789,26 @@ function planNeeds(sh){const now=new Date();const N={};jarr(sh.lines).forEach(l=
   return Object.values(N).sort((a,b)=>ldPri(a.load)-ldPri(b.load)).map(x=>{const r=(S.data.resources||[]).find(y=>y.category==="crane"&&lcq(y.name)===lcq(x.load));let busy="";
     if(r){const i=resInfo(r,now);if(r.unavailable)busy="недоступен";else if(i.st!=="free")busy=(stLabel(r,i.st)[0]||"занят")+(i.cur.length?" — "+i.cur[0].purpose:"")}
     return Object.assign(x,{places:[...x.places],busy,res:r})})}
-function planHtml(sh){const G=planGroups(sh),N=planNeeds(sh);const nums=shipNums(sh);
+// 1.9.52: фото у позиции плана погрузки (это фото позиции заявки — видно и в заявке); PH = {item: [адреса фото]}
+async function planPhotos(sh){const ids=[...new Set(jarr(sh.lines).map(l=>l.item))];if(!ids.length)return {};const F=[];
+  for(let i=0;i<ids.length;i+=40)F.push(...await all("request_files",ids.slice(i,i+40).map(x=>`item="${x}"`).join("||"),"created").catch(()=>[]));
+  const im=F.filter(f=>/\.(jpe?g|png|webp|heic|heif)$/i.test(f.file));if(!im.length)return {};const ft=await fileToken();const PH={};
+  im.forEach(f=>(PH[f.item]=PH[f.item]||[]).push({id:f.id,th:`/api/files/request_files/${f.id}/${encodeURIComponent(f.file)}?thumb=200x200&token=${ft}`,big:`/api/files/request_files/${f.id}/${encodeURIComponent(f.file)}?token=${ft}`,by:f.uploaded_by}));return PH}
+const planThumbs=(L,sz)=>(L||[]).map(x=>`<a href="${esc(x.big)}" target="_blank" rel="noopener"><img src="${esc(x.th)}" alt="фото позиции" style="width:${sz}px;height:${sz}px;object-fit:cover;border-radius:6px;margin:1px;vertical-align:middle"></a>`).join("");
+function planHtml(sh,PH){const G=planGroups(sh),N=planNeeds(sh);const nums=shipNums(sh);PH=PH||{};const hp=Object.keys(PH).length>0;
   return `<div class="pl"><h2 style="margin:0 0 4px">План погрузки — ${esc(sh.vehicle)}${G.length>1?` и ещё ${G.length-1} маш.`:""}</h2>
    <div class="muted">Заявки № ${nums.map(esc).join(", ")} · ${jarr(sh.lines).length} поз.${sh.driver?" · водитель "+esc(sh.driver):""} · ${dt(new Date().toISOString())}</div>
    <h3 style="margin:10px 0 4px">Что нужно</h3><table class="tbl"><tr><th>Чем грузить</th><th>Позиций</th><th>Где</th><th>Статус</th></tr>
    ${N.map(x=>`<tr><td><b>${ldIcon(x.load)} ${esc(x.load)}</b></td><td style="text-align:center">${x.n}</td><td>${x.places.map(esc).join(", ")}</td><td>${x.busy?`<span class="pill r">⚠ ${esc(x.busy)}</span>`:x.res?`<span class="pill g">свободен</span>`:""}</td></tr>`).join("")}</table>
    ${G.map(g=>`<h3 style="margin:14px 0 4px">🚚 ${G.length>1?"Машина "+g.k+": ":""}${esc(g.car)} — ${g.lines.length} поз.</h3>
-    ${g.places.map((p,pi)=>`<div style="margin:6px 0 2px"><b>${pi+1}. 📍 ${esc(p.place)}</b></div><table class="tbl"><tr><th style="width:26%">Чем грузить</th><th>Материал</th><th style="width:14%">Кол-во</th><th style="width:12%">Вес / длина</th><th style="width:12%">Заявка</th></tr>
-     ${p.lines.map(l=>`<tr><td>${ldIcon(l.load)} ${esc(l.load||"—")}</td><td>${esc(l.material)}</td><td style="white-space:nowrap"><b>${fmtQ(l.qty)} ${esc(l.unit)}</b></td><td>${esc(l.weight||"")}</td><td>№ ${esc(l.number)}</td></tr>`).join("")}</table>`).join("")}`).join("")}
+    ${g.places.map((p,pi)=>`<div style="margin:6px 0 2px"><b>${pi+1}. 📍 ${esc(p.place)}</b></div><table class="tbl"><tr><th style="width:${hp?20:26}%">Чем грузить</th><th>Материал</th><th style="width:14%">Кол-во</th><th style="width:12%">Вес / длина</th><th style="width:12%">Заявка</th>${hp?`<th style="width:20%">Фото</th>`:""}</tr>
+     ${p.lines.map(l=>`<tr><td>${ldIcon(l.load)} ${esc(l.load||"—")}</td><td>${esc(l.material)}</td><td style="white-space:nowrap"><b>${fmtQ(l.qty)} ${esc(l.unit)}</b></td><td>${esc(l.weight||"")}</td><td>№ ${esc(l.number)}</td>${hp?`<td>${planThumbs((PH[l.item]||[]).slice(0,4),52)}</td>`:""}</tr>`).join("")}</table>`).join("")}`).join("")}
    <div class="muted" style="margin-top:8px">Порядок: идём по местам сверху вниз; на каждом месте сначала кран / КМУ (тяжёлое и длинное — вниз), потом погрузчик, в конце вручную.</div></div>`}
 function planText(sh){const G=planGroups(sh),N=planNeeds(sh);const L=[`План погрузки — ${sh.vehicle}`,`Заявки № ${shipNums(sh).join(", ")}`,"","Нужно: "+N.map(x=>`${x.load} (${x.n})${x.busy?" ⚠ "+x.busy:""}`).join("; ")];
   G.forEach(g=>{L.push("",`🚚 ${G.length>1?"Машина "+g.k+": ":""}${g.car}`);g.places.forEach((p,pi)=>{L.push(`${pi+1}. ${p.place}`);p.lines.forEach(l=>L.push(`   - ${l.load||"—"}: ${l.material} — ${fmtQ(l.qty)} ${l.unit}${l.weight?" ("+l.weight+")":""}, № ${l.number}`))})});
   return L.join("\n")}
 async function shipPlan(sh,refresh){await sugFresh(["ship_place","ship_load"]);const W=can.write()&&!can.linkOnly()&&(sh.status==="preparing"||sh.status==="sent");
+  const WP=can.write()&&!can.linkOnly()&&!can.zay()&&sh.status!=="cancelled";let PH=await planPhotos(sh).catch(()=>({}));
   const meta=new Map();jarr(sh.lines).forEach(l=>meta.set(l.item,{place:l.place||"",load:l.load||"",weight:l.weight||"",car:+l.car||1}));
   let cars=jarr(sh.cars).length?jarr(sh.cars).slice():[sh.vehicle];cars[0]=sh.vehicle||cars[0];
   if(W&&jarr(sh.lines).some(l=>!l.place&&!l.load)){const MEM=await ldMem();jarr(sh.lines).forEach(l=>{const m=meta.get(l.item),x=MEM.get(ldKey(l.material));if(x&&!m.place&&!m.load){m.place=x.place||"";m.load=x.load||"";m.weight=m.weight||x.weight||""}})}
@@ -2620,22 +2816,26 @@ async function shipPlan(sh,refresh){await sugFresh(["ship_place","ship_load"]);c
    ${W?`<div class="muted">Укажите, где лежит каждая позиция и чем её грузить. Запоминается по материалу — в следующий раз подставится само.</div>
    <label class="f">Машины (первая — основная), через запятую</label><input id="plc" value="${esc(cars.join(", "))}">
    <div id="pll" style="max-height:44vh;overflow:auto;margin-top:6px"></div>`:""}
+   ${!W&&WP?`<div style="margin-top:6px">${jarr(sh.lines).map(l=>`<div class="muted" style="margin-top:4px">№ ${esc(l.number)} · ${esc(l.material)}</div><div data-plro="${l.item}"></div>`).join("")}</div>`:""}
    <div id="plv" style="margin-top:10px"></div>
    <div class="row noprint" style="margin-top:12px;gap:6px;flex-wrap:wrap">${W?`<button class="btn p" id="pls">💾 Сохранить план</button>`:""}<button class="btn" id="plp">🖨 Печать / PDF</button><button class="btn" id="plx">⬇ Excel</button><button class="btn" id="plm">💬 Отправить текстом</button><button class="btn" data-close>Закрыть</button></div>`,box=>{
    const cur=()=>{const s2=Object.assign({},sh,{cars,lines:jarr(sh.lines).map(l=>Object.assign({},l,meta.get(l.item)||{}))});return s2};
-   const view=()=>{$("#plv",box).innerHTML=planHtml(cur())};
-   const draw=()=>{const pl=$("#pll",box);if(!pl)return;pl.innerHTML=jarr(sh.lines).map(l=>`<div class="line"><div style="flex:1;min-width:0"><b>№ ${esc(l.number)}</b> · ${esc(l.material)} — <b>${fmtQ(l.qty)} ${esc(l.unit)}</b></div></div>${planInputs(l.item,meta.get(l.item),cars)}`).join("");
-     planBind(pl,meta);sugAttach(pl);pl.querySelectorAll("[data-pf]").forEach(i=>i.addEventListener("change",view))};
-   draw();view();
+   const view=()=>{$("#plv",box).innerHTML=planHtml(cur(),PH)};
+   const phRow=l=>WP||(PH[l.item]||[]).length?`<div class="row" style="gap:4px;flex-wrap:wrap;align-items:center;margin:-4px 0 8px 30px" data-plph="${l.item}">${planThumbs(PH[l.item],64)}${WP?`<label class="btn sm acc" title="Фото этой позиции (можно несколько)">📷 Фото${(PH[l.item]||[]).length?" ("+PH[l.item].length+")":""}<input type="file" accept="image/*" multiple hidden data-plup="${l.item}" data-plrq="${l.request}"></label>`:""}</div>`:"";
+   const draw=()=>{const pl=$("#pll",box);if(!pl)return;pl.innerHTML=jarr(sh.lines).map(l=>`<div class="line"><div style="flex:1;min-width:0"><b>№ ${esc(l.number)}</b> · ${esc(l.material)} — <b>${fmtQ(l.qty)} ${esc(l.unit)}</b></div></div>${planInputs(l.item,meta.get(l.item),cars)}${phRow(l)}`).join("");
+     planBind(pl,meta);sugAttach(pl);pl.querySelectorAll("[data-pf]").forEach(i=>i.addEventListener("change",view));bindUp(pl)};
+   const bindUp=el=>el.querySelectorAll("[data-plup]").forEach(inp=>inp.onchange=()=>{const fs=[...inp.files];inp.value="";if(!fs.length)return;
+     act(null,async()=>{const n=await imedUpload(inp.dataset.plrq,inp.dataset.plup,fs);PH=await planPhotos(sh).catch(()=>PH);if($("#pll",box))draw();else{const r=box.querySelector(`[data-plph="${inp.dataset.plup}"]`);if(r)r.outerHTML=phRow(jarr(sh.lines).find(l=>l.item===inp.dataset.plup))}view();bindUp(box);S.curReq=null;if(n)toast("Фото добавлено: "+n,"ok")})});
+   draw();view();if(!W&&WP)jarr(sh.lines).forEach(l=>{const d=box.querySelector(`[data-plro="${l.item}"]`);if(d)d.outerHTML=phRow(l)});if(!W)bindUp(box);
    const pc=$("#plc",box);if(pc)pc.onchange=()=>{cars=pc.value.split(",").map(x=>x.trim()).filter(Boolean);if(!cars.length)cars=[sh.vehicle];meta.forEach(m=>{if(m.car>cars.length)m.car=1});draw();view()};
    const ps=$("#pls",box);if(ps)ps.onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/shipment/plan",{shipment:sh.id,cars,lines:[...meta.entries()].map(([item,m])=>Object.assign({item},m))});
      sh.cars=cars;sh.lines=cur().lines;view();if(refresh)await refresh()},"План сохранён");
-   $("#plp",box).onclick=()=>planPrint(cur());
+   $("#plp",box).onclick=()=>planPrint(cur(),PH);
    $("#plx",box).onclick=e=>act(e.target,async()=>planExcel(cur()));
    $("#plm",box).onclick=async()=>{const t=planText(cur());if(MOB&&navigator.share){navigator.share({title:"План погрузки",text:t}).catch(()=>{});return}
      try{await navigator.clipboard.writeText(t)}catch(_){const ta=document.createElement("textarea");ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove()}toast("План скопирован — вставьте в MAX / WhatsApp (Ctrl+V)","ok")}})}
-function planPrint(sh){let box=$("#prt");if(box)box.remove();box=document.createElement("div");box.id="prt";
-  box.innerHTML=`<div class="pfbar noprint"><button class="btn acc" id="pfGo">🖨 Печать / сохранить в PDF</button><button class="btn" id="pfX">Закрыть</button></div><div class="pfpage">${planHtml(sh)}</div>`;
+function planPrint(sh,PH){let box=$("#prt");if(box)box.remove();box=document.createElement("div");box.id="prt";
+  box.innerHTML=`<div class="pfbar noprint"><button class="btn acc" id="pfGo">🖨 Печать / сохранить в PDF</button><button class="btn" id="pfX">Закрыть</button></div><div class="pfpage">${planHtml(sh,PH)}</div>`;
   document.body.appendChild(box);let st=$("#prtcss");if(!st){st=document.createElement("style");st.id="prtcss";document.head.appendChild(st)}
   st.textContent=`@page{size:A4 portrait;margin:12mm}#prt{position:fixed;inset:0;z-index:95;background:#4b5563;overflow:auto;padding:8px}.pfbar{position:sticky;top:0;display:flex;gap:8px;padding:6px 0 10px;z-index:2}
    .pfpage{background:#fff;color:#000;width:210mm;min-height:297mm;margin:0 auto;padding:12mm;box-shadow:0 4px 20px rgba(0,0,0,.4)}.pfpage .tbl{width:100%;border-collapse:collapse}.pfpage .tbl th,.pfpage .tbl td{border:1px solid #888;padding:4px 6px;font-size:12px;color:#000;background:#fff}.pfpage .tbl th{background:#e5e7eb}
@@ -2673,6 +2873,7 @@ function mpzSug(inp,dl,onPick){let t=0,seq=0,L=[];
       if(my!==seq)return;L=R;const seen=new Set();dl.innerHTML=R.filter(x=>!seen.has(x.name)&&seen.add(x.name)).map(x=>`<option value="${esc(x.name)}">${esc(fmtQ(x.qty_end)+" "+(x.unit||""))}</option>`).join("")},300)})}
 function passManual(){passForm({lines:[],driver:uname(S.user.id),created_by:S.user.id,vehicle:""})}
 function passForm(sh){
+  const PPH=sh.id?((S.curReq&&S.curReq.files)||[]).filter(f=>f.shipment===sh.id&&/\.(jpe?g|png|webp)$/i.test(f.file)):[];let pnew=[];   // 1.9.52: пропуск с фото — фото отгрузки + новые
   const o=shipObj(sh),d=new Date(),t=hhmm(sh.sent_at)||"";const who=sh.driver||uname(sh.created_by);const dest=o.objects.join(", ");
   const objOf=id=>{const r=(S.data.requests||[]).find(x=>x.id===id)||(S.curReq&&S.curReq.r.id===id?S.curReq.r:null);return r&&r.object||""};
   const rows=jarr(sh.lines).map(l=>({n:l.material,q:(l.unit?l.unit+" ":"")+fmtQ(l.qty),t,w:who,d:objOf(l.request)||dest}));if(!rows.length)rows.push({n:"",q:"",t,w:who,d:dest});
@@ -2685,16 +2886,25 @@ function passForm(sh){
    <button class="btn sm" id="pra" style="margin-top:6px">＋ Строка</button>
    <label class="f">Руководитель подразделения (организации)</label><input id="ph" data-sug="pass_head">
    <label class="f">Материально-ответственное лицо, подразделение</label><input id="pm" data-sug="pass_mol" value="${esc(o.recipients[0]||"")}">
-   <div class="row" style="margin-top:14px"><button class="btn p grow" id="mok">🖨 ПЕЧАТЬ / PDF</button><button class="btn" data-close>Отмена</button></div>`,
+   <div class="card" style="margin-top:10px;padding:10px;background:#f8fafc"><b>📷 Фото в пропуск</b> <span class="muted">— только для печати «С ФОТО»</span>
+    ${PPH.length?`<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">${PPH.map(f=>`<label style="position:relative;display:inline-block"><input type="checkbox" data-pph="${f.id}" checked style="position:absolute;left:4px;top:4px;width:22px;height:22px;z-index:1"><img data-ppi="${f.id}" alt="фото отгрузки" style="width:84px;height:84px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"></label>`).join("")}</div>`:""}
+    <div class="row" style="gap:6px;margin-top:6px"><label class="btn sm acc">📷 Сфотографировать<input type="file" id="ppc" accept="image/*" capture="environment" multiple hidden></label><label class="btn sm">Из галереи<input type="file" id="ppg" accept="image/*" multiple hidden></label><span class="muted" id="ppn"></span></div></div>
+   <div class="row" style="margin-top:14px;gap:6px;flex-wrap:wrap"><button class="btn p grow" id="mok">🖨 ПЕЧАТЬ / PDF</button><button class="btn acc grow" id="mokph">🖨 С ФОТО</button><button class="btn" data-close>Отмена</button></div>`,
   box=>{const tb=$("#prb",box);const st=document.createElement("style");st.textContent="#modal table.pr input{min-height:38px;padding:6px;width:100%;min-width:90px}#modal table.pr td{padding:3px}";box.appendChild(st);
     const bindX=()=>box.querySelectorAll("[data-prx]").forEach(b=>b.onclick=()=>b.closest("tr").remove());bindX();sugAttach(box);
     const dl=$("#pdl",box);const bindN=tr=>{const inp=tr.querySelector('[data-k="n"]');mpzSug(inp,dl,m=>{const q=tr.querySelector('[data-k="q"]');if(q&&!q.value.trim())q.value=(m.unit||"")+" "})};
     tb.querySelectorAll("tr").forEach(bindN);
     $("#pra",box).onclick=()=>{tb.insertAdjacentHTML("beforeend",rowH({n:"",q:"",t,w:who,d:dest},Date.now()));bindX();sugAttach(tb.lastElementChild);bindN(tb.lastElementChild);tb.lastElementChild.querySelector('[data-k="n"]').focus()};
-    $("#mok",box).onclick=()=>{const L=[...tb.querySelectorAll("tr")].map(tr=>{const g=k=>tr.querySelector(`[data-k="${k}"]`).value.trim();return {n:g("n"),q:g("q"),t:g("t"),w:g("w"),d:g("d")}}).filter(r=>r.n||r.q);
+    if(PPH.length)fileToken().then(ft=>box.querySelectorAll("[data-ppi]").forEach(im=>{const f=PPH.find(x=>x.id===im.dataset.ppi);im.src=`/api/files/request_files/${f.id}/${encodeURIComponent(f.file)}?thumb=200x200&token=${ft}`})).catch(()=>{});
+    const pn=()=>{$("#ppn",box).textContent=pnew.length?"новых фото: "+pnew.length:""};["#ppc","#ppg"].forEach(q=>$(q,box).onchange=e=>{pnew=pnew.concat([...e.target.files]);e.target.value="";pn()});
+    const go=async(withPh)=>{const L=[...tb.querySelectorAll("tr")].map(tr=>{const g=k=>tr.querySelector(`[data-k="${k}"]`).value.trim();return {n:g("n"),q:g("q"),t:g("t"),w:g("w"),d:g("d")}}).filter(r=>r.n||r.q);
       const dd=$("#pd",box).value?new Date($("#pd",box).value+"T12:00"):new Date();
       try{localStorage.setItem("vs_pass_last",JSON.stringify({h:$("#ph",box).value,m:$("#pm",box).value}))}catch(_){}
-      closeModal();printPass({no:$("#pn",box).value.trim(),date:dd,vehicle:$("#pv",box).value.trim(),rows:L,head:$("#ph",box).value.trim(),mol:$("#pm",box).value.trim()})};
+      let photos=[];if(withPh){const sel=[...box.querySelectorAll("[data-pph]:checked")].map(c=>PPH.find(f=>f.id===c.dataset.pph));
+        if(sel.length){const ft=await fileToken();photos=sel.map(f=>`/api/files/request_files/${f.id}/${encodeURIComponent(f.file)}?thumb=600x0&token=${ft}`)}
+        photos=photos.concat(pnew.map(f=>URL.createObjectURL(f)));if(!photos.length)throw new Error("Нет фото: отметьте фото отгрузки или добавьте новые.")}
+      closeModal();printPass({no:$("#pn",box).value.trim(),date:dd,vehicle:$("#pv",box).value.trim(),rows:L,head:$("#ph",box).value.trim(),mol:$("#pm",box).value.trim(),photos})};
+    $("#mok",box).onclick=e=>act(e.target,()=>go(false));$("#mokph",box).onclick=e=>act(e.target,()=>go(true));
     try{const p=JSON.parse(localStorage.getItem("vs_pass_last")||"{}");if(p.h&&!$("#ph",box).value)$("#ph",box).value=p.h;if(p.m&&!$("#pm",box).value)$("#pm",box).value=p.m}catch(_){}
   });
 }
@@ -2715,7 +2925,7 @@ function printPass(p){
     <div style="margin-top:2mm"><b><i>Имущество проверил</i></b></div>
     <div class="pp-s2"><span>Частный охранник</span><span>______________________ / ______________________ /<span class="c"><i>подпись</i><i>Фамилия И.О.</i></span></span></div></div>
    <div class="pf-src">Сформировано в системе ВЕЛЕССТРОЙ ${new Date().toLocaleString("ru-RU")}</div>
-  </div></div>`;
+  </div></div>${(p.photos||[]).length?`<div class="pfpage pp"><div class="pf"><div class="pp-t"><b>Фото к материальному пропуску № ${esc(p.no)}</b></div><div class="pp-ph">${p.photos.map((u,i)=>`<figure><img src="${esc(u)}" alt="Фото ${i+1}"><figcaption>Фото ${i+1}</figcaption></figure>`).join("")}</div></div></div>`:""}`;
   let box=$("#prt");if(box)box.remove();box=document.createElement("div");box.id="prt";box.innerHTML=html;document.body.appendChild(box);
   let st=$("#prtcss");if(!st){st=document.createElement("style");st.id="prtcss";document.head.appendChild(st)}
   st.textContent=`@page{size:A4 portrait;margin:12mm 12mm 10mm 18mm}
@@ -2730,7 +2940,10 @@ function printPass(p){
    .pp-f{font-size:10pt}.pp-s{margin:6mm 0 0 auto;width:95mm;text-align:right}.pp-s .c,.pp-s2 .c{display:flex;justify-content:space-around;font-size:9pt}
    .pp-s2{display:flex;gap:10mm;align-items:flex-start}.pp-s2>span:last-child{display:flex;flex-direction:column;margin-left:12mm}
    .pf-src{font-size:7pt;color:#555;text-align:right;margin-top:4mm}
+   .pp-ph{display:grid;grid-template-columns:1fr 1fr;gap:4mm;margin-top:5mm}.pp-ph figure{margin:0;break-inside:avoid;page-break-inside:avoid}.pp-ph img{width:100%;height:78mm;object-fit:contain;border:1px solid #999;background:#fff}.pp-ph figcaption{font-size:9pt;text-align:center}
+   #prt .pfpage+.pfpage{margin-top:10px}
    @media print{body.printing>*:not(#prt){display:none!important}html,body.printing{background:#fff!important}
+     #prt .pfpage+.pfpage{page-break-before:always;break-before:page;margin-top:0}
      #prt{position:static;inset:auto;background:#fff;padding:0;overflow:visible}.pfbar{display:none!important}
      .pfpage{width:auto;min-height:0;margin:0;padding:0;box-shadow:none}}`;
   document.body.classList.add("printing");
@@ -3837,9 +4050,15 @@ const wfilF=(q,flds,cs)=>qWords(q).map(w=>"("+flds.flatMap(f=>(cs?casev(w):xv(w)
 function hlq(t,q){t=String(t==null?"":t);const W=qWords(q).filter(w=>w.length>1||/\d/.test(w)).map(w=>xv(w).map(v=>v.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|"));
   if(!W.length)return esc(t);const re=new RegExp("("+W.join("|")+")","gi");return t.split(re).map((x,i)=>i%2?`<mark>${esc(x)}</mark>`:esc(x)).join("")}
 const FSEC=[["req","Заявки"],["ship","Отгрузки"],["upd","УПД / приход"],["skk","Акты СКК"],["jact","Журнал актов"],["rcp","Приёмка"],["oper","Оперативка"],["mpz","Остатки МПЗ"],["lft","Невыданное"],["zreg","Реестр заявок"],["ureg","Сводный отчёт прихода"],["res","Ресурсы"],["mapf","На карте склада"]];
-async function fndRun(){const my=++FND.seq;const q=FND.q;const W=qWords(q);if(!W.length){FND.res=null;return fndPaint()}
-  const FAIL=[];const L=(c,f,sort,n,ex)=>{const u=`/api/collections/${c}/records?perPage=${n}&sort=${sort}&filter=${encodeURIComponent(f)}${ex?"&expand="+ex:""}`;
-    return api("GET",u).catch(e=>e.status===403?{items:[]}:new Promise(r=>setTimeout(r,700)).then(()=>api("GET",u))).then(j=>j.items).catch(()=>{FAIL.push(c);return []})};   // 1.9.18: сбой — ещё раз
+// 1.9.52: поиск больше не «вешает» приложение — не больше 3 запросов к серверу одновременно, без подсчёта total, без тяжёлых полей (текст распознавания УПД),
+// прежний поиск отменяется, когда начат новый
+function fndPool(n){let run=0;const q=[];const nx=()=>{if(run>=n||!q.length)return;run++;const [f,ok,no]=q.shift();Promise.resolve().then(f).then(ok,no).finally(()=>{run--;nx()})};return f=>new Promise((ok,no)=>{q.push([f,ok,no]);nx()})}
+const FND_FIELDS={upd_docs:"id,number,date,supplier,status,created,items,search_lc,unload_place"};
+async function fndRun(){const my=++FND.seq;const q=FND.q;const W=qWords(q);if(FND.ac)try{FND.ac.abort()}catch(_){}if(!W.length){FND.res=null;return fndPaint()}
+  const ac=new AbortController();FND.ac=ac;const pool=fndPool(3);
+  const FAIL=[];const L=(c,f,sort,n,ex)=>pool(()=>{if(my!==FND.seq)return {items:[]};const fl=FND_FIELDS[c];
+    const u=`/api/collections/${c}/records?perPage=${n}&skipTotal=1&sort=${sort}&filter=${encodeURIComponent(f)}${ex?"&expand="+ex:""}${fl?"&fields="+encodeURIComponent(fl):""}`;const o={signal:ac.signal};
+    return api("GET",u,null,false,o).catch(e=>e.abort||e.status===403?{items:[]}:new Promise(r=>setTimeout(r,700)).then(()=>my===FND.seq?api("GET",u,null,false,o):{items:[]}))}).then(j=>j.items||[]).catch(e=>{if(!e.abort)FAIL.push(c);return []});   // 1.9.18: сбой — ещё раз
   const sf=wfil(q),m=t=>wmatch(q,t);
   const zrP=zrOk()?L("zreg",sf,"row_no",60):Promise.resolve([]);const urP=urOk()&&!appOn()?L("ureg",sf,"-recv_date",60):Promise.resolve([]);const NO=appOn(),E=()=>Promise.resolve([]);
   const mfP=NO?E():L("smap_flags",sf,"-updated",60);   // 1.9.35: флажки на карте склада
@@ -3912,7 +4131,7 @@ async function vFind(id,changed){if(!fndOk())return vHome();if(changed&&$("#fndq
    <div class="muted" style="margin-top:6px">Ищет сразу в заявках, отгрузках, УПД, актах, приёмке, оперативке, остатках МПЗ, невыданном, ресурсах и флажках на карте склада. Число ищется целым: «50» найдёт «50 мм», но не «150».</div></div><div id="fndr"></div>`;
   const inp=$("#fndq");let t=0;
   const go=(force)=>{const v=inp.value.trim();if(v===FND.q&&FND.res&&force!==true)return;FND.q=v;FND.res=null;FND.tab="all";history.replaceState(null,"","#/find"+(v?"/"+encodeURIComponent(v):""));S.route="find"+(v?"/"+encodeURIComponent(v):"");fndPaint();fndRun()};
-  inp.oninput=()=>{clearTimeout(t);t=setTimeout(go,450)};inp.onkeydown=e=>{if(e.key==="Enter"){clearTimeout(t);go(true)}};$("#fndb").onclick=()=>go(true);
+  inp.oninput=()=>{clearTimeout(t);if(inp.value.trim().length>=3)t=setTimeout(go,800)};inp.onkeydown=e=>{if(e.key==="Enter"){clearTimeout(t);go(true)}};$("#fndb").onclick=()=>go(true);
   const x=$("#fndx");if(x)x.onclick=()=>{inp.value="";go();inp.focus()};
   fndPaint();if(FND.q&&!FND.res)fndRun();if(!FND.q)inp.focus()}
 /* ----- «Задачи и согласования» ----- */
