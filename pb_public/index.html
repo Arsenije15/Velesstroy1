@@ -556,6 +556,18 @@ function vReceive(){
 }
 async function fileToken(){if(S.fileToken&&Date.now()-S.fileTokenAt<100000)return S.fileToken;
   const j=await api("POST","/api/files/token");S.fileToken=j.token;S.fileTokenAt=Date.now();return j.token}
+
+/* 1.9.51: удаление приёмки — админ/руководитель, причина обязательна, остаётся запись в журнале */
+function rcDelete(r,n){const s=T.rst[r.status]||[r.status,"gr"];
+  modal(`<h3>🗑 Удалить приёмку?</h3>
+   <div class="card" style="padding:10px"><b>УПД № ${esc(r.upd_number)}</b> <span class="pill ${s[1]}">${s[0]}</span><div class="muted">${esc(r.supplier||"")}${r.sender?" · "+esc(r.sender):""} · создана ${dt(r.created)}</div>
+    <div class="muted" style="margin-top:4px">Вместе с ней удалятся: фото и документы — ${n.att}, пункты чек-листа — ${n.items}, согласования — ${n.aps}.</div></div>
+   ${r.status==="completed"?`<div class="banner yellow" style="font-size:15px">Приёмка уже завершена. Удаляйте только ошибочную или дубль.</div>`:""}
+   <label class="f">Причина удаления (обязательно)</label><input id="rdr" placeholder="дубль / ошибка в УПД / тестовая" autocomplete="off">
+   <div class="muted" style="margin-top:6px">В журнал действий запишется, кто, когда и почему удалил. Вернуть можно только из резервной копии.</div>
+   <div class="row" style="margin-top:12px;gap:6px"><button class="btn r grow" id="rdok">Удалить навсегда</button><button class="btn" data-close>Отмена</button></div>`,box=>{
+   $("#rdok",box).onclick=e=>act(e.target,async()=>{const reason=$("#rdr",box).value.trim();if(reason.length<3){$("#rdr",box).focus();throw new Error("Укажите причину удаления")}
+     await api("POST","/api/vs/receipt/delete",{receipt:r.id,reason});closeModal();S.cur=null;await load(["receipts"]);location.hash="#/receive"},"Приёмка удалена")})}
 async function vReceipt(id,changedCols){
   let r=(S.data.receipts||[]).find(x=>x.id===id);
   try{if(!r||!changedCols||changedCols.some(c=>["receipts","checklist_items","attachments","approvals"].includes(c))){
@@ -573,7 +585,7 @@ async function vReceipt(id,changedCols){
   const done=items.filter(i=>i.done).length,reqOpen=items.filter(i=>i.required&&!i.done).length;
   let ft="";try{if(att.length)ft=await fileToken()}catch(_){}
   if(S.route!=="receipt/"+id)return;
-  $("#main").innerHTML=`<div class="row noprint" style="margin-bottom:8px"><a class="btn sm" href="#/receive">← К приёмкам</a><div class="grow"></div><button class="btn sm" onclick="print()">Печать / PDF</button></div>
+  $("#main").innerHTML=`<div class="row noprint" style="margin-bottom:8px"><a class="btn sm" href="#/receive">← К приёмкам</a><div class="grow"></div><button class="btn sm" onclick="print()">Печать / PDF</button>${can.manage()&&!S.user.scope?`<button class="btn sm r" id="rcDel" title="Удалить приёмку (ошибочную, дубль)">🗑 Удалить</button>`:""}</div>
   <h1>УПД № ${esc(r.upd_number)} <span class="pill ${s[1]}" style="vertical-align:middle">${s[0]}</span></h1>
   <div class="banner ${bc}">${esc(T.check[r.check_result]||"")}<small>${esc(r.instruction||(r.check_result==="notfound"?"Для этого УПД, поставщика и отправителя в базе нет правил. Приёмка возможна только после проверки и согласования руководителем.":""))}</small></div>
   ${actsBanner(Array.isArray(r.acts_found)?r.acts_found:[],false)}
@@ -621,6 +633,7 @@ async function vReceipt(id,changedCols){
    <td>${esc(uname(a.requested_by))}<br><span class="muted">${dt(a.created)}</span>${a.request_comment?"<br>«"+esc(a.request_comment)+"»":""}</td>
    <td>${a.status==="pending"?`<span class="pill y">ОЖИДАЕТ</span>`:`<span class="pill ${a.status==="approved"?"g":"r"}">${a.status==="approved"?"СОГЛАСОВАНО":"ОТКАЗАНО"}</span><br>${esc(uname(a.decided_by))}, ${dt(a.decided_at)}<br>«${esc(a.decision_comment)}»`}</td></tr>`).join("")}</table></div></div>`:""}`;
   bindAp();
+  const rd=$("#rcDel");if(rd)rd.onclick=()=>rcDelete(r,{att:att.length,items:items.length,aps:aps.length});
   const ra=$("#rcAllow");if(ra)ra.onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/receipt/allow",{receipt:id});S.cur=null;await load(["receipts"]);vReceipt(id,["receipts"])},"Приёмка разрешена");
   const mb=$("#memoB");if(mb)mb.onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/receipt/memo",{receipt:id,comment:$("#memoC").value});S.cur=null;await load(["receipts"]);vReceipt(id,["receipts"])},"Отмечено");
   const rq=$("#rqb");if(rq)rq.onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/approval/request",{receipt:id,comment:$("#rqc").value});render(["approvals"])},"Запрос отправлен руководителю");
@@ -2997,7 +3010,7 @@ function spExcel(R){
 const GAPT={open:["Не закрыта",""],close_nophoto:["Закрыта без фото","r"],debt:["Нет подписей","v"],ship_nophoto:["Отгрузка без фото","r"],ship_steps:["Этапы не отмечены","y"],ship_open:["Отгрузка не завершена","y"],uchet:["Учёт не завершён","b"],note:["Заметка не выполнена","gr"]};
 const ACTRU=a=>({request_create:"Заявка создана",request_issue:"Выдача",request_close:"Заявка закрыта",request_reopen:"Открыта повторно",request_cancel:"Аннулирована",request_sign:"Подпись",request_update:"Изменение заявки",
   request_note:"Заметка",request_note_done:"Заметка выполнена",request_uchet:"Учёт",request_file_delete:"Удалено фото",shipment_prepare:"Отгрузка создана",shipment_send:"Отгрузка отправлена",shipment_deliver:"Доставлено",
-  shipment_cancel:"Отгрузка отменена",shipment_step:"Этап отгрузки",receipt_complete:"Приёмка завершена",receipt_update:"Приёмка",override:"⚠ Обход запрета",share_create:"Ссылка получателю",share_revoke:"Ссылка отключена",
+  shipment_cancel:"Отгрузка отменена",shipment_step:"Этап отгрузки",receipt_complete:"Приёмка завершена",receipt_update:"Приёмка",receipt_delete:"🗑 Приёмка удалена",override:"⚠ Обход запрета",share_create:"Ссылка получателю",share_revoke:"Ссылка отключена",
   reserve:"Бронь техники",mpz_import:"Загружены остатки МПЗ",archive_import:"Загружен архив"})[a]||a;
 const REP={day:null,data:null};
 async function vReport(_id,changed){if(changed&&$("#repb"))return; // отчёт — снимок; обновить: выбрать день заново
