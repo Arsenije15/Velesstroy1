@@ -1,7 +1,8 @@
 /// <reference path="../pb_data/types.d.ts" />
-// VELESSTROY 1.9.48 — каждые 5 минут, если база менялась: копия базы изнутри сервера → в облако
-cronAdd("vs_cloud_snap", "*/5 * * * *", () => {
-  try { require(`${__hooks}/lib1948.js`).snapshot($app, false); } catch (e) { console.log("cloud snapshot failed: " + e); }
+// VELESSTROY 1.9.48 — копия базы изнутри сервера → в облако
+// 1.9.54: не каждые 5 минут, а 3 раза в день — 12:00, 16:00 и 21:00 по Москве (часовой пояс сервера не важен: считаем от UTC)
+cronAdd("vs_cloud_snap", "0 * * * *", () => {
+  try { const S = require(`${__hooks}/lib1948.js`); if (S.due(new Date())) S.snapshot($app, true); } catch (e) { console.log("cloud snapshot failed: " + e); }
 });
 routerAdd("POST", "/api/vs/backup/cloud/snapnow", (e) => {
   const L = require(`${__hooks}/lib.js`);

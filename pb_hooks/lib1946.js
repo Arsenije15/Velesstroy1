@@ -21,7 +21,8 @@ function status(app) {
   const alarm = [];
   if (!conf) alarm.push("Копия в облако не настроена — при поломке сервера данные можно потерять.");
   else {
-    if (age("db") > 30) alarm.push("Копия базы не подтверждена " + (isFinite(age("db")) ? Math.round(age("db")) + " мин" : "ни разу") + (S.db && !S.db.ok ? ": " + S.db.msg : ""));
+    // 1.9.54: копия базы 3 раза в день (12, 16, 21 МСК) — самый длинный перерыв 21:00 → 12:00 = 15 ч
+    if (age("db") > 16 * 60) alarm.push("Копия базы не подтверждена " + (isFinite(age("db")) ? (age("db") >= 120 ? Math.round(age("db") / 60) + " ч" : Math.round(age("db")) + " мин") : "ни разу") + (S.db && !S.db.ok ? ": " + S.db.msg : ""));
     if (age("files") > 60) alarm.push("Файлы не копировались " + (isFinite(age("files")) ? Math.round(age("files")) + " мин" : "ни разу") + (S.files && !S.files.ok ? ": " + S.files.msg : ""));
     if (age("daily") > 26 * 60 && S.daily) alarm.push("Ночная копия не делалась больше суток" + (!S.daily.ok ? ": " + S.daily.msg : ""));
     if (E.YD_USER && S.ydisk && !S.ydisk.ok) alarm.push("Яндекс Диск: " + S.ydisk.msg);

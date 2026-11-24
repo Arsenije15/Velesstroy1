@@ -26,4 +26,7 @@ function snapshot(app, force) {
   B.run(app, "push");
   return { name, rows, tables: tabs.length };
 }
-module.exports = { snapshot, sigOf };
+const SNAP_HOURS_MSK = [12, 16, 21];   // 1.9.54: днём два раза и вечером один
+// пора ли делать копию в этот час (VS_SNAP_ANYHOUR=1 — только для тестового сервера: каждый запуск)
+function due(d) { if ($os.getenv("VS_SNAP_ANYHOUR") === "1") return true; return SNAP_HOURS_MSK.indexOf((d.getUTCHours() + 3) % 24) >= 0; }
+module.exports = { snapshot, sigOf, SNAP_HOURS_MSK, due };

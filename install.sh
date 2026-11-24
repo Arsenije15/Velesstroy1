@@ -140,7 +140,7 @@ EOF
 done
 systemctl daemon-reload
 systemctl enable --now velesstroy-backup-files.timer velesstroy-backup-daily.timer velesstroy-backup-restoretest.timer >/dev/null 2>&1 || true
-if [ -f "$APP/backup_state/backup.env" ]; then echo "Копия в облако: включена (база — каждые 5 минут при изменениях, файлы — каждые 10 минут)"
+if [ -f "$APP/backup_state/backup.env" ]; then echo "Копия в облако: включена (база — 3 раза в день: 12:00, 16:00, 21:00 МСК, файлы — каждые 10 минут)"
 else echo "Копия в облако: ключи ещё не введены — программа → «Пользователи» → «💾 Резервные копии»"; fi
 command -v ufw >/dev/null && ufw status | grep -q active && { ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/dev/null; }
 

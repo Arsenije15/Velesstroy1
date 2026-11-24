@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ВЕЛЕССТРОЙ 1.9.48 — резервные копии в другое место (ПЛАН Б, фаза 1).
-#   База:   копию делает САМ сервер (VACUUM INTO) каждые 5 минут, если были изменения; этот скрипт только отправляет
+#   База:   копию делает САМ сервер (VACUUM INTO) 3 раза в день (12:00, 16:00, 21:00 МСК) и по кнопке; этот скрипт только отправляет
 #           готовые файлы. К рабочей базе скрипт НЕ прикасается (чужое соединение может повредить служебные файлы базы).
-#           Хранится: каждые 5 минут — 48 часов, по часу — 14 дней, по дню — 30 дней.
+#           Хранится: папка snap — 48 часов, hourly — 14 дней, по дню — 30 дней.
 #   Файлы:  фото, PDF, сканы (pb_data/storage) — каждые 10 минут; из копии ничего не удаляется.
 #   Ночью:  копия дня в облако (30 дней) и на Яндекс Диск (14 дней) + файлы на Яндекс Диск.
 # Команды: push | files | daily | check | restoretest | all
@@ -40,15 +40,30 @@ rc(){
   if [ -n "$YD_USER" ]; then
     export RCLONE_CONFIG_YD_TYPE=webdav RCLONE_CONFIG_YD_URL="$YD_URL" RCLONE_CONFIG_YD_VENDOR=other RCLONE_CONFIG_YD_USER="$YD_USER" RCLONE_CONFIG_YD_PASS="$(rclone obscure "$YD_PASS")"
   fi
-  rclone -q --retries 3 --low-level-retries 5 --contimeout 20s --timeout 120s "$@"
+  # 1.9.54: одна операция облака не может висеть дольше RC_TIMEOUT (по умолчанию 15 мин) — иначе зависшая отправка держит замок
+  # и все следующие копии базы молча ждут (так было 24.11: копии не уходили почти 5 часов)
+  timeout -k 30 "${RC_TIMEOUT:-900}" rclone -q --retries 3 --low-level-retries 5 --contimeout 20s --timeout 120s "$@"
 }
 # самая новая копия базы в облаке: «папка/имя» (snap → hourly → daily)
 newest(){ local d n best=""; for d in snap hourly daily; do n=$(rc lsf "s3:$S3_BUCKET/$d" --include 'data-*.db.gz' 2>/dev/null | sort | tail -n 1); [ -n "$n" ] && [ "$n" \> "${best#*/}" ] && best="$d/$n"; done; echo "$best"; }
 
 cmd_push(){   # отправить готовые копии базы, сделанные сервером
   need_s3 || { setst db err "Ключи облака не заданы"; return 1; }
-  exec 9>"$STATE/push.lock"; flock -n 9 || return 0
+  exec 9>>"$STATE/push.lock"
+  if ! flock -n 9; then   # идёт другая отправка; если она «висит» дольше 30 мин — сказать об этом на странице
+    local age=$(( $(date +%s) - $(stat -c %Y "$STATE/push.lock" 2>/dev/null || date +%s) ))
+    if [ "$age" -gt 1800 ]; then log push "ERR предыдущая отправка идёт уже $((age/60)) мин"; setst db err "Отправка копии базы зависла ($((age/60)) мин) — перезапустите сервер или нажмите «Копию базы сейчас» позже"; fi
+    return 0
+  fi
+  touch "$STATE/push.lock"
   shopt -s nullglob; local f b h ok=1 n=0 last=""
+  # 1.9.54: облако недоступно долго — на сервере держим не больше SNAP_KEEP (12) неотправленных копий, самые старые удаляются
+  # (каждая новая копия содержит всю базу целиком — данные не теряются, только промежуточные моменты); диск не переполнится
+  local all=("$SNAP"/data-*.db) keep="${SNAP_KEEP:-12}" i
+  if [ "${#all[@]}" -gt "$keep" ]; then
+    for ((i=0; i<${#all[@]}-keep; i++)); do rm -f "${all[$i]}" "${all[$i]}.gz" "${all[$i]}.gz.t" "${all[$i]}.json"; done
+    log push "на сервере было ${#all[@]} неотправленных копий — оставлены последние $keep"
+  fi
   for f in "$SNAP"/data-*.db; do
     b=$(basename "$f"); h=${b:5:11}
     if [ ! -f "$f.gz" ]; then gzip -6 -c "$f" > "$f.gz.t" && mv "$f.gz.t" "$f.gz" || { ok=0; continue; }; fi
