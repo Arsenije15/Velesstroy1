@@ -174,14 +174,21 @@ function role(){return S.user?S.user.role:""}
 function uname(id){const u=(S.data.users||[]).find(x=>x.id===id);return u?(u.name||u.username):"—"}
 
 /* ---------- API ---------- */
+// 1.9.57: списки УПД — без текста распознавания (он нужен только в карточке УПД, а в списке весил мегабайты)
+const UPD_LIST_FIELDS="id,collectionId,collectionName,status,number,date,supplier,supplier_key,inn,kpp,basis,spec,total_nt,total,items,note,file,uploaded_by,search_lc,created,updated,extra,unload_place,unload_by_name,unload_at,hidden";
+// 1.9.57: журнал медленных запросов (дольше 1 с) — «Инструменты → ⏱ Скорость»; хранится на этом устройстве, последние 150
+const SPD={k:"vs_speed_log",add(o){try{const L=JSON.parse(localStorage.getItem(this.k)||"[]");L.push(o);localStorage.setItem(this.k,JSON.stringify(L.slice(-150)))}catch(_){}},list(){try{return JSON.parse(localStorage.getItem(this.k)||"[]")}catch(_){return []}}};
 async function api(method,path,body,isForm,opt){
+  if(method==="GET"&&/^\/api\/collections\/upd_docs\/records\?/.test(path)&&!/[?&]fields=/.test(path))path+="&fields="+encodeURIComponent(UPD_LIST_FIELDS);
+  const t0=performance.now();
   const h={};if(S.auth)h.Authorization=S.auth;
   if(body&&!isForm)h["Content-Type"]="application/json";
   let r;
   try{r=await fetch(path,{method,headers:h,body:body?(isForm?body:JSON.stringify(body)):undefined,signal:opt&&opt.signal})}
   catch(e){if(e&&e.name==="AbortError"){const er=new Error("Отменено");er.abort=true;throw er}setOnline(false);const er=new Error("Нет связи с сервером. Проверьте интернет и повторите.");er.net=true;throw er}
   setOnline(true);
-  let j=null;try{j=await r.json()}catch(_){}
+  let j=null,txt="";try{txt=await r.text();j=txt?JSON.parse(txt):null}catch(_){}
+  {const ms=Math.round(performance.now()-t0);if(ms>1000)SPD.add({at:new Date().toISOString(),m:method,p:path.replace(/token=[^&]*/,"token=…").slice(0,300),ms,kb:Math.round(txt.length/1024),scr:S.route||"",st:r.status})}
   if(r.status===401&&S.auth){logout(true);throw new Error("Сессия истекла — войдите снова.")}
   if(!r.ok){let m=(j&&j.message)||("Ошибка "+r.status);
     if(j&&j.data&&typeof j.data==="object"){const k=Object.keys(j.data)[0];if(k&&j.data[k]&&j.data[k].message)m+=" ("+k+": "+j.data[k].message+")"}
@@ -992,7 +999,9 @@ async function fstExcel(){const L=await all("fstock",fstFilter(),"name");const R
   const r=[[{v:"ФАКТИЧЕСКИЙ ОСТАТОК СКЛАДА",s:XS.title}],[{v:"Выгружено "+dt(new Date().toISOString())+(FST.q?" · поиск: "+FST.q:"")+(FST.neg?" · только 0 и меньше":""),s:T}],[],["Наименование","Код","Ед.","Остаток","Место","Примечание","Другие названия (заявки / УПД)","Изменено"].map(v=>({v,s:XS.head}))];
   R.forEach(x=>r.push([{v:x.name,s:T},{v:x.code||"",s:T},{v:x.unit||"",s:T},{v:num(x.qty),s:num(x.qty)>0?XS.sG:XS.sR},{v:x.place||"",s:T},{v:x.note||"",s:T},{v:String(x.alias_lc||"").split("|").filter(Boolean).join("; "),s:T},{v:dt(x.updated),s:T}]));
   saveBlob(xlsxBlob([{name:"Факт. остаток",cols:[60,14,8,12,22,30,50,17],rows:r,merges:["A1:H1","A2:H2"],freeze:4,filter:"A4:H"+(4+R.length)}]),"Fakticheskiy_ostatok_"+new Date().toISOString().slice(0,10)+".xlsx")}
-async function vRequests(){
+async function vRequests(_id,changed){
+  // 1.9.57: чужие изменения в других разделах (акты, темы, УПД…) больше не перезапускают поиск заявок; пока вводите поиск — не мешаем
+  if(changed&&(!changed.some(c=>["requests","request_items","request_shipments","shipments","leftovers","debt"].includes(c))||(document.activeElement&&["rqq","rqm","rqf","rqt"].includes(document.activeElement.id))))return;
   if(RQ.status==="archive")return vArchive();
   if(!can.linkOnly()&&!S.lftT){S.lftT=1;api("GET","/api/collections/leftovers/records?perPage=1&filter="+encodeURIComponent('status="open"')).then(j=>{S.lftN=j.totalItems;S.lftT=0;const b=document.querySelector('a[href="#/leftovers"]');if(b&&j.totalItems&&!b.querySelector(".pill"))b.insertAdjacentHTML("beforeend",` <span class="pill y">${j.totalItems}</span>`)}).catch(()=>{S.lftT=0})}
   const W=can.write();
@@ -1981,6 +1990,12 @@ function mapNeed(){const G=mapGeo();let l=0,r=0,t=0,b=0;   // сколько п�
   (MAPS.flags||[]).forEach(f=>{const x=f.x*MAPW,y=f.y*MAPH;l=Math.max(l,-x+20);t=Math.max(t,-y+40);r=Math.max(r,x-MAPW+20);b=Math.max(b,y-MAPH+20)});
   return {l:Math.ceil(l),r:Math.ceil(r),t:Math.ceil(t),b:Math.ceil(b)}}
 const mapZoneAt=(x,y)=>{const Z=MAPS.zones||[];for(let i=Z.length-1;i>=0;i--){const z=Z[i];if(x>=z.x&&x<=z.x+z.w&&y>=z.y&&y<=z.y+z.h&&z.t!=="road"&&z.t!=="fence")return z.n}return""};
+// 1.9.57: свой снимок склада — скачивается один раз и хранится на устройстве (адрес с токеном каждый раз новый — браузер не кэшировал)
+async function mapBgUrl(cfg,ft){const key="/mapbg/"+cfg.id+"/"+cfg.bg,url=`/api/files/smap_cfg/${cfg.id}/${encodeURIComponent(cfg.bg)}?token=${ft}`;
+  if(MAPS.bgKey===key&&MAPS.bgObj)return MAPS.bgObj;
+  try{const C=await caches.open("vs-map-bg");let r=await C.match(key);
+    if(!r){const f=await fetch(url);if(!f.ok)return url;const b=await f.blob();for(const k of await C.keys())await C.delete(k);await C.put(key,new Response(b,{headers:{"Content-Type":b.type||"image/jpeg"}}));r=await C.match(key)}
+    const b=await r.blob();if(MAPS.bgObj)URL.revokeObjectURL(MAPS.bgObj);MAPS.bgObj=URL.createObjectURL(b);MAPS.bgKey=key;return MAPS.bgObj}catch(_){return url}}
 async function mapLoad(){const c=await api("GET","/api/collections/smap_cfg/records?perPage=1&sort=created").catch(()=>({items:[]}));MAPS.cfg=c.items[0]||null;
   if(!MAPS.dirty)MAPS.zones=JSON.parse(JSON.stringify(MAPS.cfg&&Array.isArray(MAPS.cfg.zones)&&MAPS.cfg.zones.length?MAPS.cfg.zones:MAP_DEF));
   if(MAPS.cfg&&MAPS.cfg.bg_opacity)MAPS.op=MAPS.cfg.bg_opacity;
@@ -1994,7 +2009,7 @@ async function vMap(id,changed){if(role()===""||S.user.scope)return vHome();if(c
   if(!MAPS.cfg||!MAPS.zones||!S.mapLoaded){await mapLoad();S.mapLoaded=1}
   if(!S.route.startsWith("map"))return;const W=can.write();const ft=MAPS.cfg&&MAPS.cfg.bg||MAPS.flags.some(f=>(f.photo||[]).length)?await fileToken():"";
   const hit=f=>(!MAPS.oldOnly||f.old)&&(!MAPS.q||wmatch(MAPS.q,f.search_lc||f.material));const F=MAPS.flags.filter(hit);const nOld=MAPS.flags.filter(f=>f.old&&!f.icon).length;
-  const bg=MAPS.cfg&&MAPS.cfg.bg?`/api/files/smap_cfg/${MAPS.cfg.id}/${encodeURIComponent(MAPS.cfg.bg)}?token=${ft}`:"/img/sklad_sat.jpg";   // 1.9.36: свой снимок ещё не загружен — скриншот с Яндекс Карт
+  const bg=MAPS.cfg&&MAPS.cfg.bg?await mapBgUrl(MAPS.cfg,ft):"/img/sklad_sat.jpg";   // 1.9.36: свой снимок ещё не загружен — скриншот с Яндекс Карт
   const md=MAPS.mode;const G=mapGeo();
   $("#main").innerHTML=`<div class="row" style="align-items:center;gap:8px;flex-wrap:wrap"><h1 class="grow" style="margin:0">🗺 Карта склада</h1>
     <span class="muted">${MAPS.flags.length} флажков</span></div>
@@ -2326,10 +2341,16 @@ function langBind(root){const R=()=>{const b=$("#langbox");if(b){b.innerHTML=lan
     window.open(`https://translate.yandex.ru/?source_lang=${to()?"ru":tl}&target_lang=${to()?tl:"ru"}&text=${encodeURIComponent(v)}`,"_blank","noopener")}}
 /* --- страницы: «Инструменты» (калькулятор + переводчик) в основном складе, «Переводчик» у Монтажа --- */
 async function vTools(id,changed){if(role()===""||S.user.scope)return vHome();if(changed&&($("#calcbox")||$("#langbox")))return;const tab=id==="lang"?"lang":"calc";
-  $("#main").innerHTML=`<h1>🧰 Инструменты</h1><div class="tabs" style="margin-bottom:10px"><button class="${tab==="calc"?"on":""}" data-tt="calc">🧮 Калькулятор металлопроката</button><button class="${tab==="lang"?"on":""}" data-tt="lang">🗣 Переводчик</button><a class="btn" id="tlGame" href="/game.html" style="margin-left:6px">🎮 Игра «Кладовщики»</a><a class="btn" id="tlTale" href="/skazka.html" style="margin-left:6px">📜 Сказка о Чернославе</a><a class="btn" id="tlVedma" href="/vedma.html" style="margin-left:6px">🧹 Чернослав против ведьмы</a></div>
+  $("#main").innerHTML=`<h1>🧰 Инструменты</h1><div class="tabs" style="margin-bottom:10px"><button class="${tab==="calc"?"on":""}" data-tt="calc">🧮 Калькулятор металлопроката</button><button class="${tab==="lang"?"on":""}" data-tt="lang">🗣 Переводчик</button><button class="btn" id="tlSpd" style="margin-left:6px">⏱ Скорость</button><a class="btn" id="tlGame" href="/game.html" style="margin-left:6px">🎮 Игра «Кладовщики»</a><a class="btn" id="tlTale" href="/skazka.html" style="margin-left:6px">📜 Сказка о Чернославе</a><a class="btn" id="tlVedma" href="/vedma.html" style="margin-left:6px">🧹 Чернослав против ведьмы</a></div>
    <div class="card" id="${tab==="calc"?"calcbox":"langbox"}">${tab==="calc"?calcHtml():langHtml()}</div>`;
   document.querySelectorAll("[data-tt]").forEach(b=>b.onclick=()=>{location.hash="#/tools/"+b.dataset.tt});
+  {const sp=$("#tlSpd");if(sp)sp.onclick=spdShow}
   tab==="calc"?calcBind($("#calcbox")):langBind($("#langbox"))}
+function spdShow(){const L=SPD.list().slice().reverse();
+  modal(`<h3>⏱ Медленные запросы (дольше 1 с) — это устройство</h3><div class="muted">Сделайте снимок экрана и пришлите — сразу видно, какой экран и что именно ждёт.</div>
+   <div style="max-height:60vh;overflow:auto;margin-top:8px">${L.length?`<table class="tbl"><tr><th>Когда</th><th>Экран</th><th style="text-align:right">с</th><th style="text-align:right">КБ</th><th>Запрос</th></tr>
+   ${L.map(x=>`<tr><td style="white-space:nowrap">${dt(x.at)}</td><td>${esc(x.scr)}</td><td style="text-align:right;color:${x.ms>5000?"var(--r)":"inherit"}"><b>${(x.ms/1000).toFixed(1)}</b></td><td style="text-align:right">${x.kb}</td><td style="word-break:break-all;font-size:12px">${esc(x.m+" "+decodeURIComponent(x.p).slice(0,160))}</td></tr>`).join("")}</table>`:`<div class="muted">Пока медленных запросов не было.</div>`}</div>
+   <div class="row" style="margin-top:12px"><button class="btn" id="spclr">Очистить</button><button class="btn" data-close>Закрыть</button></div>`,mb=>{$("#spclr",mb).onclick=()=>{try{localStorage.removeItem(SPD.k)}catch(_){}closeModal()}})}
 async function vMzLang(id,changed){if(!can.mz())return;if(changed&&$("#langbox"))return;$("#main").innerHTML=`<h1>🗣 Переводчик</h1><div class="card" id="langbox">${langHtml()}</div>`;langBind($("#langbox"))}
 
 /* ===================== 1.9.36: «ТУННЕЛИ» — пошаговый ввод: на экране только текущий шаг, «Пропустить» на каждом ===================== */
