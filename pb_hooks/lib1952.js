@@ -7,7 +7,11 @@ function key(s) {
   return String(s || "").toLowerCase().replace(/ё/g, "е").replace(/x/g, "х").replace(/(\d),(?=\d)/g, "$1.").replace(/[«»"'“”„`]/g, "").replace(/\s+/g, " ").trim().slice(0, 1500);
 }
 function r3(v) { return Math.round(v * 1000) / 1000; }
-function active(app) { try { return app.findRecordsByFilter("fstock", "", "", 1, 0).length > 0; } catch (_) { return false; } }
+// учёт включён: есть позиции или его начали (в т.ч. «с пустого списка» — 1.9.55: раньше пустой список не включал учёт)
+function active(app) {
+  try { if (app.findRecordsByFilter("fstock", "", "", 1, 0).length > 0) return true; } catch (_) {}
+  try { return app.findRecordsByFilter("activity_log", "action = 'fstock_init'", "", 1, 0).length > 0; } catch (_) { return false; }
+}
 function find(app, k) {
   if (!k) return null;
   try { return app.findFirstRecordByFilter("fstock", "key = {:k}", { k: k }); } catch (_) {}

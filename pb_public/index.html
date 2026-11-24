@@ -2486,19 +2486,77 @@ function tunCloseReq(r,items,files,ships,refresh,oldForm){const M=can.manage();c
      toast("Заявка закрыта","ok");await refresh()}})}
 
 /* ----- 3) Приёмка материала: УПД → поставщик и машина → проверка → фото груза → количество → где выгрузили (карта) → чек-лист → завершить ----- */
+/* 1.9.55: прочитать УПД при приёмке — как скан заявки: PDF или несколько фото (фото склеиваются в один PDF, по листу на фото) */
+const fmtRub=v=>(+v||0).toLocaleString("ru-RU",{minimumFractionDigits:2,maximumFractionDigits:2});
+async function toJpeg(file,max){const bmp=await createImageBitmap(file);const k=Math.min(1,max/Math.max(bmp.width,bmp.height));const c=document.createElement("canvas");c.width=Math.round(bmp.width*k);c.height=Math.round(bmp.height*k);
+  c.getContext("2d").drawImage(bmp,0,0,c.width,c.height);const b=await new Promise(r=>c.toBlob(r,"image/jpeg",0.92));if(!b)throw new Error("Фото «"+file.name+"» не открылось.");return {b,w:c.width,h:c.height}}
+async function photosToPdf(files){const enc=s=>new TextEncoder().encode(s);const parts=[];let len=0;const off=[];
+  const push=x=>{const u=typeof x==="string"?enc(x):x;parts.push(u);len+=u.length};const objs=[];   // объекты: [номер, функция-запись]
+  const imgs=[];for(const f of files)imgs.push(await toJpeg(f,3400));
+  const n=imgs.length,pages=[];   // 1 — каталог, 2 — страницы, дальше по 3 объекта на фото
+  push("%PDF-1.4\n%\xE2\xE3\n");
+  const obj=(id,body,stream)=>{off[id]=len;push(id+" 0 obj\n"+body);if(stream){push("\nstream\n");push(stream);push("\nendstream")}push("\nendobj\n")};
+  obj(1,"<< /Type /Catalog /Pages 2 0 R >>");
+  for(let i=0;i<n;i++)pages.push(5+i*3);
+  obj(2,`<< /Type /Pages /Kids [${pages.map(p=>p+" 0 R").join(" ")}] /Count ${n} >>`);
+  for(let i=0;i<n;i++){const im=imgs[i],id=3+i*3,W=(im.w*72/300).toFixed(2),H=(im.h*72/300).toFixed(2);const data=new Uint8Array(await im.b.arrayBuffer());
+    obj(id,`<< /Type /XObject /Subtype /Image /Width ${im.w} /Height ${im.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${data.length} >>`,data);
+    const cs=`q ${W} 0 0 ${H} 0 0 cm /Im0 Do Q`;obj(id+1,`<< /Length ${cs.length} >>`,enc(cs));
+    obj(id+2,`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /XObject << /Im0 ${id} 0 R >> >> /Contents ${id+1} 0 R >>`)}
+  const total=3+n*3,xr=len;let x=`xref\n0 ${total}\n0000000000 65535 f \n`;for(let i=1;i<total;i++)x+=String(off[i]).padStart(10,"0")+" 00000 n \n";
+  push(x+`trailer\n<< /Size ${total} /Root 1 0 R >>\nstartxref\n${xr}\n%%EOF\n`);
+  return new File(parts,"UPD_foto_"+n+".pdf",{type:"application/pdf"})}
+async function updRead(files,say){const pdf=files.find(f=>/pdf/i.test(f.type)||/\.pdf$/i.test(f.name||""));
+  let f;if(pdf)f=pdf;else if(files.length===1)f=(await toJpeg(files[0],3400)).b;else{say("⏳ Склеиваю фото в один документ…");f=await photosToPdf(files)}
+  if(!(f instanceof File))f=new File([f],"UPD_foto.jpg",{type:"image/jpeg"});
+  say("⏳ Загружаю УПД…");const fd=new FormData();fd.append("status","draft");fd.append("uploaded_by",S.user.id);fd.append("file",f);
+  const rec=await api("POST","/api/collections/upd_docs/records",fd,true);
+  await api("POST","/api/vs/upd/ocr",{id:rec.id});const t0=Date.now();
+  for(;;){await new Promise(r=>setTimeout(r,2500));const s=await api("GET","/api/vs/upd/ocr_status/"+rec.id);
+    say("⏳ Читаю УПД"+(s.pages?` — лист ${s.page} из ${s.pages}`:"")+"… обычно 1–3 минуты");
+    if(s.status==="done")break;if(s.status==="error"||s.status==="none")throw new Error(s.message||"чтение не запустилось");if(Date.now()-t0>620000)throw new Error("чтение не закончилось за 10 минут")}
+  const u=await api("GET","/api/collections/upd_docs/records/"+rec.id);const o=u.ocr||{},h=o.header||{};
+  let sup=h.seller||"";if(sup){const fx=fixSuppliers([sup],o.known_suppliers||[]);if(fx[0]&&fx[0].v)sup=fx[0].v}
+  return {id:rec.id,number:h.number||"",date:h.date||"",supplier:sup,items:(o.items||[]).map(x=>({name:x.name||"",unit:x.unit||"",qty:x.qty==null?"":x.qty,no:x.no})),check:o.check||{}}}
+const updSumLine=ck=>ck.sum_ok?`<div class="pill g" style="margin-top:6px">✔ Сумма строк = «Всего к оплате»: ${fmtRub(ck.total_sum)} ₽ — все строки на месте</div>`
+  :ck.totals_found?`<div class="pill y" style="margin-top:6px;white-space:normal">⚠ Сумма строк ${fmtRub(ck.items_sum)} ₽ ≠ «Всего к оплате» ${fmtRub(ck.total_sum)} ₽ — проверьте строки по документу</div>`
+  :`<div class="muted" style="margin-top:6px">«Всего к оплате» не прочитано — сверку суммы сделать не удалось.</div>`;
+function updReadCard(c){const u=c.ur;if(!u)return "";
+  return `<div class="card" style="padding:10px;margin-top:10px;background:#f0fdf4"><b>📖 Прочитано из УПД</b>
+   <div style="margin-top:4px">№ <b>${esc(u.number||"—")}</b>${u.date?" от "+esc(u.date.split("-").reverse().join(".")):""} · ${esc(u.supplier||"поставщик не прочитан")}</div>
+   ${updSumLine(u.check)}
+   <div style="margin-top:6px;max-height:40vh;overflow:auto">${u.items.map((x,k)=>`<div style="padding:5px 0;border-bottom:1px dashed var(--line)">${x.no||k+1}. ${esc(x.name)} — <b>${fmtQ(x.qty)} ${esc(x.unit||"")}</b></div>`).join("")||`<div class="muted">Строки не прочитаны</div>`}</div>
+   <div class="muted" style="margin-top:6px">Номер и поставщика можно поправить. Строки сохранятся в «Склад / СКК → УПД» — там их тоже можно исправить.</div></div>`}
 async function tunRecv(){await sugFresh(["supplier","sender","vehicle","ship_place"]);const c={upd:[],cargo:[],flag:null};
   const R=async()=>{c.r=await api("GET","/api/collections/receipts/records/"+c.rid);c.items=await all("checklist_items",`receipt="${c.rid}"`,"sort");return c.r};
   const ok=()=>c.r&&["in_progress","pending_approval","nonconformity"].includes(c.r.status);
   tunnel({title:"Приёмка материала",okLast:"ЗАВЕРШИТЬ ПРИЁМКУ",c,exitAsk:"Выйти? Созданная приёмка останется в «Открытых приёмках».",steps:[
-   {t:"УПД",sub:"Номер УПД и фото / PDF документа.",html:()=>`<label class="f">Номер УПД *</label><input id="tu" value="${esc(c.num||"")}" autocomplete="off" placeholder="например 12345">
-     <div style="margin-top:10px">${tunFiles("tuu","📄 УПД: PDF / галерея",true,true)}</div>`,
-    bind:(box)=>tunFileBind(box,"tuu",c.upd),read:(b)=>{c.num=$("#tu",b).value.trim()},check:()=>c.num?"":"Укажите номер УПД.",skip:false},
+   {t:"УПД",sub:"PDF или фото УПД (можно несколько листов) — прочитаю номер, поставщика, материалы и количество. Нет документа — впишите номер сами или «Дальше».",
+    html:()=>`<div>${tunFiles("tuu","📄 PDF / фото из галереи",true,true)}</div>
+     <div id="turb" style="margin-top:8px"></div><div id="turs" class="muted" style="margin-top:6px"></div><div id="turc">${updReadCard(c)}</div>
+     <label class="f" style="margin-top:12px">Номер УПД</label><input id="tu" value="${esc(c.num||"")}" autocomplete="off" placeholder="прочитается из документа или впишите">`,
+    bind:(box,_,T)=>{const rb=()=>{const b=$("#turb",box);if(!b)return;const n=c.upd.length;
+        b.innerHTML=n&&!c.urDone?`<button type="button" class="btn acc big" id="turgo" style="width:100%">📖 ПРОЧИТАТЬ УПД (${n} ${n===1?"файл":"файла"})</button>`:"";const g=$("#turgo",box);if(g)g.onclick=()=>go()};
+      const go=c.readNow=async()=>{if(c.reading||!c.upd.length)return;c.reading=true;rb();const say=t=>{const e=document.querySelector("#tun #turs");if(e)e.textContent=t};
+        try{const u=await updRead(c.upd.slice(),say);c.ur=u;c.urDone=true;c.updId=u.id;if(u.number)c.num=u.number;if(u.supplier&&!c.sup)c.sup=u.supplier;if(u.date)c.updDate=u.date;
+          say(u.items.length?`Прочитано строк: ${u.items.length}`:"Строки не прочитаны — номер и поставщика проверьте сами.");
+          const cc=document.querySelector("#tun #turc");if(cc)cc.innerHTML=updReadCard(c);const nn=document.querySelector("#tun #tu");if(nn&&u.number)nn.value=u.number}
+        catch(er){say("Не получилось прочитать: "+er.message+" — впишите номер сами.");c.urDone=true}
+        finally{c.reading=false;const b=document.querySelector("#tun #turb");if(b)rb()}};
+      tunFileBind(box,"tuu",c.upd,()=>{c.urDone=false;const pdf=c.upd.some(f=>/pdf/i.test(f.type)||/\.pdf$/i.test(f.name||""));if(pdf)go();else rb()});rb()},
+    read:(b)=>{c.num=$("#tu",b).value.trim()},
+    save:async()=>{if(c.upd.length&&!c.urDone&&!c.reading&&!c.num)await c.readNow();/* номер не вписан — сначала читаем документ */if(c.reading)throw new Error("Подождите — УПД ещё читается.");const nn=document.querySelector("#tun #tu");if(nn&&!c.num)c.num=nn.value.trim()},skip:false},
    {t:"Поставщик и машина",html:()=>`<label class="f">Поставщик</label><input id="ts" data-sug="supplier" data-chips value="${esc(c.sup||"")}">
      <label class="f">Грузоотправитель (если отличается)</label><input id="tsd" data-sug="sender" value="${esc(c.snd||"")}">
      <label class="f">Транспорт / госномер</label><input id="tv" data-sug="vehicle" data-chips value="${esc(c.veh||"")}"><div id="tah" style="margin-top:10px"></div>`,
     bind:(box)=>{let t=0;const h=()=>{clearTimeout(t);t=setTimeout(async()=>{try{const j=await api("POST","/api/vs/acts/match",{upd:c.num,supplier:$("#ts",box).value});const e=$("#tah",box);if(e)e.innerHTML=actsBanner(j.acts,true)}catch(_){}},500)};$("#ts",box).addEventListener("input",h);h()},
     read:(b)=>{c.sup=$("#ts",b).value.trim();c.snd=$("#tsd",b).value.trim();c.veh=$("#tv",b).value.trim()},ok:"ПРОВЕРИТЬ УПД →",
-    save:async()=>{if(c.rid)return;const j=await api("POST","/api/vs/upd/check",{upd:c.num,supplier:c.sup,sender:c.snd,vehicle:c.veh});c.rid=j.receipt;if(j.existing)toast("По этому УПД уже есть открытая приёмка — продолжаю её");
+    save:async()=>{if(c.rid)return;if(!c.num)c.num="б/н "+new Date().toLocaleDateString("ru-RU");   // 1.9.55: без номера — не останавливаем
+      const j=await api("POST","/api/vs/upd/check",{upd:c.num,supplier:c.sup,sender:c.snd,vehicle:c.veh});c.rid=j.receipt;if(j.existing)toast("По этому УПД уже есть открытая приёмка — продолжаю её");
+      if(c.ur){const u=c.ur;   // прочитанный УПД: строки — в «Склад / СКК → УПД», в приёмку — количество по документу и список материалов
+        try{await api("POST","/api/vs/upd/save",{id:u.id,number:c.num,date:c.updDate||"",supplier:c.sup||u.supplier||"",items:u.items.map(x=>({name:x.name,unit:x.unit,qty:x.qty,no:x.no}))})}catch(er){toast("УПД прочитан, но в список УПД не сохранён: "+er.message,"err")}
+        const lst=u.items.map((x,k)=>`${x.no||k+1}) ${x.name} — ${fmtQ(x.qty)} ${x.unit||""}`).join("\n");
+        if(u.items.length)try{await api("POST","/api/vs/receipt/update",{receipt:c.rid,qty_doc:(u.items.length+" поз. по УПД").slice(0,200),notes:("По УПД:\n"+lst+(u.check&&u.check.sum_ok?"\nСумма сошлась: "+fmtRub(u.check.total_sum)+" ₽":"")).slice(0,5000)})}catch(_){}}
       for(const f of c.upd){const fd=new FormData();fd.append("receipt",c.rid);fd.append("kind","document");fd.append("uploaded_by",S.user.id);fd.append("file",await shrink(f));try{await api("POST","/api/collections/attachments/records",fd,true)}catch(er){toast("Файл «"+f.name+"» не загрузился: "+er.message,"err")}}
       c.upd=[];await R();await load(["receipts"])}},
    {t:"Результат проверки",noBack:true,skip:false,html:()=>{const r=c.r,bc={green:"green",red:"red",yellow:"yellow",notfound:"notfound"}[r.check_result]||"gray";
@@ -2506,7 +2564,7 @@ async function tunRecv(){await sugFresh(["supplier","sender","vehicle","ship_pla
       ${ok()?`<div class="muted">Дальше — фото груза, количество, место выгрузки и чек-лист.</div>`:`<div class="banner red">Приёмка остановлена — дальше по шагам нельзя. Откройте приёмку: там согласование / решение руководителя.</div>`}`},
     ok:"ДАЛЬШЕ →",save:async(_,T2)=>{if(!ok()){tunClose();location.hash="#/receipt/"+c.rid;throw new Error("Приёмка остановлена — открыл её карточку.")}}},
    {t:"Фото груза",html:()=>tunFiles("tuc","Из галереи",true,true,"image/*"),bind:(box)=>tunFileBind(box,"tuc",c.cargo),
-    save:async()=>{for(const f of c.cargo){const fd=new FormData();fd.append("receipt",c.rid);fd.append("kind","material");fd.append("uploaded_by",S.user.id);fd.append("file",await shrink(f));await api("POST","/api/collections/attachments/records",fd,true)}c.cargo=[]}},
+    save:async()=>{for(const f of c.cargo){const fd=new FormData();fd.append("receipt",c.rid);fd.append("kind","material");fd.append("uploaded_by",S.user.id);fd.append("file",await shrink(f));await api("POST","/api/collections/attachments/records",fd,true);c.cargoN=(c.cargoN||0)+1}c.cargo=[]}},
    {t:"Количество и повреждения",html:()=>{const r=c.r;return `<div class="row" style="gap:8px"><div class="grow"><label class="f">По документу</label><input id="tqd" inputmode="decimal" value="${esc(r.qty_doc||"")}"></div><div class="grow"><label class="f">Фактически</label><input id="tqf" inputmode="decimal" value="${esc(r.qty_fact||"")}"></div></div>
      <label class="f">Повреждения</label><input id="tdm" value="${esc(r.damage||"")}" placeholder="нет / помята упаковка 2 места"><label class="f">Заметки</label><textarea id="tnt">${esc(r.notes||"")}</textarea>`},
     read:(b)=>{c.qd=$("#tqd",b).value;c.qf=$("#tqf",b).value;c.dm=$("#tdm",b).value;c.nt=$("#tnt",b).value},
@@ -2527,9 +2585,11 @@ async function tunRecv(){await sugFresh(["supplier","sender","vehicle","ship_pla
     save:async()=>{for(const i of c.items){if(c.chk&&i.id in c.chk&&!!c.chk[i.id]!==!!i.done)await api("POST","/api/vs/checklist/set",{item:i.id,done:c.chk[i.id]})}await R()}},
    {t:"Завершить приёмку",html:()=>{const req=(c.items||[]).filter(i=>i.required&&!i.done);return tunCard(`<div style="font-size:18px"><b>УПД № ${esc(c.num)}</b> ${esc(c.sup||"")}</div><div>${esc(c.veh||"")}</div>
       <div>Количество: ${esc(c.r.qty_doc||"—")} по док. / ${esc(c.r.qty_fact||"—")} факт.${c.r.damage?" · повреждения: "+esc(c.r.damage):""}</div><div>Место: ${c.flag?"🚩 "+esc(c.flag.zone||"на карте"):"не отмечено"}</div>`)+
+      (!c.flag||!c.cargoN?`<div class="banner yellow" id="turem">🔔 Напоминание: ${[!c.cargoN?"нет фото груза":"",!c.flag?"не отмечено место выгрузки":""].filter(Boolean).join(" и ")}<small>Можно вернуться «Назад» и добавить — или завершить так.</small></div>`:"")+
       (req.length?`<div class="banner yellow">Не отмечены обязательные пункты чек-листа: ${req.map(i=>esc(i.title)).join("; ")}<small>Вернитесь назад или завершите позже в карточке приёмки.</small></div>`:"")+(c.r.status!=="in_progress"?`<div class="banner yellow">Статус приёмки: ${esc((T.rst[c.r.status]||[c.r.status])[0])} — завершить можно после решения.</div>`:"")},
     check:()=>c.r.status!=="in_progress"?"Приёмку пока нельзя завершить — откройте её карточку.":(c.items||[]).some(i=>i.required&&!i.done)?"Сначала отметьте обязательные пункты чек-листа.":""}],
-   done:async()=>{await api("POST","/api/vs/receipt/complete",{receipt:c.rid});await load(["receipts"]);toast("Приёмка завершена","ok");location.hash="#/receipt/"+c.rid},
+   done:async()=>{await api("POST","/api/vs/receipt/complete",{receipt:c.rid});await load(["receipts"]);
+     toast("Приёмка завершена"+(!c.flag||!c.cargoN?" · 🔔 не забудьте: "+[!c.cargoN?"фото груза":"",!c.flag?"место выгрузки":""].filter(Boolean).join(", "):""),"ok");location.hash="#/receipt/"+c.rid},
    onExit:()=>{if(c.rid)location.hash="#/receipt/"+c.rid}})}
 
 /* ----- 4) Утро: таблицы за сегодня → незавершённое → напоминания ----- */

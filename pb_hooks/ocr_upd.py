@@ -78,6 +78,60 @@ def deskew(img):
     M = cv2.getRotationMatrix2D((w / 2, h / 2), a, 1.0)
     return cv2.warpAffine(img, M, (w, h), flags=cv2.INTER_CUBIC, borderValue=(255, 255, 255)), round(a, 2)
 
+# 1.9.55: фото УПД с телефона — лист снят под углом (линии таблицы сходятся). Находим крайние линии таблицы
+# (левую, правую, верхнюю, нижнюю) и выпрямляем лист так, чтобы таблица стала прямоугольником.
+def _lines(segs, vert):
+    out = []
+    for x1, y1, x2, y2 in segs:
+        if vert: a = (x2 - x1) / ((y2 - y1) or 1e-6); b = x1 - a * y1
+        else: a = (y2 - y1) / ((x2 - x1) or 1e-6); b = y1 - a * x1
+        out.append((a, b, float(np.hypot(x2 - x1, y2 - y1))))
+    return out
+def rectify(img):
+    g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
+    H, W = g.shape
+    bw = cv2.adaptiveThreshold(~g, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 15, -10)
+    ls = cv2.HoughLinesP(bw, 1, np.pi / 720, threshold=150, minLineLength=min(H, W) // 8, maxLineGap=8)
+    if ls is None: return None
+    V, Hz = [], []
+    for x1, y1, x2, y2 in np.asarray(ls).reshape(-1, 4):
+        ang = np.degrees(np.arctan2(y2 - y1, x2 - x1)) % 180
+        if abs(ang - 90) < 15: V.append((x1, y1, x2, y2))
+        elif ang < 15 or ang > 165: Hz.append((x1, y1, x2, y2))
+    # таблица — там, где длинные вертикальные линии; её верх и низ — по их концам
+    vs = [(seg, l) for seg, l in zip(V, _lines(V, True)) if l[2] > H * 0.04]
+    if len(vs) < 4: return None
+    # линии колонок таблицы начинаются и кончаются на одной высоте (края листа и стола — нет): берём самую частую высоту
+    def mode(vals):
+        bk = {}
+        for v in vals: bk.setdefault(int(v // (H * 0.03)), []).append(v)
+        best = max(bk.values(), key=len); return float(np.median(best)), len(best)
+    ytop, nt = mode([min(sg[1], sg[3]) for sg, _ in vs]); ybot, nb = mode([max(sg[1], sg[3]) for sg, _ in vs])
+    if nt < 4 or nb < 4 or ybot - ytop < H * 0.1: return None
+    vs = [(sg, l) for sg, l in vs if abs(min(sg[1], sg[3]) - ytop) < H * 0.08 and abs(max(sg[1], sg[3]) - ybot) < H * 0.08]
+    hl = [l for l in _lines(Hz, False) if l[2] > W * 0.35]
+    if len(hl) < 2: return None
+    ym = lambda l: l[0] * W / 2 + l[1]
+    top = min(hl, key=lambda l: abs(ym(l) - ytop)); bot = min(hl, key=lambda l: abs(ym(l) - ybot))
+    if abs(ym(top) - ytop) > H * 0.08 or abs(ym(bot) - ybot) > H * 0.08 or ym(bot) - ym(top) < H * 0.1: return None
+    ymid = (ym(top) + ym(bot)) / 2
+    vl = [l for _, l in vs if l[2] > (ym(bot) - ym(top)) * 0.5]
+    if len(vl) < 2: return None
+    xm = lambda l: l[0] * ymid + l[1]
+    vl.sort(key=xm); lf, rt = vl[0], vl[-1]
+    if xm(rt) - xm(lf) < W * 0.4: return None
+    def X(h, v):
+        y = (h[0] * v[1] + h[1]) / (1 - h[0] * v[0]); return [v[0] * y + v[1], y]
+    q = np.float32([X(top, lf), X(top, rt), X(bot, rt), X(bot, lf)])
+    w = float(max(np.linalg.norm(q[1] - q[0]), np.linalg.norm(q[2] - q[3]))); h = float(max(np.linalg.norm(q[3] - q[0]), np.linalg.norm(q[2] - q[1])))
+    dst = np.float32([[q[0][0], q[0][1]], [q[0][0] + w, q[0][1]], [q[0][0] + w, q[0][1] + h], [q[0][0], q[0][1] + h]])
+    if float(np.abs(dst - q).max()) < max(W, H) * 0.004: return None   # лист и так ровный (скан) — ничего не меняем
+    # поле вокруг: край таблицы не должен уйти за край картинки (иначе крайняя колонка теряется)
+    pad = 40; dst = dst + pad
+    OW = int(max(W, dst[1][0], dst[2][0]) + pad); OH = int(max(H, dst[2][1], dst[3][1]) + pad)
+    M = cv2.getPerspectiveTransform(q, dst)
+    return cv2.warpPerspective(img, M, (OW, OH), flags=cv2.INTER_CUBIC, borderValue=(255, 255, 255) if img.ndim == 3 else 255)
+
 def rotate(img, deg):
     return {0: img, 90: cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE), 180: cv2.rotate(img, cv2.ROTATE_180),
             270: cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)}.get(deg, img)
@@ -196,6 +250,12 @@ def header_fields(t):
         if not mo or not (1 <= mo <= 12) or not (1 <= d <= 31) or not (2015 <= y <= 2040): continue
         key = (no.upper(), "%04d-%02d-%02d" % (y, mo, d))
         votes[key] = votes.get(key, 0) + (2 if ctx.group(1).lower().startswith("сч") else 1)
+    # 1.9.55: «Документ об отгрузке: УПД #9209 от 20/11/2026» — ещё один голос (на фото «Счёт-фактура №» читается неточно)
+    for m in re.finditer(r"УПД\s*[#№N]\s*(\d[\w\-/]{0,15})\s*\S{0,3}\s*(\d{1,2})[./](\d{1,2})[./](\d{4})", t):
+        try: d, mo, y = int(m.group(2)), int(m.group(3)), int(m.group(4))
+        except Exception: continue
+        if 1 <= mo <= 12 and 1 <= d <= 31 and 2015 <= y <= 2040:
+            key = (m.group(1).upper(), "%04d-%02d-%02d" % (y, mo, d)); votes[key] = votes.get(key, 0) + 2.5   # при равенстве голосов — этот (на фото он читается чище)
     if votes:
         (no, dt), _ = max(votes.items(), key=lambda kv: kv[1])
         h["number"], h["date"] = no, dt
@@ -231,17 +291,17 @@ def peaks(proj, minlen, gap=8):
         else: grp.append([i])
     return [int(np.mean(p)) for p in grp]
 
-def find_table(g):
+def find_table(g, tall=False):
     # 1.9.6: скан с бледными/рваными линиями (УПД № 925) — второй проход с мягким порогом
     # 1.9.15: если первый проход нашёл только шапку таблицы (≤3 линии) — берём проход, где строк больше (УТ-4433, лист повёрнут)
     best = None
     for th in (0.35, 0.2):
-        t = _find_table(g, th)
+        t = _find_table(g, th, tall)
         if t and len(t["ys"]) >= 4: return t
         if t and (best is None or len(t["ys"]) > len(best["ys"])): best = t
     return best
 
-def _find_table(g, th):
+def _find_table(g, th, tall=False):
     hor, ver = masks(g)
     H, W = g.shape
     if th < 0.3:   # сшиваем разрывы в линиях скана
@@ -253,7 +313,7 @@ def _find_table(g, th):
     if len(ys_all) < 2: return None
     # 1.9.5: таблица — самый высокий участок между горизонтальными линиями, где ≥6 вертикальных линий.
     # На последнем листе под короткой таблицей идут линии подписей — раньше из-за них лист не читался (терялась строка 301).
-    best = None
+    best = None; cand = []
     cs = np.vstack([np.zeros((1, W), np.int32), np.cumsum((ver > 0).astype(np.int32), axis=0)])   # суммы по столбцам — быстро для любой пары линий
     for i0 in range(len(ys_all) - 1):
         for i1 in range(len(ys_all) - 1, i0, -1):
@@ -263,7 +323,10 @@ def _find_table(g, th):
             xs = [x for x in peaks(vp, (bot0 - top0) * 0.5) if 12 < x < W - 12]
             # больше вертикальных линий важнее высоты: под таблицей линии подписей «съедают» внутренние колонки
             if len(xs) >= 6 and (best is None or (len(xs), bot0 - top0) > (len(best[2]), best[1] - best[0])): best = (top0, bot0, xs)
+            if tall and len(xs) >= 6: cand.append((top0, bot0, xs))
     if not best: return None
+    if tall:   # 1.9.55: выпрямленное фото — одна-две линии колонок могут прерваться; берём самую высокую таблицу почти с тем же числом колонок
+        mx = len(best[2]); best = max([c for c in cand if len(c[2]) >= mx - 2], key=lambda c: (c[1] - c[0], len(c[2])))
     top0, bot0, xs = best
     x0, x1 = xs[0], xs[-1]
     ys = peaks(hor[:, x0:x1].sum(1) / 255, (x1 - x0) * (0.35 if th >= 0.3 else 0.3))
@@ -274,7 +337,9 @@ def _find_table(g, th):
         if ys and ys[-1] + 15 < y <= ys[-1] + 90 and (hor[max(0, y - 3):y + 4, x0:x1].max(0) > 0).mean() >= 0.2: ys.append(y)
     if ys and top0 < ys[0] - 15: ys.insert(0, top0)
     if len(ys) < 2: return None
-    return {"xs": xs, "ys": ys, "top": ys[0], "bot": ys[-1], "hor": hor, "ver": ver, "W": W}
+    # 1.9.55: линии над таблицей (шапка и строка «А 1 1а…») — если шапку внутри не нашли, ищем её выше (фото с телефона)
+    above = [y for y in ys_all if ys[0] - 0.4 * H < y < ys[0] - 10]
+    return {"xs": xs, "ys": ys, "top": ys[0], "bot": ys[-1], "hor": hor, "ver": ver, "W": W, "above": above}
 
 KEYS = [("name", ["наименование товара", "наименован", "описание выполн"]), ("code", ["код товара", "работ, услуг"]),
         ("unit", ["условное", "обозна", "нацио"]), ("qty", ["коли", "(объем)"]), ("price", ["цена", "тариф"]),
@@ -365,6 +430,11 @@ def table_rows(g, tb, tpl):
     bands = [(ys[i], ys[i + 1]) for i in range(len(ys) - 1) if ys[i + 1] - ys[i] >= 15]
     if not bands: return None
     col, hdr = (None, None) if tpl and len(xs) == tpl["n"] else map_header(clean, xs, bands)
+    if not col and not tpl and tb.get("above"):   # 1.9.55: шапка выше найденного участка таблицы
+        yy = sorted(set(tb["above"] + ys)); b2 = [(yy[i], yy[i + 1]) for i in range(len(yy) - 1) if yy[i + 1] - yy[i] >= 15]
+        c2, h2 = map_header(clean, xs, b2)
+        if c2 and "name" in c2 and "qty" in c2:
+            col, hdr, bands, ys = c2, h2, b2, yy; tb = dict(tb, ys=yy, top=yy[0])
     if col and "name" in col and "qty" in col:
         width = float(xs[-1] - xs[0])
         tpl_new = {"col": col, "rel": [(x - xs[0]) / width for x in xs], "n": len(xs)}
@@ -398,6 +468,9 @@ def table_rows(g, tb, tpl):
         rowall = lc(join_words(words_in(PDFW, xs[0], xs[-1], a, b))) if PDFW is not None else lc(" ".join(T.values()))
         if re.search(r"всего|к\s*оплат|итого", lc(name)) or re.search(r"всего\s*к\s*оплат", lc(T.get("name", ""))) or re.search(r"всего\s*к\s*оплат", rowall):
             totals = {"sum": money(T.get("sum"))}; break
+        # 1.9.55: фото — «Всего к оплате (9)» прочитано неразборчиво: последняя строка без количества и цены, но с суммой — это итог
+        if (a, b) == data[-1] and items and not T.get("qty", "").strip() and not re.search(r"\d", T.get("price", "")) and money(T.get("sum")) and (re.search(r"\(9\)|оплат|сего", lc(name)) or len(name) < 25):
+            totals = {"sum": money(T.get("sum"))}; break
         # 1.9.13: подписи под таблицей («Руководитель … уполномоченное лицо», «Основания передачи (сдачи)») — не товар
         if T.get("qty", "").strip() == "" and re.search(r"руководител|уполномоч|индивидуальн|предпринимат|основани[ея]\s+передачи|\(сдачи\)|получени[яе]|главный\s+бухгалтер|подпись|ф\.?\s*и\.?\s*о", lc(name)): continue
         if items and re.search(r"руководител|уполномоч|индивидуальн|\(сдачи\)", lc(name)) and not re.search(r"\d", T.get("price", "") + T.get("sum", "")): continue
@@ -413,6 +486,12 @@ def table_rows(g, tb, tpl):
         if not name and q is None: continue
         if len(words(name)) < 1: continue   # строка номеров колонок «А 1 1а 1б 2 …»
         price, ssum = money(T.get("price")), money(T.get("sum"))
+        # 1.9.55: на фото теряется запятая в сумме (508881,31 → 50888131) — сверяем с «количество × цена»
+        if ssum and price and q:
+            pq = q * price
+            if abs(pq - ssum) > max(1.0, ssum * 0.005):
+                for k_ in (0.01, 100.0, 0.1, 10.0):
+                    if abs(pq - ssum * k_) <= max(1.0, pq * 0.005): ssum = round(ssum * k_, 2); break
         unit = re.sub(r"[^A-Za-zА-Яа-я0-9²³.]", "", T.get("unit", "")).lower()[:8].replace("м²", "м2").replace("м³", "м3").strip(".")
         unit = UM.get(unit, unit)
         ok = re.sub(r"\D", "", T.get("okei", ""))
@@ -504,17 +583,36 @@ def main(path):
             g = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
             if not is_pdf: g = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(g)
             tb = find_table(g)
-            if pi == 1 or not re.search(r"фактур|передаточн", text_all, re.I):
+            if pi <= 3 or not re.search(r"фактур|передаточн", text_all, re.I):   # 1.9.55: шапка следующих листов («УПД № … от …») — ещё один голос за номер
                 # шапка документа (номер, дата, продавец) — над таблицей; если таблицы нет — весь лист
                 top = tb["top"] if tb and tb["top"] > g.shape[0] * 0.12 else g.shape[0]
                 full = tess(g[:top], 6, ["-c", "preserve_interword_spaces=1"])
                 text_all += "\n" + full
             tr = table_rows(g, tb, tpl)
+            fixed = False
+            if PDFW is None:   # 1.9.55: фото под углом (линии таблицы сходятся) — выпрямляем; берём то чтение, где строк больше
+                try:
+                    im2 = rectify(im)
+                    rf = im2 is not None
+                    if im2 is None: im2 = im   # лист ровный — пробуем хотя бы чёрно-белое изображение
+                    if True:
+                        if max(im2.shape[:2]) < 3400:
+                            k = 3400 / max(im2.shape[:2]); im2 = cv2.resize(im2, None, fx=k, fy=k, interpolation=cv2.INTER_CUBIC)
+                        # фото: серый фон и тени — чёрно-белое изображение читается намного лучше
+                        g2 = cv2.adaptiveThreshold(cv2.GaussianBlur(cv2.cvtColor(im2, cv2.COLOR_BGR2GRAY), (3, 3), 0), 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 41, 15)
+                        tr2 = table_rows(g2, find_table(g2, True), tpl)
+                        if tr2 and len(tr2.get("items") or []) > len((tr or {}).get("items") or []) or (tr2 and tr2.get("totals") and not (tr or {}).get("totals") and len(tr2.get("items") or []) >= len((tr or {}).get("items") or [])):
+                            tr, g = tr2, g2; fixed = "rect+bw" if rf else "bw"
+                            if pi == 1 or not re.search(r"\b\d{1,7}\b.{0,20}от", text_all):
+                                tb2 = find_table(g2, True); top = tb2["top"] if tb2 and tb2["top"] > g2.shape[0] * 0.12 else g2.shape[0]
+                                text_all += "\n" + tess(g2[:top], 6, ["-c", "preserve_interword_spaces=1"])
+                except Exception as ex:
+                    dbg.append({"page": pi, "rectify_err": str(ex)[:100]})
             if tr:
                 if tr.get("tpl"): tpl = tr["tpl"]
                 for it in tr["items"]: it["page"] = pi; items.append(it)
                 if tr.get("totals"): tot = tr["totals"]
-            dbg.append({"page": pi, "rot": rot, "skew": skew, "cols": tr and tr.get("cols"), "n": tr and len(tr["items"])})
+            dbg.append({"page": pi, "rot": rot, "skew": skew, "cols": tr and tr.get("cols"), "n": tr and len(tr["items"]), "rectified": fixed})
             try: os.remove(p) if is_pdf else None
             except Exception: pass
             if time.time() - t0 > 250: dbg.append({"stopped": "time"}); break
