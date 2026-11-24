@@ -75,6 +75,7 @@ function onUpd(e) {
     let it = []; try { it = JSON.parse(r.getString("items") || "[]") || []; } catch (_) {}
     if (!Array.isArray(it)) return;
     const no = "УПД № " + r.getString("number") + (r.getString("supplier") ? " · " + r.getString("supplier") : "");
+    if (e.app.findRecordsByFilter("fstock_moves", "src = 'receipt' && ref_no = {:n}", "", 1, 0, { n: no }).length) return;   // 1.9.56: уже учтено по приёмке
     it.forEach((x) => {
       const q = r3(parseFloat(String((x && x.qty) || "").replace(",", ".")) || 0);
       const nm = String((x && (x.name || x.spec_name)) || "").trim();

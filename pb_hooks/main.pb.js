@@ -16,7 +16,15 @@ routerAdd("POST", "/api/vs/upd/check", (e) => {
     // Открытая приёмка по этому УПД уже есть — продолжаем её, а не создаём дубль
     const open = tx.findRecordsByFilter("receipts",
       "upd_norm = {:u} && (status = 'pending_approval' || status = 'in_progress' || status = 'nonconformity')", "-created", 1, 0, { u: norm });
-    if (open.length) { out = { receipt: open[0].id, existing: true, result: open[0].getString("check_result") }; return; }
+    const steps = b.steps === true;   // 1.9.56: приёмка по шагам — без согласования (жёлтый / «не найден» → сразу в работу)
+    if (open.length) {
+      const o = open[0];
+      if (steps && o.getString("status") === "pending_approval") {
+        o.set("status", "in_progress"); tx.save(o); L.createChecklist(tx, o);
+        L.log(tx, a, "upd_check", "receipts", o.id, "Приёмка УПД № " + upd + " по шагам — без согласования", {});
+      }
+      out = { receipt: o.id, existing: true, result: o.getString("check_result") }; return;
+    }
     const ev = L.evaluate(tx, { upd: upd, supplier: b.supplier, sender: b.sender }, warehouse);
     const prev = tx.findRecordsByFilter("receipts", "upd_norm = {:u} && (status = 'completed' || status = 'completed_remarks')", "-created", 1, 0, { u: norm });
     const r = new Record(tx.findCollectionByNameOrId("receipts"));
@@ -28,13 +36,14 @@ routerAdd("POST", "/api/vs/upd/check", (e) => {
     r.set("approver_role", ev.approver);
     r.set("warehouse", warehouse);
     if (L.authId(a)) r.set("storekeeper", a.id);
-    const st = { green: "in_progress", red: "denied", yellow: "pending_approval", notfound: "pending_approval" }[ev.result];
+    let st = { green: "in_progress", red: "denied", yellow: "pending_approval", notfound: "pending_approval" }[ev.result];
+    if (steps && st === "pending_approval") st = "in_progress";
     r.set("status", st);
     if (st === "denied") r.set("finished_at", L.fmt(new Date()));
     tx.save(r);
     if (st === "in_progress") L.createChecklist(tx, r);
     const label = { green: "РАЗРЕШЕНА", red: "ЗАПРЕЩЕНА", yellow: "ТРЕБУЕТСЯ СОГЛАСОВАНИЕ", notfound: "УПД НЕ НАЙДЕН" }[ev.result];
-    L.log(tx, a, "upd_check", "receipts", r.id, "Проверка УПД № " + upd + ": " + label, { result: ev.result, rules: ev.rules });
+    L.log(tx, a, "upd_check", "receipts", r.id, "Проверка УПД № " + upd + ": " + label + (steps && (ev.result === "yellow" || ev.result === "notfound") ? " — по шагам, без согласования" : ""), { result: ev.result, rules: ev.rules });
     out = { receipt: r.id, existing: false, result: ev.result,
       warning: prev.length ? "Внимание: УПД № " + upd + " уже был принят ранее (" + prev[0].getString("finished_at").slice(0, 16) + " UTC)." : "" };
   });

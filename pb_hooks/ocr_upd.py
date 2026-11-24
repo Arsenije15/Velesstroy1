@@ -357,8 +357,16 @@ def map_header(clean, xs, bands):
     numrow = None
     for i, (a, b) in enumerate(bands[:12]):
         if b - a > 90 or b - a < 15: continue
+        isnum = lambda x: x.strip() in NUMROW or x.strip() in ("1", "2", "6", "7", "8", "9", "10", "11", "1б", "1b", "10а")
+        # 1.9.56: сначала вся полоса одним чтением (быстро), по ячейкам — только если похоже на строку номеров
+        if PDFW is None:
+            ws = strip_words(clean, xs[0], xs[-1], a, b, None, 6, 2)
+            txt = [join_words(words_in(ws, xs[j], xs[j + 1], a, b)) for j in range(len(xs) - 1)]
+            h0 = sum(1 for x in txt if isnum(x))
+            if h0 >= 6: numrow = (i, [x.strip() for x in txt]); break
+            if h0 < 3: continue
         txt = [ctext(clean, a, b, xs[j], xs[j + 1], 2, 7) if xs[j + 1] - xs[j] > 10 else "" for j in range(len(xs) - 1)]
-        hits = sum(1 for x in txt if x.strip() in NUMROW or x.strip() in ("1", "2", "6", "7", "8", "9", "10", "11", "1б", "1b", "10а"))
+        hits = sum(1 for x in txt if isnum(x))
         if hits >= 6: numrow = (i, [x.strip() for x in txt]); break
     if numrow is None: return None, None
     hb = [k for k in range(numrow[0]) if bands[k][1] - bands[k][0] > 40]
@@ -571,7 +579,7 @@ def main(path):
                 best = None
                 for r in tries:
                     c = rotate(img, r); gg = cv2.cvtColor(c, cv2.COLOR_BGR2GRAY)
-                    small = cv2.resize(gg, None, fx=0.6, fy=0.6) if max(gg.shape) > 3600 else gg
+                    k_ = 1800 / max(gg.shape); small = cv2.resize(gg, None, fx=k_, fy=k_, interpolation=cv2.INTER_AREA) if k_ < 1 else gg   # 1.9.56: для поворота хватает уменьшенной копии — вчетверо быстрее
                     txt = tess(small, 6)
                     score = len(KEYW.findall(txt)) * 10 + quality(txt) / 200
                     if best is None or score > best[0]: best = (score, r, c)
@@ -580,34 +588,35 @@ def main(path):
             rot_prev = rot
             if rot in (90, 270):   # 1.9.15: лист был положен боком — наклон меряем уже после поворота (иначе линии таблицы «рвутся»)
                 im, sk2 = deskew(im); skew = sk2 or skew
-            g = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
-            if not is_pdf: g = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(g)
-            tb = find_table(g)
-            if pi <= 3 or not re.search(r"фактур|передаточн", text_all, re.I):   # 1.9.55: шапка следующих листов («УПД № … от …») — ещё один голос за номер
+            BW = lambda m: cv2.adaptiveThreshold(cv2.GaussianBlur(cv2.cvtColor(m, cv2.COLOR_BGR2GRAY), (3, 3), 0), 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 41, 15)
+            def up(m):
+                if max(m.shape[:2]) < 3400: k = 3400 / max(m.shape[:2]); m = cv2.resize(m, None, fx=k, fy=k, interpolation=cv2.INTER_CUBIC)
+                return m
+            im2 = None
+            if PDFW is None:   # 1.9.55/56: фото под углом (линии таблицы сходятся) — сразу выпрямляем и читаем чёрно-белое (один проход)
+                try: im2 = rectify(im)
+                except Exception as ex: dbg.append({"page": pi, "rectify_err": str(ex)[:100]})
+            fixed = False
+            gh = None
+            if im2 is not None:
+                u2 = up(im2); g = BW(u2); tb = find_table(g, True); fixed = "rect+bw"
+                gh = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(cv2.cvtColor(u2, cv2.COLOR_BGR2GRAY))   # шапку (№, дату) серой читаем точнее
+            else:
+                g = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
+                if not is_pdf: g = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(g)
+                tb = find_table(g)
+            if pi == 1 or not re.search(r"фактур|передаточн", text_all, re.I):
                 # шапка документа (номер, дата, продавец) — над таблицей; если таблицы нет — весь лист
                 top = tb["top"] if tb and tb["top"] > g.shape[0] * 0.12 else g.shape[0]
                 full = tess(g[:top], 6, ["-c", "preserve_interword_spaces=1"])
+                if gh is not None: full = tess(gh[:top], 6, ["-c", "preserve_interword_spaces=1"]) + "\n" + full   # фото: шапку читаем и серой (она первая — при равных голосах точнее)
                 text_all += "\n" + full
             tr = table_rows(g, tb, tpl)
-            fixed = False
-            if PDFW is None:   # 1.9.55: фото под углом (линии таблицы сходятся) — выпрямляем; берём то чтение, где строк больше
+            if im2 is None and PDFW is None and not (tr and tr.get("items")):   # ровный лист, строк нет — пробуем чёрно-белое
                 try:
-                    im2 = rectify(im)
-                    rf = im2 is not None
-                    if im2 is None: im2 = im   # лист ровный — пробуем хотя бы чёрно-белое изображение
-                    if True:
-                        if max(im2.shape[:2]) < 3400:
-                            k = 3400 / max(im2.shape[:2]); im2 = cv2.resize(im2, None, fx=k, fy=k, interpolation=cv2.INTER_CUBIC)
-                        # фото: серый фон и тени — чёрно-белое изображение читается намного лучше
-                        g2 = cv2.adaptiveThreshold(cv2.GaussianBlur(cv2.cvtColor(im2, cv2.COLOR_BGR2GRAY), (3, 3), 0), 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 41, 15)
-                        tr2 = table_rows(g2, find_table(g2, True), tpl)
-                        if tr2 and len(tr2.get("items") or []) > len((tr or {}).get("items") or []) or (tr2 and tr2.get("totals") and not (tr or {}).get("totals") and len(tr2.get("items") or []) >= len((tr or {}).get("items") or [])):
-                            tr, g = tr2, g2; fixed = "rect+bw" if rf else "bw"
-                            if pi == 1 or not re.search(r"\b\d{1,7}\b.{0,20}от", text_all):
-                                tb2 = find_table(g2, True); top = tb2["top"] if tb2 and tb2["top"] > g2.shape[0] * 0.12 else g2.shape[0]
-                                text_all += "\n" + tess(g2[:top], 6, ["-c", "preserve_interword_spaces=1"])
-                except Exception as ex:
-                    dbg.append({"page": pi, "rectify_err": str(ex)[:100]})
+                    g2 = BW(up(im)); tr2 = table_rows(g2, find_table(g2, True), tpl)
+                    if tr2 and tr2.get("items"): tr, g, fixed = tr2, g2, "bw"
+                except Exception as ex: dbg.append({"page": pi, "bw_err": str(ex)[:100]})
             if tr:
                 if tr.get("tpl"): tpl = tr["tpl"]
                 for it in tr["items"]: it["page"] = pi; items.append(it)
