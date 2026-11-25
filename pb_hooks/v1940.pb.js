@@ -12,5 +12,5 @@ routerAdd("GET", "/api/vs/codes/report", (e) => {
 routerAdd("GET", "/api/vs/request/actalerts", (e) => {
   const L = require(`${__hooks}/lib.js`); const a = L.requireRole(e, ["admin", "manager", "storekeeper"]);
   if (a.getString && a.getString("scope") && a.getString("scope") !== "zay") return e.json(200, { alerts: [] });
-  return e.json(200, { alerts: require(`${__hooks}/lib1940.js`).actAlerts($app, a.id) });
+  return e.json(200, { alerts: require(`${__hooks}/lib1960.js`).actAlertsCached($app, a.id) });   // 1.9.60: пересчёт только при изменениях
 }, $apis.requireAuth("users"));

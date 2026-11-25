@@ -13,12 +13,12 @@ routerAdd("POST", "/api/vs/upd/ocr", (e) => {
   if (!b.wait) {   // 1.9.2: чтение идёт в фоне — страница не ждёт минуту (иначе прокси/VPN обрывают ответ: ошибка 502)
     const job = K.ocrJob(rec.id);
     // 1.9.4: читаются все листы (УПД на 300 позиций — 24 листа), поэтому до 9 минут; ход чтения — в файле .prog («лист 5/24»)
-    try { $os.cmd("sh", "-c", 'mkdir -p "$(dirname "$3")"; rm -f "$3" "$3.tmp" "$3.prog"; date +%s > "$3.start"; ( VS_OCR_PROGRESS="$3.prog" timeout 540 nice -n 10 python3 "$1" "$2" > "$3.tmp" 2>&1; echo; echo "__EXIT__$?" >> "$3.tmp"; mv "$3.tmp" "$3" ) </dev/null >/dev/null 2>&1 &', "sh", `${__hooks}/ocr_upd.py`, path, job).run(); }
+    try { $os.cmd("sh", "-c", 'mkdir -p "$(dirname "$3")"; rm -f "$3" "$3.tmp" "$3.prog"; date +%s > "$3.start"; ( VS_OCR_PROGRESS="$3.prog" timeout 540 nice -n 15 python3 "$1" "$2" > "$3.tmp" 2>&1; echo; echo "__EXIT__$?" >> "$3.tmp"; mv "$3.tmp" "$3" ) </dev/null >/dev/null 2>&1 &', "sh", `${__hooks}/ocr_upd.py`, path, job).run(); }
     catch (err) { throw new BadRequestError("Распознавание не запустилось на сервере: " + String(err).slice(0, 200)); }
     return e.json(200, { started: true });
   }
   let txt = "";
-  try { txt = toString($os.cmd("sh", "-c", 'timeout 540 python3 "$1" "$2" 2>&1; echo; echo "__EXIT__$?"', "sh", `${__hooks}/ocr_upd.py`, path).output()); }
+  try { txt = toString($os.cmd("sh", "-c", 'timeout 540 nice -n 15 python3 "$1" "$2" 2>&1; echo; echo "__EXIT__$?"', "sh", `${__hooks}/ocr_upd.py`, path).output()); }
   catch (err) { throw new BadRequestError("Распознавание не запустилось на сервере: " + String(err).slice(0, 200)); }
   const res = K.ocrFinish(L, rec, txt);
   return e.json(200, res);

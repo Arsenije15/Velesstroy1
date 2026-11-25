@@ -10,7 +10,7 @@ routerAdd("POST", "/api/vs/aosr/ocr", (e) => {
   if (!rec.getString("file")) throw new BadRequestError("Файл не загружен.");
   const path = $app.dataDir() + "/storage/" + rec.collection().id + "/" + rec.id + "/" + rec.getString("file");
   const job = $app.dataDir() + "/ocr_jobs/aosr_" + rec.id.replace(/[^a-z0-9]/g, "") + ".txt";
-  try { $os.cmd("sh", "-c", 'mkdir -p "$(dirname "$3")"; rm -f "$3" "$3.tmp" "$3.prog"; date +%s > "$3.start"; ( VS_OCR_PROGRESS="$3.prog" timeout 400 nice -n 10 python3 "$1" "$2" > "$3.tmp" 2>&1; echo; echo "__EXIT__$?" >> "$3.tmp"; mv "$3.tmp" "$3" ) </dev/null >/dev/null 2>&1 &', "sh", `${__hooks}/aosr_ocr.py`, path, job).run(); }
+  try { $os.cmd("sh", "-c", 'mkdir -p "$(dirname "$3")"; rm -f "$3" "$3.tmp" "$3.prog"; date +%s > "$3.start"; ( VS_OCR_PROGRESS="$3.prog" timeout 400 nice -n 15 python3 "$1" "$2" > "$3.tmp" 2>&1; echo; echo "__EXIT__$?" >> "$3.tmp"; mv "$3.tmp" "$3" ) </dev/null >/dev/null 2>&1 &', "sh", `${__hooks}/aosr_ocr.py`, path, job).run(); }
   catch (err) { throw new BadRequestError("Распознавание не запустилось на сервере: " + String(err).slice(0, 200)); }
   return e.json(200, { started: true });
 }, $apis.requireAuth("users"));
@@ -106,7 +106,7 @@ routerAdd("POST", "/api/vs/aosr/journal", (e) => {
     $os.mkdirAll(dir, 0o700);
     $os.writeFile(dir + "/in.b64", b64, 0o600);
     $os.writeFile(dir + "/acts.json", JSON.stringify(acts), 0o600);
-    const txt = toString($os.cmd("sh", "-c", 'timeout 120 python3 "$1" "$2/in.b64" "$2/acts.json" "$2/out.b64" 2>&1', "sh", `${__hooks}/journal_fill.py`, dir).output()).trim();
+    const txt = toString($os.cmd("sh", "-c", 'timeout 120 nice -n 15 python3 "$1" "$2/in.b64" "$2/acts.json" "$2/out.b64" 2>&1', "sh", `${__hooks}/journal_fill.py`, dir).output()).trim();
     try { res = JSON.parse(txt.slice(txt.indexOf("{"), txt.lastIndexOf("}") + 1)); } catch (_) { throw new BadRequestError("Ошибка при записи журнала: " + txt.split("\n").slice(-2).join(" | ").slice(0, 300)); }
     if (res.error) throw new BadRequestError(res.error);
     res.b64 = toString($os.readFile(dir + "/out.b64"));

@@ -10,7 +10,7 @@ routerAdd("POST", "/api/vs/request/ocr", (e) => {
   if (!L.isSuper(a) && rec.getString("uploaded_by") !== a.id) throw new ForbiddenError("Это не ваш файл.");
   const path = $app.dataDir() + "/storage/" + rec.collection().id + "/" + rec.id + "/" + rec.getString("file");
   let txt = "";
-  try { txt = toString($os.cmd("timeout", "240", "python3", `${__hooks}/ocr_zayavka.py`, path).output()); }
+  try { txt = toString($os.cmd("timeout", "240", "nice", "-n", "15", "python3", `${__hooks}/ocr_zayavka.py`, path).output()); }
   catch (err) { throw new BadRequestError("Распознавание не запустилось на сервере (запустите install.sh ещё раз): " + String(err).slice(0, 200)); }
   let res = null;
   try { res = JSON.parse(txt); } catch (_) { throw new BadRequestError("Не удалось прочитать файл — попробуйте другой скан или фото ровнее."); }

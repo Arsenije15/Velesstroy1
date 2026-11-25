@@ -9,7 +9,7 @@ routerAdd("POST", "/api/vs/cert/ocr", (e) => {
   if (!L.isSuper(a) && rec.getString("uploaded_by") !== a.id && L.role(a) !== "admin") throw new ForbiddenError("Это не ваш файл.");
   const path = $app.dataDir() + "/storage/" + rec.collection().id + "/" + rec.id + "/" + rec.getString("file");
   const job = $app.dataDir() + "/ocr_jobs/cert_" + rec.id.replace(/[^a-z0-9]/g, "") + ".txt";
-  try { $os.cmd("sh", "-c", 'mkdir -p "$(dirname "$3")"; rm -f "$3" "$3.tmp"; date +%s > "$3.start"; ( timeout 300 nice -n 10 python3 "$1" "$2" > "$3.tmp" 2>&1; echo; echo "__EXIT__$?" >> "$3.tmp"; mv "$3.tmp" "$3" ) </dev/null >/dev/null 2>&1 &', "sh", `${__hooks}/cert_ocr.py`, path, job).run(); }
+  try { $os.cmd("sh", "-c", 'mkdir -p "$(dirname "$3")"; rm -f "$3" "$3.tmp"; date +%s > "$3.start"; ( timeout 300 nice -n 15 python3 "$1" "$2" > "$3.tmp" 2>&1; echo; echo "__EXIT__$?" >> "$3.tmp"; mv "$3.tmp" "$3" ) </dev/null >/dev/null 2>&1 &', "sh", `${__hooks}/cert_ocr.py`, path, job).run(); }
   catch (err) { throw new BadRequestError("Распознавание не запустилось: " + String(err).slice(0, 200)); }
   return e.json(200, { started: true });
 }, $apis.requireAuth("users"));

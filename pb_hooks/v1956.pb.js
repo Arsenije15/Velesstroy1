@@ -42,19 +42,10 @@ routerAdd("POST", "/api/vs/receipt/upd_items", (e) => {
 }, $apis.requireAuth("users"));
 
 // 1.9.59: «Приёмка материалов» — УПД из приёмок, которых нет в списке УПД СКК (за всё время)
+// 1.9.60: сравнение и «похожий номер» (83464 ↔ СТ-83464/1, тот же поставщик); с поиском — и УПД СКК (пометка «СКК»), у всех — материалы
 routerAdd("GET", "/api/vs/receipt/not_in_skk", (e) => {
   const L = require(`${__hooks}/lib.js`);
   L.requireRole(e, L.WRITE_ROLES.concat(["viewer"]).filter((x, i, A) => A.indexOf(x) === i));
-  const q = String(e.request.url.query().get("q") || "").toLowerCase().trim().slice(0, 100);
-  const rows = arrayOf(new DynamicModel({ id: "", upd_number: "", supplier: "", status: "", created: "", finished_at: "", upd_items: "" }));
-  $app.db().newQuery("SELECT id, COALESCE(upd_number,'') AS upd_number, COALESCE(supplier,'') AS supplier, COALESCE(status,'') AS status, COALESCE(created,'') AS created, " +
-    "COALESCE(finished_at,'') AS finished_at, COALESCE(upd_items,'') AS upd_items FROM receipts ORDER BY created DESC LIMIT 5000").all(rows);
-  const nums = arrayOf(new DynamicModel({ n: "" }));
-  $app.db().newQuery("SELECT DISTINCT COALESCE(number,'') AS n FROM upd_docs WHERE status != 'draft'").all(nums);
-  const nk = (s) => String(s || "").toLowerCase().replace(/ё/g, "е").replace(/\s+/g, "").replace(/^№/, "");
-  const have = {}; JSON.parse(JSON.stringify(nums)).forEach((x) => { have[nk(x.n)] = 1; });
-  let out = JSON.parse(JSON.stringify(rows)).filter((r) => !have[nk(r.upd_number)]).map((r) => { let it = []; try { it = typeof r.upd_items === "string" ? JSON.parse(r.upd_items || "[]") : r.upd_items || []; } catch (_) {} if (!Array.isArray(it)) it = [];
-    return { id: r.id, upd_number: r.upd_number, supplier: r.supplier, status: r.status, created: r.created, finished_at: r.finished_at, n: it.length, mats: it.map((x) => x && x.name).join("; ").slice(0, 2000) }; });
-  if (q) { const W = q.split(/\s+/).filter(Boolean); out = out.filter((r) => { const s = (r.upd_number + " " + r.supplier + " " + r.mats).toLowerCase(); return W.every((w) => s.indexOf(w) >= 0); }); }
-  return e.json(200, { items: out.slice(0, 300), total: out.length });
+  const q = String(e.request.url.query().get("q") || "").trim().slice(0, 100);
+  return e.json(200, require(`${__hooks}/lib1960.js`).notInSkk($app, q));
 }, $apis.requireAuth("users"));

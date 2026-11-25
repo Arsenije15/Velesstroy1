@@ -28,7 +28,7 @@ routerAdd("POST", "/api/vs/skk/journal", (e) => {
     $os.mkdirAll(dir, 0o700);
     $os.writeFile(dir + "/in.b64", b64, 0o600);
     $os.writeFile(dir + "/acts.json", JSON.stringify(acts), 0o600);
-    const txt = toString($os.cmd("sh", "-c", 'timeout 240 python3 "$1" "$2/in.b64" "$2/acts.json" "$2/out.b64" 2>&1', "sh", `${__hooks}/skk_journal_fill.py`, dir).output()).trim();
+    const txt = toString($os.cmd("sh", "-c", 'timeout 240 nice -n 15 python3 "$1" "$2/in.b64" "$2/acts.json" "$2/out.b64" 2>&1', "sh", `${__hooks}/skk_journal_fill.py`, dir).output()).trim();
     try { res = JSON.parse(txt.slice(txt.indexOf("{"), txt.lastIndexOf("}") + 1)); } catch (_) { throw new BadRequestError("Ошибка при записи журнала: " + txt.split("\n").slice(-2).join(" | ").slice(0, 300)); }
     if (res.error) throw new BadRequestError(res.error);
     res.b64 = toString($os.readFile(dir + "/out.b64"));
