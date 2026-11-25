@@ -149,14 +149,18 @@ routerAdd("POST", "/api/vs/receipt/update", (e) => {
   $app.runInTransaction((tx) => {
     const r = tx.findRecordById("receipts", L.str(b.receipt));
     const st = r.getString("status");
-    if (st !== "in_progress" && st !== "pending_approval") throw new BadRequestError("Приёмка закрыта или остановлена — изменения невозможны.");
+    // 1.9.59: данные можно поправить и после закрытия приёмки (всё пишется в журнал)
+    const late = !(st === "in_progress" || st === "pending_approval");
     const ch = {};
-    ["qty_doc", "qty_fact", "damage", "notes"].forEach((k) => {
-      if (b[k] !== undefined && L.str(b[k]) !== r.getString(k)) { ch[k] = L.str(b[k]); r.set(k, L.str(b[k])); }
+    ["qty_doc", "qty_fact", "damage", "notes", "supplier", "sender", "vehicle", "upd_number"].forEach((k) => {
+      if (b[k] === undefined) return;
+      let v = L.str(b[k]).slice(0, k === "notes" ? 5000 : 300);
+      if (k === "upd_number" && !v) return;
+      if (v !== r.getString(k)) { ch[k] = r.getString(k) + " → " + v; r.set(k, v); }
     });
     if (!Object.keys(ch).length) return;
     tx.save(r);
-    L.log(tx, a, "receipt_update", "receipts", r.id, "Изменены данные приёмки УПД № " + r.getString("upd_number"), ch);
+    L.log(tx, a, "receipt_update", "receipts", r.id, "Изменены данные приёмки УПД № " + r.getString("upd_number") + (late ? " (после закрытия)" : "") + ": " + Object.keys(ch).map((k) => ({ qty_doc: "кол-во по УПД", qty_fact: "фактически", damage: "повреждения", notes: "примечание", supplier: "поставщик", sender: "отправитель", vehicle: "транспорт", upd_number: "№ УПД" })[k] + " " + ch[k]).join("; ").slice(0, 900), ch);
   });
   return e.json(200, { ok: true });
 }, $apis.requireAuth("users"));

@@ -273,7 +273,9 @@ const LOAD={
   requests:()=>all("requests",`status="open"||updated>="${since()}"`,"-created"),
   shipments:()=>all("request_shipments",`status="preparing"||status="sent"||updated>="${since()}"`,"-created"),
   debt:()=>all("requests",'status="closed"&&signed_all=false',"-closed_at"),
-  suggestions:()=>{const p=all("suggestions","","-last").then(x=>{S.sugAt=Date.now();return x});S.sugP=p;return p},
+  // 1.9.59: раньше — ВСЕ подсказки, и заново после каждого ввода у любого пользователя (тысячи строк) — главная причина торможения.
+  // Теперь — 1000 последних одним запросом; перед формой нужные поля догружает sugFresh
+  suggestions:()=>{if(S.sugP&&Date.now()-(S.sugAt||0)<15000)return S.sugP;S.sugAt=Date.now();const p=api("GET","/api/collections/suggestions/records?perPage=1000&skipTotal=1&sort=-last").then(j=>{S.sugAt=Date.now();return j.items}).catch(()=>S.data.suggestions||[]);S.sugP=p;return p},
   overrides:()=>all("activity_log",`action="override"&&created>="${new Date(Date.now()-7*86400000).toISOString().replace("T"," ")}"`,"-created")
 };
 async function load(cols){await Promise.all(cols.map(async c=>{S.data[c]=await LOAD[c]()}))}
@@ -355,10 +357,12 @@ function rtStart(){
   es=new EventSource("/api/realtime");
   es.addEventListener("PB_CONNECT",async ev=>{
     try{const id=JSON.parse(ev.data).clientId;
-      await api("POST","/api/realtime",{clientId:id,subscriptions:["resources","reservations","receipts","approvals","rules","checklist_templates","users","checklist_items","attachments","activity_log","requests","request_items","request_shipments","request_files","suggestions","request_notes","topics","subtopics","topic_msgs","upd_docs","upd_photos","skk_acts","broadcasts"]});
+      await api("POST","/api/realtime",{clientId:id,subscriptions:["resources","reservations","receipts","approvals","rules","checklist_templates","users","checklist_items","attachments","activity_log","requests","request_items","request_shipments","request_files","request_notes","topics","subtopics","topic_msgs","upd_docs","upd_photos","skk_acts","broadcasts","suggestions"]});
       S.rt="on";paintNet();flushAll()}catch(e){S.rt="wait";paintNet()}});
-  ["resources","reservations","receipts","approvals","rules","checklist_templates","users","checklist_items","attachments","activity_log","requests","request_items","request_shipments","request_files","suggestions","request_notes","topics","subtopics","topic_msgs","upd_docs","upd_photos","skk_acts"].forEach(c=>es.addEventListener(c,()=>changed(c)));
-  es.addEventListener("broadcasts",bcIn);   // 1.9.21: сообщение / цитата от администратора
+  ["resources","reservations","receipts","approvals","rules","checklist_templates","users","checklist_items","attachments","activity_log","requests","request_items","request_shipments","request_files","request_notes","topics","subtopics","topic_msgs","upd_docs","upd_photos","skk_acts"].forEach(c=>es.addEventListener(c,()=>changed(c)));
+  es.addEventListener("broadcasts",bcIn);
+  // 1.9.59: новая подсказка — дописываем одну запись (раньше после каждого ввода у любого — перезагрузка ВСЕХ подсказок у всех)
+  es.addEventListener("suggestions",ev=>{try{const d=JSON.parse(ev.data),r=d.record;if(!r||!r.id)return;const L=(S.data.suggestions||[]).filter(x=>x.id!==r.id);S.data.suggestions=d.action==="delete"?L:[r].concat(L)}catch(_){}});   // 1.9.21: сообщение / цитата от администратора
   es.addEventListener("skk_acts",ev=>{actClosedNote(ev);clearTimeout(NTF.t);NTF.t=setTimeout(ntfLoad,800)});   // 1.9.13: уведомление о закрытом акте
   es.onerror=()=>{S.rt="wait";paintNet();if(es.readyState===2){clearTimeout(esRetry);esRetry=setTimeout(rtStart,4000)}};
 }
@@ -517,6 +521,29 @@ function decide(apId,d){
   <div class="row" style="margin-top:14px"><button class="btn ${d==="approve"?"g":"r"} grow" id="mok">${d==="approve"?"СОГЛАСОВАТЬ":"ОТКАЗАТЬ"}</button><button class="btn" data-close>Отмена</button></div>`,
   box=>{$("#mok",box).onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/approval/decide",{approval:apId,decision:d,comment:$("#mc",box).value});closeModal();flushAll()},"Решение сохранено")});
 }
+// 1.9.59: изменить приёмку и после закрытия — шапка, количество, замечания, материалы по УПД (всё в журнал; «Фактический остаток» — на разницу)
+async function rcEdit(r){await sugFresh(["supplier","sender","vehicle"]);let M=(Array.isArray(r.upd_items)?r.upd_items:[]).map(x=>({name:x.name,qty:x.qty,unit:x.unit}));
+  modal(`<h3>✎ Изменить приёмку</h3><div class="muted">${["completed","completed_remarks"].includes(r.status)?"Приёмка закрыта — изменения запишутся в журнал.":""}</div>
+   <label class="f" for="reu">№ УПД</label><input id="reu" value="${esc(r.upd_number)}">
+   <label class="f" for="res">Поставщик</label><input id="res" data-sug="supplier" value="${esc(r.supplier||"")}">
+   <label class="f" for="red">Отправитель</label><input id="red" data-sug="sender" value="${esc(r.sender||"")}">
+   <label class="f" for="rev">Транспорт</label><input id="rev" data-sug="vehicle" value="${esc(r.vehicle||"")}">
+   <div class="row"><div class="grow"><label class="f" for="req">Кол-во по УПД</label><input id="req" value="${esc(r.qty_doc||"")}"></div><div class="grow"><label class="f" for="ref">Фактически</label><input id="ref" value="${esc(r.qty_fact||"")}"></div></div>
+   <label class="f" for="rem">Повреждения</label><input id="rem" value="${esc(r.damage||"")}"><label class="f" for="ren">Примечание</label><textarea id="ren">${esc(r.notes||"")}</textarea>
+   <div class="card" style="padding:8px;margin-top:10px"><b>📦 Материалы по УПД</b><div id="rem2">${matEdHtml(M,"reme")}</div></div>
+   <div class="row" style="margin-top:14px"><button class="btn p grow" id="mok">СОХРАНИТЬ</button><button class="btn" data-close>Отмена</button></div>`,mb=>{sugAttach(mb);matEdBind($("#rem2",mb),()=>M,v=>M=v);
+   $("#mok",mb).onclick=e=>act(e.target,async()=>{const items=matEdRead($("#rem2",mb));
+     await api("POST","/api/vs/receipt/update",{receipt:r.id,upd_number:$("#reu",mb).value.trim(),supplier:$("#res",mb).value.trim(),sender:$("#red",mb).value.trim(),vehicle:$("#rev",mb).value.trim(),qty_doc:$("#req",mb).value,qty_fact:$("#ref",mb).value,damage:$("#rem",mb).value,notes:$("#ren",mb).value});
+     const before=JSON.stringify((r.upd_items||[]).map(x=>[x.name,x.qty,x.unit])),after=JSON.stringify(items.map(x=>[x.name,x.qty,x.unit]));
+     if(before!==after)await api("POST","/api/vs/receipt/upd_items",{receipt:r.id,date:r.upd_date||"",items});
+     closeModal();S.cur=null;await load(["receipts"]).catch(()=>{});render(["receipts"])},"Приёмка изменена")})}
+// 1.9.59: УПД из приёмок, которых нет у СКК (за всё время)
+async function rcNoSkk(){const box=$("#rcns");if(!box)return;const q=($("#rcnsq")||{}).value||"";let j;
+  try{j=await api("GET","/api/vs/receipt/not_in_skk?q="+encodeURIComponent(q))}catch(e){box.innerHTML=`<div class="muted">${esc(e.message)}</div>`;return}
+  if(!$("#rcns"))return;
+  box.innerHTML=j.items.length?`<div class="muted" style="margin:4px 0">Найдено: ${j.total}${j.total>j.items.length?" — показаны последние "+j.items.length:""}</div>${j.items.map(x=>{const s=T.rst[x.status]||[x.status,"gr"];
+    return `<a class="item" href="#/receipt/${x.id}" style="display:block"><b>УПД № ${esc(x.upd_number)}</b> <span class="pill ${s[1]}">${esc(s[0])}</span><div class="muted">${esc(x.supplier||"поставщик не указан")} · ${dt(x.created)}${x.n?" · материалов: "+x.n:""}</div></a>`}).join("")}`
+    :`<div class="empty">${q?"Ничего не найдено":"Все УПД из приёмок есть у СКК"}</div>`}
 function openReceipts(){
   const R=(S.data.receipts||[]).filter(x=>["pending_approval","in_progress","nonconformity"].includes(x.status));
   return R.length?R.map(rcRow).join(""):`<div class="empty">Открытых приёмок нет</div>`;
@@ -526,7 +553,8 @@ function rcRow(x){const s=T.rst[x.status]||[x.status,"gr"];
   <div class="muted">${dt(x.created)} · ${esc(uname(x.storekeeper))}</div></div><span class="pill ${s[1]}">${s[0]}</span></a>`}
 
 /* ---------- ПРИЁМКА ---------- */
-function vReceive(){
+function vReceive(_i,changed){
+  if(changed&&$("#rcns")&&!changed.some(c=>["receipts","rules","approvals"].includes(c)))return;   // 1.9.59: чужие изменения в других разделах — не перерисовываем
   const sup=[...new Set((S.data.rules||[]).map(r=>r.supplier).concat((S.data.receipts||[]).map(r=>r.supplier)).filter(Boolean))];
   $("#main").innerHTML=`<h1>Приёмка материалов</h1>
   ${can.write()?`<button class="btn acc big noprint" id="rcTun" style="margin-bottom:12px">▶ НОВАЯ ПРИЁМКА — ПО ШАГАМ</button>`:""}
@@ -540,7 +568,9 @@ function vReceive(){
   <div id="actHint" style="margin-top:10px"></div>
   <div class="muted" style="margin-top:8px">Укажите поставщика — ограничения могут быть заданы по поставщику, а не только по номеру УПД.</div>
   <div style="height:12px"></div><button class="btn p big" id="nb">ПРОВЕРИТЬ УПД</button></form></div>`:`<div class="banner gray">Роль «Просмотр»: создание приёмок недоступно</div>`}
-  <h2>Открытые приёмки</h2><div class="card list">${openReceipts()}</div>`;
+  <h2>Открытые приёмки</h2><div class="card list">${openReceipts()}</div>
+  <h2>📄 Мои УПД, которых нет у СКК</h2><div class="card"><input id="rcnsq" placeholder="🔎 № УПД, поставщик, материал" autocomplete="off"><div id="rcns" class="list" style="margin-top:6px"><div class="muted">Загрузка…</div></div></div>`;
+  {let t=0;const q=$("#rcnsq");if(q)q.oninput=()=>{clearTimeout(t);t=setTimeout(rcNoSkk,400)};rcNoSkk()}
   sugAttach($("#main"));{const t=$("#rcTun");if(t)t.onclick=()=>tunRecv()}
   // 1.9.12: фото / PDF УПД и фото груза — сразу при создании приёмки
   const NF={upd:[],cargo:[]};const nfp=()=>{const b=$("#nfp");if(b)b.innerHTML=[["upd","📄"],["cargo","📷"]].map(([k,ic])=>NF[k].map((f,i)=>`<span class="pill gr" style="gap:4px">${ic} ${esc(f.name.slice(0,22))} <a href="#" data-nfx="${k}:${i}" aria-label="Убрать">✕</a></span>`).join("")).join("");
@@ -594,7 +624,8 @@ async function vReceipt(id,changedCols){
   if(S.route!=="receipt/"+id)return;
   $("#main").innerHTML=`<div class="row noprint" style="margin-bottom:8px"><a class="btn sm" href="#/receive">← К приёмкам</a><div class="grow"></div><button class="btn sm" onclick="print()">Печать / PDF</button>${can.manage()&&!S.user.scope?`<button class="btn sm r" id="rcDel" title="Удалить приёмку (ошибочную, дубль)">🗑 Удалить</button>`:""}</div>
   <h1>УПД № ${esc(r.upd_number)} <span class="pill ${s[1]}" style="vertical-align:middle">${s[0]}</span></h1>
-  <div class="banner ${bc}">${esc(T.check[r.check_result]||"")}<small>${esc(r.instruction||(r.check_result==="notfound"?"Для этого УПД, поставщика и отправителя в базе нет правил. Приёмка возможна только после проверки и согласования руководителем.":""))}</small></div>
+  ${(r.check_result==="yellow"||r.check_result==="notfound")&&st!=="pending_approval"&&!pendAp?`<div class="banner gray">${r.check_result==="notfound"?"Правил по этому УПД нет":"По УПД есть указания"} — принято без согласования${r.instruction?`<small>${esc(r.instruction)}</small>`:""}</div>`
+  :`<div class="banner ${bc}">${esc(T.check[r.check_result]||"")}<small>${esc(r.instruction||(r.check_result==="notfound"?"Для этого УПД, поставщика и отправителя в базе нет правил. Приёмка возможна только после проверки и согласования руководителем.":""))}</small></div>`}
   ${actsBanner(Array.isArray(r.acts_found)?r.acts_found:[],false)}
   ${r.memo_required?(r.memo_done_at?`<div class="card" style="border-color:var(--v)"><b style="color:var(--v)">✔ Служебная записка написана</b><div class="muted">${esc(uname(r.memo_done_by))}, ${dt(r.memo_done_at)}${r.memo_comment?" — «"+esc(r.memo_comment)+"»":""}</div></div>`
     :W?`<div class="card noprint" style="border-color:var(--v)"><label class="f">Служебная записка (№, комментарий)</label><input id="memoC" placeholder="например: СЗ № 15 от 03.11 на начальника склада"><div style="height:8px"></div><button class="btn big" id="memoB" style="border-color:var(--v);color:var(--v)">✍ СЛУЖЕБНАЯ ЗАПИСКА НАПИСАНА</button></div>`:""):""}
@@ -625,13 +656,15 @@ async function vReceipt(id,changedCols){
    <div class="row"><div class="grow"><label class="f">Кол-во по УПД</label><input id="qd" value="${esc(r.qty_doc)}"></div><div class="grow"><label class="f">Фактически</label><input id="qf" value="${esc(r.qty_fact)}"></div></div>
    <label class="f">Повреждения</label><input id="dm" value="${esc(r.damage)}"><label class="f">Примечание</label><textarea id="nt">${esc(r.notes)}</textarea>
    <div style="height:10px"></div><button class="btn" id="sv">Сохранить данные</button></div>`
+   :W&&!S.user.scope?`<div class="card"><div class="kv"><b>Кол-во по УПД</b><span>${esc(r.qty_doc||"—")}</span><b>Фактически</b><span>${esc(r.qty_fact||"—")}</span><b>Повреждения</b><span>${esc(r.damage||"—")}</span><b>Примечание</b><span>${esc(r.notes||"—")}</span></div>
+     <button class="btn noprint" id="rcEd" style="margin-top:10px">✎ Изменить данные приёмки</button></div>`
    :(r.qty_doc||r.qty_fact||r.damage||r.notes)?`<div class="card kv"><b>Кол-во по УПД</b><span>${esc(r.qty_doc||"—")}</span><b>Фактически</b><span>${esc(r.qty_fact||"—")}</span><b>Повреждения</b><span>${esc(r.damage||"—")}</span><b>Примечание</b><span>${esc(r.notes||"—")}</span></div>`:""}
   ${Array.isArray(r.upd_items)&&r.upd_items.length?`<div class="card"><h2 style="margin-top:0">📄 Материалы по УПД <span class="muted">${r.upd_items.length} поз.${r.upd_date?" · от "+esc(r.upd_date.split("-").reverse().join(".")):""}</span></h2>
    <div style="overflow:auto"><table class="tbl"><tr><th>№</th><th>Наименование</th><th style="text-align:right">Кол-во</th><th>Ед.</th></tr>${r.upd_items.map((x,k)=>`<tr><td>${esc(String(x.no||k+1))}</td><td>${esc(x.name)}</td><td style="text-align:right"><b>${x.qty==null?"—":fmtQ(x.qty)}</b></td><td>${esc(x.unit||"")}</td></tr>`).join("")}</table></div></div>`:""}
   <div class="card"><h2 style="margin-top:0">Фото и документы (${att.length})</h2>
    <div class="photos">${att.map(a=>{const u="/api/files/attachments/"+a.id+"/"+encodeURIComponent(a.file)+"?token="+ft;const img=/\.(jpe?g|png|webp)$/i.test(a.file);
      return `<a href="${u}" target="_blank" rel="noopener">${img?`<img src="${u}&thumb=200x200" alt="">`:`<div style="padding:30px 8px;text-align:center">PDF</div>`}<span>${esc(T.kind[a.kind]||"")}</span></a>`}).join("")||`<div class="muted">Нет файлов</div>`}</div>
-   ${W&&(open||st==="pending_approval"||st==="nonconformity")?`<div class="row noprint" style="margin-top:10px"><select id="pk" style="width:auto;flex:1"><option value="document">Документ (УПД, ТТН)</option><option value="material">Материал</option><option value="damage">Повреждение</option></select>
+   ${W&&(open||st==="pending_approval"||st==="nonconformity"||st==="completed"||st==="completed_remarks")?`<div class="row noprint" style="margin-top:10px"><select id="pk" style="width:auto;flex:1"><option value="document">Документ (УПД, ТТН)</option><option value="material">Материал</option><option value="damage">Повреждение</option></select>
    <label class="btn acc" style="flex:1">📷 Сфотографировать<input type="file" id="pf" accept="image/*,application/pdf" capture="environment" hidden></label>
    <label class="btn" style="flex:1">Из галереи<input type="file" id="pg" accept="image/*,application/pdf" multiple hidden></label></div>`:""}</div>
   ${open&&W?`<div class="card noprint"><button class="btn g big" id="cb" ${reqOpen?"":""}>ЗАВЕРШИТЬ ПРИЁМКУ</button>
@@ -643,6 +676,7 @@ async function vReceipt(id,changedCols){
    <td>${a.status==="pending"?`<span class="pill y">ОЖИДАЕТ</span>`:`<span class="pill ${a.status==="approved"?"g":"r"}">${a.status==="approved"?"СОГЛАСОВАНО":"ОТКАЗАНО"}</span><br>${esc(uname(a.decided_by))}, ${dt(a.decided_at)}<br>«${esc(a.decision_comment)}»`}</td></tr>`).join("")}</table></div></div>`:""}`;
   bindAp();
   const rd=$("#rcDel");if(rd)rd.onclick=()=>rcDelete(r,{att:att.length,items:items.length,aps:aps.length});
+  {const re=$("#rcEd");if(re)re.onclick=()=>rcEdit(r)}
   const ra=$("#rcAllow");if(ra)ra.onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/receipt/allow",{receipt:id});S.cur=null;await load(["receipts"]);vReceipt(id,["receipts"])},"Приёмка разрешена");
   const mb=$("#memoB");if(mb)mb.onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/receipt/memo",{receipt:id,comment:$("#memoC").value});S.cur=null;await load(["receipts"]);vReceipt(id,["receipts"])},"Отмечено");
   const rq=$("#rqb");if(rq)rq.onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/approval/request",{receipt:id,comment:$("#rqc").value});render(["approvals"])},"Запрос отправлен руководителю");
@@ -868,7 +902,7 @@ async function mapPhotoFill(items){if(!document.querySelector("[data-mfl]"))retu
   for(const it of items){const el=document.querySelector(`[data-mfl="${it.id}"]`);if(!el)continue;const w=qWords(it.material).filter(x=>x.length>=3).slice(0,3).join(" ");if(!w)continue;
     const L=F.filter(f=>wmatch(w,f.search_lc||f.material)).slice(0,4);if(!L.length)continue;if(!ft&&L.some(f=>(f.photo||[]).length))ft=await fileToken();
     el.innerHTML=`<div class="card" style="padding:8px;margin-top:6px;background:#f0fdf4"><b>📍 Где грузить</b> <span class="muted">— сначала старый материал</span>${L.map((f,k)=>`<div class="row" style="gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">
-      <span class="pill ${k===0||f.old?"g":"gr"}">${f.old?"🕰 СТАРЫЙ ЗАПАС":k===0?"1 — СТАРЫЙ":k+1}</span><a href="#/map/f=${f.id}" style="flex:1;min-width:150px">${f.no?`<b>🚩 № ${f.no}</b> · `:""}<b>${esc(f.zone||"на карте")}</b> · ${(x=>esc(x.m)+(x.q?" — "+esc(x.q)+" "+esc(x.u||""):""))(flHit(f,w))}${(f.items||[]).length?` <span class="muted">(+ ещё ${f.items.length} мат.)</span>`:""}<div class="muted">лежит с ${dmy(String(f.created).slice(0,10))}${f.note?" · "+esc(f.note):""}</div></a>
+      <span class="pill ${k===0||f.old?"g":"gr"}">${f.old?"🕰 СТАРЫЙ ЗАПАС":k===0?"1 — СТАРЫЙ":k+1}</span><a href="#/map/f=${f.id}" style="flex:1;min-width:150px">${f.no?`<b>🚩 № ${f.no}</b> · `:""}<b>${esc(f.zone||"на карте")}</b> · ${(x=>esc(x.m)+(x.q?" — "+esc(x.q)+" "+esc(x.u||""):"")+flUpd(x))(flHit(f,w))}${(f.items||[]).length?` <span class="muted">(+ ещё ${f.items.length} мат.)</span>`:""}<div class="muted">лежит с ${dmy(String(f.created).slice(0,10))}${f.note?" · "+esc(f.note):""}</div></a>
       ${(f.photo||[]).slice(0,3).map(n=>`<a href="/api/files/smap_flags/${f.id}/${encodeURIComponent(n)}?token=${ft}" target="_blank" rel="noopener"><img src="/api/files/smap_flags/${f.id}/${encodeURIComponent(n)}?thumb=240x240&token=${ft}" alt="Где лежит: ${esc(f.material)}" style="width:72px;height:72px;object-fit:cover;border-radius:8px"></a>`).join("")}</div>`).join("")}</div>`}}
 async function actCheckFill(items){const els=[...document.querySelectorAll("[data-acn]")];if(!els.length)return;
   const res=await actCheck(items.map(i=>i.material));items.forEach((it,i)=>{const el=document.querySelector(`[data-acn="${it.id}"]`);if(el)el.innerHTML=actBadge(res[i])})}
@@ -2129,29 +2163,34 @@ function mapZoneEdit(i){const z=MAPS.zones[i];MAPS.sel=i;
    $("#zdel",box).onclick=()=>{if(!confirm("Удалить зону «"+z.n+"»? Флажки останутся."))return;MAPS.zones.splice(i,1);MAPS.sel=-1;MAPS.dirty=true;closeModal();vMap()}})}
 
 /* 1.9.50: несколько материалов на одном флажке */
-function fitRow(x){return `<div class="row" data-fit style="gap:4px;margin-top:4px;flex-wrap:nowrap"><input data-k="m" list="fidl" autocomplete="off" value="${esc(x.m||"")}" placeholder="материал (подсказки из МПЗ)" style="flex:3;min-width:0"><input data-k="q" value="${esc(x.q||"")}" placeholder="кол-во" inputmode="decimal" style="flex:1;min-width:0"><input data-k="u" value="${esc(x.u||"")}" placeholder="ед." style="flex:1;min-width:0"><button type="button" class="btn sm" data-fitx aria-label="Убрать строку">✕</button></div>`}
-function flMats(f){return [{m:f.material,q:f.qty,u:f.unit}].concat((f.items||[]).filter(x=>x&&x.m))}
+function fitRow(x){return `<div class="row" data-fit style="gap:4px;margin-top:4px;flex-wrap:nowrap"><input data-k="m" list="fidl" autocomplete="off" value="${esc(x.m||"")}" placeholder="материал (подсказки из МПЗ)" style="flex:3;min-width:0"><input data-k="q" value="${esc(x.q||"")}" placeholder="кол-во" inputmode="decimal" style="flex:1;min-width:0"><input data-k="u" value="${esc(x.u||"")}" placeholder="ед." style="flex:1;min-width:0"><input data-k="d" list="fudl" value="${esc(x.d||"")}" placeholder="УПД №" style="flex:1.4;min-width:0"><button type="button" class="btn sm" data-fitx aria-label="Убрать строку">✕</button></div>`}
+function flMats(f){return [{m:f.material,q:f.qty,u:f.unit,d:f.upd||""}].concat((f.items||[]).filter(x=>x&&x.m))}
+// 1.9.59: номера УПД для флажка — подсказка из последних приёмок
+async function updNumsDl(dl){if(!dl||dl.dataset.ok)return;dl.dataset.ok="1";try{const j=await api("GET","/api/collections/receipts/records?perPage=300&skipTotal=1&sort=-created&fields=upd_number,supplier");
+  const seen=new Set();dl.innerHTML=j.items.filter(x=>x.upd_number&&!seen.has(x.upd_number)&&seen.add(x.upd_number)).map(x=>`<option value="${esc(x.upd_number)}">${esc(x.supplier||"")}</option>`).join("")}catch(_){}}
+const flUpd=x=>x&&x.d?` <span class="pill gr" style="font-size:12px">УПД ${esc(x.d)}</span>`:"";
 // какой из материалов флажка подошёл к позиции (для подписи «где грузить»)
 function flHit(f,w){const L=flMats(f);const h=L.find(x=>wmatch(w,x.m));return h||L[0]}
 /* 1.9.52: флажок по шагам (туннель) — по одному материалу, пока не «Довольно»; фото к каждому материалу, всего до 30 */
 async function mapFlagTun(f,p){await sugFresh(["map_mat","map_unit"]);if(!can.write())return;
   const zone=f?f.zone:mapZoneAt(p.x*MAPW,p.y*MAPH);const have=f?(f.photo||[]).length:0;const MAXP=30;
   const c={mats:[],cur:{m:"",q:"",u:""},photos:[],note:f?f.note||"":"",old:f?!!f.old:false,color:f?f.color||"red":"red"};
-  const matCard=(x,k)=>`<div class="line" style="background:#f0fdf4"><div style="flex:1;min-width:0"><b>${k+1}. ${esc(x.m)}</b>${x.q?` — ${esc(x.q)} ${esc(x.u||"")}`:""}${x.n?` <span class="muted">📷 ${x.n}</span>`:""}</div><button type="button" class="btn sm" data-ftx="${k}" aria-label="Убрать">✕</button></div>`;
-  const readCur=b=>{c.cur={m:$("#ftm",b).value.trim(),q:$("#ftq",b).value.trim(),u:$("#ftu",b).value.trim()}};
+  const matCard=(x,k)=>`<div class="line" style="background:#f0fdf4"><div style="flex:1;min-width:0"><b>${k+1}. ${esc(x.m)}</b>${x.q?` — ${esc(x.q)} ${esc(x.u||"")}`:""}${flUpd(x)}${x.n?` <span class="muted">📷 ${x.n}</span>`:""}</div><button type="button" class="btn sm" data-ftx="${k}" aria-label="Убрать">✕</button></div>`;
+  const readCur=b=>{c.cur={m:$("#ftm",b).value.trim(),q:$("#ftq",b).value.trim(),u:$("#ftu",b).value.trim(),d:($("#ftd",b)||{value:""}).value.trim()}};
   tunnel({title:f?"Добавить материал — "+f.material:"Новый флажок — "+(zone||"вне зон"),okLast:"СОХРАНИТЬ ФЛАЖОК",c,exitAsk:"Выйти? Флажок не сохранится.",steps:[
    {t:"Материал",sub:"По одному: название, количество, фото. «＋ Следующий материал» — ещё один на этом же месте. Всё внесли — «Довольно».",ok:"ДОВОЛЬНО — ДАЛЬШЕ →",skip:false,
     html:()=>`${c.mats.length?`<div class="card" style="padding:8px"><b>Уже внесено: ${c.mats.length}</b>${c.mats.map(matCard).join("")}</div>`:""}
      ${tunCard(`<div style="font-size:18px"><b>Материал ${(f?(f.items||[]).length+1:0)+c.mats.length+1}</b></div><datalist id="ftdl"></datalist>
       <label class="f" for="ftm">Что лежит *</label><input id="ftm" list="ftdl" autocomplete="off" value="${esc(c.cur.m)}" placeholder="начните писать — подсказки из МПЗ" style="font-size:18px">
       <div class="row" style="gap:6px;margin-top:6px"><input id="ftq" inputmode="decimal" placeholder="Кол-во" value="${esc(c.cur.q)}" style="flex:1"><input id="ftu" data-sug="map_unit" placeholder="Ед.: шт, м, т" value="${esc(c.cur.u)}" style="flex:1"></div>
+      <label class="f" for="ftd">УПД № <span class="muted">— по какому УПД пришёл</span></label><input id="ftd" list="ftudl" value="${esc(c.cur.d||"")}" placeholder="например 9209" autocomplete="off"><datalist id="ftudl"></datalist>
       <label class="f">Фото этого материала <span class="muted">(у флажка всего до ${MAXP})</span></label>${tunFiles("ftp","Из галереи",true,true,"image/*")}`)}
      <button type="button" class="btn acc big" id="ftnext" style="width:100%;margin-top:10px">＋ СЛЕДУЮЩИЙ МАТЕРИАЛ</button>
      ${f?"":`<div style="margin-top:16px"><button type="button" class="btn sm" id="ftform">📝 Одна форма / другая отметка (ворота, ангар, техника…)</button></div>`}`,
     bind:(box,_,T)=>{const fs=[];c.curFiles=fs;const lim=()=>{if(have+c.photos.length+fs.length>MAXP){fs.splice(Math.max(0,MAXP-have-c.photos.length));toast(`У флажка — до ${MAXP} фото.`,"err");tunFileBind(box,"ftp",fs,lim)}};
       tunFileBind(box,"ftp",fs,lim);
-      mpzSug($("#ftm",box),$("#ftdl",box),m=>{const u=$("#ftu",box);if(u&&!u.value.trim())u.value=m.unit||""});
-      const commit=()=>{readCur(box);if(!c.cur.m)return false;c.photos.push(...fs);c.mats.push(Object.assign({n:fs.length},c.cur));c.cur={m:"",q:"",u:c.cur.u};fs.length=0;return true};
+      updNumsDl($("#ftudl",box));mpzSug($("#ftm",box),$("#ftdl",box),m=>{const u=$("#ftu",box);if(u&&!u.value.trim())u.value=m.unit||""});
+      const commit=()=>{readCur(box);if(!c.cur.m)return false;c.photos.push(...fs);c.mats.push(Object.assign({n:fs.length},c.cur));c.cur={m:"",q:"",u:c.cur.u,d:c.cur.d};fs.length=0;return true};
       T.commit=commit;
       $("#ftnext",box).onclick=()=>{if(!commit()){toast("Напишите, что лежит.","err");$("#ftm",box).focus();return}T.paint();setTimeout(()=>{const m=document.querySelector("#tun #ftm");if(m)m.focus()},50)};
       box.querySelectorAll("[data-ftx]").forEach(b=>b.onclick=()=>{readCur(box);c.mats.splice(+b.dataset.ftx,1);T.paint()});
@@ -2167,9 +2206,9 @@ async function mapFlagTun(f,p){await sugFresh(["map_mat","map_unit"]);if(!can.wr
    {t:"Проверьте и сохраните",html:()=>tunCard(`<div style="font-size:18px"><b>${f?"⚑ "+esc(f.material):"Новый флажок"}</b> · 📍 ${esc(zone||"вне зон")}</div>${c.note?`<div class="muted">${esc(c.note)}</div>`:""}${c.old?`<div class="pill g" style="margin-top:4px">🕰 Старый запас</div>`:""}`)+
      tunCard(`<b>${f?"Добавится материалов":"Материалов"}: ${c.mats.length}</b>${c.mats.map((x,k)=>`<div style="padding:6px 0;border-bottom:1px dashed var(--line)">${k+1}. ${esc(x.m)}${x.q?` — <b>${esc(x.q)} ${esc(x.u||"")}</b>`:""}</div>`).join("")}<div class="muted" style="margin-top:6px">📷 Фото: ${c.photos.length}${have?" (+ уже было "+have+")":""}</div>`)}],
    done:async()=>{const fd=new FormData();
-     if(f){const items=(f.items||[]).concat(c.mats.map(x=>({m:x.m,q:x.q,u:x.u})));if(items.length>60)throw new Error("На одном флажке — до 60 материалов.");
-       fd.append("items",JSON.stringify(items));fd.append("note",c.note);fd.append("old",c.old?"true":"false")}
-     else{const a=c.mats[0];fd.append("material",a.m);fd.append("qty",a.q);fd.append("unit",a.u);fd.append("items",JSON.stringify(c.mats.slice(1).map(x=>({m:x.m,q:x.q,u:x.u}))));
+     if(f){const items=(f.items||[]).concat(c.mats.map(x=>({m:x.m,q:x.q,u:x.u,d:x.d||""})));if(items.length>60)throw new Error("На одном флажке — до 60 материалов.");
+       fd.append("items",JSON.stringify(items.map(x=>x.d?x:{m:x.m,q:x.q,u:x.u})));fd.append("note",c.note);fd.append("old",c.old?"true":"false")}
+     else{const a=c.mats[0];fd.append("material",a.m);fd.append("qty",a.q);fd.append("unit",a.u);fd.append("upd",a.d||"");fd.append("items",JSON.stringify(c.mats.slice(1).map(x=>({m:x.m,q:x.q,u:x.u,d:x.d||""}))));
        fd.append("note",c.note);fd.append("color",c.color);fd.append("icon","");fd.append("old",c.old?"true":"false");fd.append("x",String(p.x));fd.append("y",String(p.y));fd.append("zone",zone||"");fd.append("created_by",S.user.id)}
      if(have+c.photos.length>MAXP)throw new Error(`У флажка — до ${MAXP} фото.`);
      for(const x of c.photos)fd.append("photo+",await shrinkImg(x,2400).catch(()=>x));
@@ -2185,6 +2224,7 @@ async function mapFlagForm(f,p,one){if(!f&&!one&&!MAPS.lastIcon&&localStorage.ge
    <label class="f" id="fml">Что лежит *</label><input id="fm" list="fmdl" autocomplete="off" value="${esc(f?f.material:"")}" placeholder="начните писать — подсказки из МПЗ: кабель ВВГнг 3х2,5, фланец 159"><datalist id="fmdl"></datalist><div id="fmh" class="muted"></div>
    <label class="f">Примечание (ряд, ярус, чей)</label><input id="fn" value="${esc(f?f.note:"")}" placeholder="2-й ряд от ангара, под тентом">
    <div id="fmat"><label class="row" style="gap:6px;align-items:center;margin-top:8px;background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:8px"><input type="checkbox" id="fold" ${f&&f.old?"checked":""} style="width:auto"> <b>🕰 Старый запас</b> <span class="muted">— брать в первую очередь (напоминание в заявках)</span></label><div class="g2x"><div><label class="f">Количество</label><input id="fq" value="${esc(f?f.qty:"")}" inputmode="decimal"></div><div><label class="f">Ед.</label><input id="fu" data-sug="map_unit" value="${esc(f?f.unit:"")}" placeholder="шт, м, т, пал."></div></div>
+   <label class="f" for="fdu">УПД № <span class="muted">— по какому УПД пришёл (у каждого материала может быть свой)</span></label><input id="fdu" list="fudl" value="${esc(f?f.upd||"":"")}" placeholder="например 9209" autocomplete="off"><datalist id="fudl"></datalist>
    <div style="margin-top:8px"><b>Ещё материал на этом месте</b> <span class="muted">— сколько угодно разных</span><div id="fitl">${(f&&f.items||[]).map(x=>fitRow(x)).join("")}</div><datalist id="fidl"></datalist><button type="button" class="btn sm" id="fita" style="margin-top:4px">＋ Ещё материал</button></div>
    <label class="f">Цвет флажка</label><div class="row" style="gap:6px">${Object.keys(FLC).map(k=>`<label style="display:flex;align-items:center;gap:3px"><input type="radio" name="fc" value="${k}" ${(f?f.color||"red":"red")===k?"checked":""} style="width:auto"><span style="display:inline-block;width:18px;height:18px;background:${FLC[k]};border-radius:4px"></span></label>`).join("")}</div></div>
    <label class="f">Фото (до 30)</label><input type="file" id="fp" accept="image/*" capture="environment" multiple>
@@ -2199,11 +2239,12 @@ async function mapFlagForm(f,p,one){if(!f&&!one&&!MAPS.lastIcon&&localStorage.ge
       dl.innerHTML=mm.concat(L.map(x=>x.name)).filter(x=>!seen.has(x)&&seen.add(x)).map(x=>`<option value="${esc(x)}">`).join("");
       const h=$("#fmh",box);if(h)h.textContent=L.length?`МПЗ: ${L.length} похожих — выберите из списка`:"";},300)})}
    {const L=$("#fitl",box),dl=$("#fidl",box);const bindR=r=>{mpzSug(r.querySelector('[data-k="m"]'),dl,m=>{const u=r.querySelector('[data-k="u"]');if(u&&!u.value.trim())u.value=m.unit||""});r.querySelector("[data-fitx]").onclick=()=>r.remove()};
-    L.querySelectorAll("[data-fit]").forEach(bindR);$("#fita",box).onclick=()=>{L.insertAdjacentHTML("beforeend",fitRow({}));const r=L.lastElementChild;bindR(r);r.querySelector('[data-k="m"]').focus()}}   // 1.9.50
+    updNumsDl($("#fudl",box));L.querySelectorAll("[data-fit]").forEach(bindR);$("#fita",box).onclick=()=>{L.insertAdjacentHTML("beforeend",fitRow({}));const r=L.lastElementChild;bindR(r);r.querySelector('[data-k="m"]').focus()}}   // 1.9.50
    box.querySelectorAll("[data-ic]").forEach(b=>b.onclick=()=>{const was=ic;ic=b.dataset.ic;if(!f&&MIC[was]&&$("#fm",box).value===MIC[was][0].split(" (")[0])$("#fm",box).value="";sic()});sic();
    $("#mok",box).onclick=e=>act(e.target,async()=>{const m=$("#fm",box).value.trim();if(!m)throw new Error(ic?"Напишите подпись.":"Напишите, что лежит.");MAPS.lastIcon=f?MAPS.lastIcon:ic;
      const fd=new FormData();fd.append("material",m);fd.append("qty",$("#fq",box).value.trim());fd.append("unit",$("#fu",box).value.trim());fd.append("note",$("#fn",box).value.trim());
-     fd.append("items",JSON.stringify(ic?[]:[...box.querySelectorAll("#fitl [data-fit]")].map(r=>({m:r.querySelector('[data-k="m"]').value.trim(),q:r.querySelector('[data-k="q"]').value.trim(),u:r.querySelector('[data-k="u"]').value.trim()})).filter(x=>x.m)));
+     fd.append("items",JSON.stringify(ic?[]:[...box.querySelectorAll("#fitl [data-fit]")].map(r=>({m:r.querySelector('[data-k="m"]').value.trim(),q:r.querySelector('[data-k="q"]').value.trim(),u:r.querySelector('[data-k="u"]').value.trim(),d:r.querySelector('[data-k="d"]').value.trim()})).filter(x=>x.m)));
+     fd.append("upd",ic?"":($("#fdu",box)||{value:""}).value.trim());
      fd.append("color",(box.querySelector('input[name="fc"]:checked')||{}).value||"red");fd.append("icon",ic);fd.append("old",!ic&&$("#fold",box).checked?"true":"false");if(ic){fd.set("qty","");fd.set("unit","")}
      const pf=[...$("#fp",box).files];if(pf.length+(f&&f.photo?f.photo.length:0)>30)throw new Error("У флажка — до 30 фото.");for(const x of pf)fd.append("photo+",await shrinkImg(x,2400).catch(()=>x));
      let r;if(f)r=await api("PATCH","/api/collections/smap_flags/records/"+f.id,fd,true);
@@ -2212,8 +2253,8 @@ async function mapFlagForm(f,p,one){if(!f&&!one&&!MAPS.lastIcon&&localStorage.ge
 async function mapFlagView(id){const f=MAPS.flags.find(x=>x.id===id);if(!f)return;const ft=(f.photo||[]).length?await fileToken():"";const W=can.write();MAPS.focus=id;
   let TK=[];if(!f.icon)try{TK=(await api("GET","/api/collections/smap_takes/records?perPage=200&skipTotal=1&sort=-created&filter="+encodeURIComponent(`flag="${f.id}"`))).items}catch(_){}
   modal(`<h3 class="row" style="gap:8px;align-items:center">${flIcon(f,30)} ${f.no?`<span class="pill b" style="font-size:16px">№ ${f.no}</span>`:""} ${esc(f.material)}</h3>
-   ${f.icon&&MIC[f.icon]?`<div class="muted">${esc(MIC[f.icon][0])}</div>`:`<div style="font-size:18px">${f.qty?`<b>${esc(f.qty)}</b> ${esc(f.unit||"")}`:'<span class="muted">количество не указано</span>'}</div>`}${f.old?`<div class="pill g" style="margin-top:4px">🕰 Старый запас — брать первым</div>`:""}
-   ${(f.items||[]).length?`<div class="card" style="padding:8px;margin-top:8px"><b>Ещё здесь лежит (${f.items.length}):</b>${f.items.map(x=>`<div style="margin-top:3px">• ${esc(x.m)}${x.q?` — <b>${esc(x.q)}</b> ${esc(x.u||"")}`:""}</div>`).join("")}</div>`:""}
+   ${f.icon&&MIC[f.icon]?`<div class="muted">${esc(MIC[f.icon][0])}</div>`:`<div style="font-size:18px">${f.qty?`<b>${esc(f.qty)}</b> ${esc(f.unit||"")}`:'<span class="muted">количество не указано</span>'}${flUpd({d:f.upd})}</div>`}${f.old?`<div class="pill g" style="margin-top:4px">🕰 Старый запас — брать первым</div>`:""}
+   ${(f.items||[]).length?`<div class="card" style="padding:8px;margin-top:8px"><b>Ещё здесь лежит (${f.items.length}):</b>${f.items.map(x=>`<div style="margin-top:3px">• ${esc(x.m)}${x.q?` — <b>${esc(x.q)}</b> ${esc(x.u||"")}`:""}${flUpd(x)}</div>`).join("")}</div>`:""}
    <div class="muted">📍 ${esc(f.zone||"вне зон")}${f.note?" · "+esc(f.note):""}</div>
    ${TK.length?`<div class="card" style="padding:8px;margin-top:8px"><b>📤 Взято по заявкам</b>${flMats(f).map(x=>{const L=TK.filter(t=>t.mat===x.m);if(!L.length)return "";const s=L.reduce((a,t)=>a+num(t.qty),0);
      return `<div style="margin-top:6px"><b>${esc(x.m)}</b>: было <b>${esc(L[L.length-1].before||"?")}</b> · взято <b>${fmtQ(s)}</b> · осталось <b>${esc(x.q||"?")} ${esc(x.u||"")}</b>
@@ -2226,9 +2267,9 @@ async function mapFlagView(id){const f=MAPS.flags.find(x=>x.id===id);if(!f)retur
    const e2=$("#fmv",box);if(e2)e2.onclick=()=>{MAPS.move=id;MAPS.mode="view";closeModal();vMap();toast("Нажмите на карте новое место","ok")};
    const e3=$("#fdel",box);if(e3)e3.onclick=()=>{if(!confirm("Убрать флажок «"+f.material+"»? (материала там больше нет)"))return;act(e3,async()=>{await api("DELETE","/api/collections/smap_flags/records/"+id);MAPS.flags=MAPS.flags.filter(x=>x.id!==id);closeModal();vMap()},"Флажок убран")}})}
 function mapExcel(){const T=XS.cC;const L=MAPS.flags.filter(f=>(!MAPS.oldOnly||f.old)&&(!MAPS.q||wmatch(MAPS.q,f.search_lc||f.material))).slice().sort((a,b)=>(a.zone||"яя").localeCompare(b.zone||"яя","ru")||a.material.localeCompare(b.material,"ru"));
-  const r=[[{v:"Карта склада — что где лежит",s:XS.title}],[{v:`На ${dt(new Date().toISOString())}${MAPS.q?" · поиск: "+MAPS.q:""}${MAPS.oldOnly?" · только старые запасы":""} · флажков: ${L.length}`,s:T}],[],["№ флажка","Зона","Тип","Что лежит / подпись","Кол-во","Ед.","Примечание","Поставил","Когда"].map(v=>({v,s:XS.head}))];
-  let last=null;L.forEach(f=>{const z=f.zone||"Вне зон";(f.icon?[{m:f.material,q:f.qty,u:f.unit}]:flMats(f)).forEach((x,k)=>{r.push([{v:k?"":(f.no||""),s:T},{v:z===last?"":z,s:z===last?T:XS.lbl||T},{v:f.icon&&MIC[f.icon]?MIC[f.icon][0]:(f.old?"🕰 Старый запас":"Материал")+(k?" (тот же флажок)":""),s:f.icon?XS.sY:f.old?XS.cG:T},{v:x.m,s:T},{v:x.q,s:T},{v:x.u,s:T},{v:k?"":f.note,s:T},{v:k?"":uname(f.created_by),s:T},{v:k?"":dt(f.updated),s:T}]);last=z})});   // 1.9.50: каждый материал флажка — своя строка
-  saveBlob(xlsxBlob([{name:"Что где лежит",cols:[10,30,22,44,10,7,34,18,17],rows:r,merges:["A1:I1","A2:I2"],freeze:4}]),"Karta_sklada.xlsx")}
+  const r=[[{v:"Карта склада — что где лежит",s:XS.title}],[{v:`На ${dt(new Date().toISOString())}${MAPS.q?" · поиск: "+MAPS.q:""}${MAPS.oldOnly?" · только старые запасы":""} · флажков: ${L.length}`,s:T}],[],["№ флажка","Зона","Тип","Что лежит / подпись","Кол-во","Ед.","УПД №","Примечание","Поставил","Когда"].map(v=>({v,s:XS.head}))];
+  let last=null;L.forEach(f=>{const z=f.zone||"Вне зон";(f.icon?[{m:f.material,q:f.qty,u:f.unit}]:flMats(f)).forEach((x,k)=>{r.push([{v:k?"":(f.no||""),s:T},{v:z===last?"":z,s:z===last?T:XS.lbl||T},{v:f.icon&&MIC[f.icon]?MIC[f.icon][0]:(f.old?"🕰 Старый запас":"Материал")+(k?" (тот же флажок)":""),s:f.icon?XS.sY:f.old?XS.cG:T},{v:x.m,s:T},{v:x.q,s:T},{v:x.u,s:T},{v:x.d||"",s:T},{v:k?"":f.note,s:T},{v:k?"":uname(f.created_by),s:T},{v:k?"":dt(f.updated),s:T}]);last=z})});   // 1.9.50: каждый материал флажка — своя строка
+  saveBlob(xlsxBlob([{name:"Что где лежит",cols:[10,30,22,44,10,7,14,34,18,17],rows:r,merges:["A1:J1","A2:J2"],freeze:4}]),"Karta_sklada.xlsx")}
 
 /* ===================== 1.9.35: КАЛЬКУЛЯТОР МЕТАЛЛОПРОКАТА ===================== */
 // масса 1 м, кг. Арматура — ГОСТ 34028 (= 5781), двутавр — ГОСТ 8239, швеллер П — ГОСТ 8240. Остальное — по размерам и плотности.
@@ -2585,8 +2626,21 @@ function updReadCard(c){const u=c.ur;if(!u)return "";
   return `<div class="card" style="padding:10px;margin-top:10px;background:#f0fdf4"><b>📖 Прочитано из УПД</b>
    <div style="margin-top:4px">№ <b>${esc(u.number||"—")}</b>${u.date?" от "+esc(u.date.split("-").reverse().join(".")):""} · ${esc(u.supplier||"поставщик не прочитан")}</div>
    ${updSumLine(u.check)}
-   <div style="margin-top:6px;max-height:40vh;overflow:auto">${u.items.map((x,k)=>`<div style="padding:5px 0;border-bottom:1px dashed var(--line)">${x.no||k+1}. ${esc(x.name)} — <b>${fmtQ(x.qty)} ${esc(x.unit||"")}</b></div>`).join("")||`<div class="muted">Строки не прочитаны</div>`}</div>
-   <div class="muted" style="margin-top:6px">Номер и поставщика можно поправить. Материалы сохранятся в этой приёмке.</div></div>`}
+   <div class="muted" style="margin-top:6px">Прочитано строк: ${u.items.length}${u.items.length?" — они ниже, в «Материалы по УПД», их можно исправить":" — впишите материалы ниже вручную"}.</div></div>`}
+/* 1.9.59: материалы УПД — редактор (ручной ввод, когда фото не читается; исправление прочитанного; правка после закрытия) */
+function matEdHtml(L,id){return `<div id="${id}">${L.map((x,k)=>`<div class="row" data-mr="${k}" style="gap:4px;margin-top:6px;align-items:center;flex-wrap:nowrap">
+  <input data-mn list="${id}dl" value="${esc(x.name||"")}" placeholder="Наименование" autocomplete="off" style="flex:3;min-width:0">
+  <input data-mq inputmode="decimal" value="${x.qty==null||x.qty===""?"":esc(typeof x.qty==="number"?fmtQ(x.qty):String(x.qty))}" placeholder="Кол-во" style="flex:1;min-width:60px;max-width:110px">
+  <input data-mu value="${esc(x.unit||"")}" placeholder="Ед." style="width:62px">
+  <button type="button" class="btn sm" data-mx="${k}" aria-label="Убрать строку">✕</button></div>`).join("")}
+  <datalist id="${id}dl"></datalist><button type="button" class="btn sm acc" data-madd style="margin-top:8px">＋ Материал</button></div>`}
+function matEdRead(box){return [...box.querySelectorAll("[data-mr]")].map((r,k)=>({no:k+1,name:r.querySelector("[data-mn]").value.trim(),qty:r.querySelector("[data-mq]").value.trim()===""?null:num(r.querySelector("[data-mq]").value),unit:r.querySelector("[data-mu]").value.trim()})).filter(x=>x.name)}
+function matEdBind(box,get,set){const ed=box.querySelector("[id]");if(!ed)return;const id=ed.id;
+  const redraw=()=>{ed.outerHTML=matEdHtml(get(),id);matEdBind(box,get,set)};
+  ed.querySelectorAll("[data-mx]").forEach(b=>b.onclick=()=>{const L=matEdRead(ed);const k=+b.dataset.mx;const all_=[...ed.querySelectorAll("[data-mr]")].map(r=>({name:r.querySelector("[data-mn]").value,qty:r.querySelector("[data-mq]").value,unit:r.querySelector("[data-mu]").value}));all_.splice(k,1);set(all_);redraw()});
+  ed.querySelector("[data-madd]").onclick=()=>{const all_=[...ed.querySelectorAll("[data-mr]")].map(r=>({name:r.querySelector("[data-mn]").value,qty:r.querySelector("[data-mq]").value,unit:r.querySelector("[data-mu]").value}));all_.push({name:"",qty:"",unit:all_.length?all_[all_.length-1].unit:""});set(all_);redraw();
+    const L=ed.ownerDocument.querySelectorAll(`#${id} [data-mn]`);if(L.length)L[L.length-1].focus()};
+  ed.querySelectorAll("[data-mn]").forEach(inp=>{try{mpzSug(inp,ed.querySelector("datalist"),m=>{const u=inp.closest("[data-mr]").querySelector("[data-mu]");if(u&&!u.value.trim())u.value=m.unit||""})}catch(_){}})}
 async function tunRecv(){await sugFresh(["supplier","sender","vehicle","ship_place"]);const c={upd:[],cargo:[],flag:null};
   const R=async()=>{c.r=await api("GET","/api/collections/receipts/records/"+c.rid);c.items=await all("checklist_items",`receipt="${c.rid}"`,"sort");return c.r};
   const ok=()=>c.r&&["in_progress","pending_approval","nonconformity"].includes(c.r.status);
@@ -2594,17 +2648,20 @@ async function tunRecv(){await sugFresh(["supplier","sender","vehicle","ship_pla
    {t:"УПД",sub:"PDF или фото УПД (можно несколько листов) — прочитаю номер, поставщика, материалы и количество. Нет документа — впишите номер сами или «Дальше».",
     html:()=>`<div>${tunFiles("tuu","📄 PDF / фото из галереи",true,true)}</div>
      <div id="turb" style="margin-top:8px"></div><div id="turs" class="muted" style="margin-top:6px"></div><div id="turc">${updReadCard(c)}</div>
-     <label class="f" style="margin-top:12px">Номер УПД</label><input id="tu" value="${esc(c.num||"")}" autocomplete="off" placeholder="прочитается из документа или впишите">`,
+     <label class="f" style="margin-top:12px">Номер УПД</label><input id="tu" value="${esc(c.num||"")}" autocomplete="off" placeholder="прочитается из документа или впишите">
+     <div class="card" style="padding:8px;margin-top:10px"><b>📦 Материалы по УПД</b> <span class="muted">— прочитанные можно исправить; не прочиталось — впишите вручную</span><div id="turm">${matEdHtml(c.mats||[],"turme")}</div></div>`,
     bind:(box,_,T)=>{const rb=()=>{const b=$("#turb",box);if(!b)return;const n=c.upd.length;
         b.innerHTML=n&&!c.urDone?`<button type="button" class="btn acc big" id="turgo" style="width:100%">📖 ПРОЧИТАТЬ УПД (${n} ${n===1?"файл":"файла"})</button>`:"";const g=$("#turgo",box);if(g)g.onclick=()=>go()};
       const go=c.readNow=async()=>{if(c.reading||!c.upd.length)return;c.reading=true;rb();const say=t=>{const e=document.querySelector("#tun #turs");if(e)e.textContent=t};
         try{const u=await updRead(c.upd.slice(),say);c.ur=u;c.urDone=true;c.updId=u.id;if(u.number)c.num=u.number;if(u.supplier&&!c.sup)c.sup=u.supplier;if(u.date)c.updDate=u.date;
+          const mm=document.querySelector("#tun #turm");const old=mm?matEdRead(mm):[];c.mats=u.items.map(x=>({name:x.name,qty:x.qty,unit:x.unit})).concat(old);if(mm){mm.innerHTML=matEdHtml(c.mats,"turme");matEdBind(mm,()=>c.mats,v=>c.mats=v)}
           say(u.items.length?`Прочитано строк: ${u.items.length}`:"Строки не прочитаны — номер и поставщика проверьте сами.");
           const cc=document.querySelector("#tun #turc");if(cc)cc.innerHTML=updReadCard(c);const nn=document.querySelector("#tun #tu");if(nn&&u.number)nn.value=u.number}
         catch(er){say("Не получилось прочитать: "+er.message+" — впишите номер сами.");c.urDone=true}
         finally{c.reading=false;const b=document.querySelector("#tun #turb");if(b)rb()}};
+      {const mm=$("#turm",box);if(mm)matEdBind(mm,()=>c.mats||[],v=>c.mats=v)}
       tunFileBind(box,"tuu",c.upd,()=>{c.urDone=false;const pdf=c.upd.some(f=>/pdf/i.test(f.type)||/\.pdf$/i.test(f.name||""));if(pdf)go();else rb()});rb()},
-    read:(b)=>{c.num=$("#tu",b).value.trim()},
+    read:(b)=>{c.num=$("#tu",b).value.trim();const mm=$("#turm",b);if(mm)c.mats=matEdRead(mm)},
     save:async()=>{if(c.upd.length&&!c.urDone&&!c.reading&&!c.num)await c.readNow();/* номер не вписан — сначала читаем документ */if(c.reading)throw new Error("Подождите — УПД ещё читается.");const nn=document.querySelector("#tun #tu");if(nn&&!c.num)c.num=nn.value.trim()},skip:false},
    {t:"Поставщик и машина",html:()=>`<label class="f">Поставщик</label><input id="ts" data-sug="supplier" data-chips value="${esc(c.sup||"")}">
      <label class="f">Грузоотправитель (если отличается)</label><input id="tsd" data-sug="sender" value="${esc(c.snd||"")}">
@@ -2613,9 +2670,10 @@ async function tunRecv(){await sugFresh(["supplier","sender","vehicle","ship_pla
     read:(b)=>{c.sup=$("#ts",b).value.trim();c.snd=$("#tsd",b).value.trim();c.veh=$("#tv",b).value.trim()},ok:"ПРОВЕРИТЬ УПД →",
     save:async()=>{if(c.rid)return;if(!c.num)c.num="б/н "+new Date().toLocaleDateString("ru-RU");   // 1.9.55: без номера — не останавливаем
       const j=await api("POST","/api/vs/upd/check",{upd:c.num,supplier:c.sup,sender:c.snd,vehicle:c.veh,steps:true});c.rid=j.receipt;if(j.existing)toast("По этому УПД уже есть открытая приёмка — продолжаю её");
-      if(c.ur){const u=c.ur;   // 1.9.56: прочитанный УПД — материалы в приёмку (список УПД СКК не трогаем), в «Фактический остаток» — приход
-        try{await api("POST","/api/vs/receipt/upd_items",{receipt:c.rid,upd_doc:u.id,date:c.updDate||"",items:u.items.map(x=>({no:x.no,name:x.name,unit:x.unit,qty:x.qty}))})}catch(er){toast("Материалы из УПД не сохранены: "+er.message,"err")}
-        if(u.items.length)try{await api("POST","/api/vs/receipt/update",{receipt:c.rid,qty_doc:(u.items.length+" поз. по УПД").slice(0,200)})}catch(_){}}
+      const M=(c.mats||[]).filter(x=>x.name);
+      if(c.ur||M.length){const u=c.ur||{};   // 1.9.56/59: материалы — в приёмку (список УПД СКК не трогаем), в «Фактический остаток» — приход
+        try{await api("POST","/api/vs/receipt/upd_items",{receipt:c.rid,upd_doc:u.id||"",date:c.updDate||"",items:M.map((x,k)=>({no:k+1,name:x.name,unit:x.unit,qty:x.qty}))})}catch(er){toast("Материалы из УПД не сохранены: "+er.message,"err")}
+        if(M.length)try{await api("POST","/api/vs/receipt/update",{receipt:c.rid,qty_doc:(M.length+" поз. по УПД").slice(0,200)})}catch(_){}}
       for(const f of c.upd){const fd=new FormData();fd.append("receipt",c.rid);fd.append("kind","document");fd.append("uploaded_by",S.user.id);fd.append("file",await shrink(f));try{await api("POST","/api/collections/attachments/records",fd,true)}catch(er){toast("Файл «"+f.name+"» не загрузился: "+er.message,"err")}}
       c.upd=[];await R();await load(["receipts"])}},
    {t:"Результат проверки",noBack:true,skip:false,html:()=>{const r=c.r,bc={green:"green",red:"red",yellow:"yellow",notfound:"notfound"}[r.check_result]||"gray";
