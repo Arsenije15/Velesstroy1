@@ -138,6 +138,45 @@ td.r{text-align:right;font-variant-numeric:tabular-nums}
   header,nav,.noprint,#toast,.netbar{display:none!important}
   body{background:#fff}main{padding:0}.card{border:0;padding:0}.print-only{display:block}
 }
+
+/* 1.9.61: «из будущего» — ⚡ команды, пульт, живые переходы */
+@keyframes fxIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes fxGlow{0%,100%{box-shadow:0 0 0 1px rgba(56,189,248,.35),0 0 18px rgba(56,189,248,.15)}50%{box-shadow:0 0 0 1px rgba(56,189,248,.7),0 0 28px rgba(56,189,248,.35)}}
+@keyframes fxScan{from{background-position:0 0}to{background-position:200% 0}}
+main.fxin{animation:fxIn .28s ease-out}
+header{box-shadow:0 1px 0 rgba(56,189,248,.35)}header::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:linear-gradient(90deg,transparent,#38bdf8,#f2b705,#38bdf8,transparent);background-size:200% 100%;animation:fxScan 6s linear infinite;opacity:.8;pointer-events:none}
+.btn{transition:transform .08s,box-shadow .15s,filter .15s}.btn:active{transform:scale(.97)}.btn:hover{filter:brightness(1.05)}
+.kpi,.card.item,a.item{transition:transform .15s,box-shadow .15s}.kpi:hover,a.item:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(15,23,42,.12)}
+input:focus,textarea:focus,select:focus{outline:none;box-shadow:0 0 0 3px rgba(56,189,248,.35)}
+.cmdb{background:linear-gradient(135deg,#0ea5e9,#6366f1)!important;color:#fff!important;border:0!important;box-shadow:0 0 12px rgba(56,189,248,.5)}
+.fab{position:fixed;right:14px;bottom:76px;z-index:30;width:56px;height:56px;border-radius:50%;border:0;font-size:24px;color:#fff;background:radial-gradient(circle at 30% 30%,#38bdf8,#6366f1);animation:fxGlow 2.6s ease-in-out infinite;cursor:pointer}
+@media(min-width:861px){.fab{display:none}}@media(max-width:860px){header #cmdb{display:none}}
+.cmdk{position:fixed;inset:0;z-index:90;background:rgba(2,6,23,.66);backdrop-filter:blur(6px);display:flex;align-items:flex-start;justify-content:center;padding:10vh 12px 12px}
+.cmdk .box{width:min(680px,100%);background:linear-gradient(160deg,#0b1220,#111c33);color:#e2e8f0;border-radius:18px;padding:14px;animation:fxIn .2s ease-out,fxGlow 3s ease-in-out infinite}
+.cmdk .in{display:flex;gap:8px;align-items:center;background:#0f172a;border:1px solid #1e3a5f;border-radius:14px;padding:6px 8px}
+.cmdk .in input{flex:1;background:transparent;border:0;color:#fff;font-size:19px;min-height:44px;box-shadow:none}
+.cmdk .in .btn{background:#1e293b;color:#e2e8f0;border-color:#334155}
+.cmdk .hint{margin:10px 4px 6px;min-height:22px;color:#7dd3fc;font-weight:600}
+.cmdk .ex{display:flex;flex-wrap:wrap;gap:6px}.cmdk .ex button{background:#13203a;border:1px solid #1e3a5f;color:#cbd5e1;border-radius:999px;padding:7px 12px;font-size:14px;cursor:pointer}
+.cmdk .ex button:hover{border-color:#38bdf8;color:#fff}
+.fx{background:radial-gradient(1200px 400px at 10% -10%,rgba(56,189,248,.18),transparent),linear-gradient(160deg,#0b1220,#0f1b33 60%,#111827);color:#e2e8f0;border-radius:18px;padding:14px;margin:-4px 0 14px;animation:fxIn .3s ease-out}
+.fx h1{color:#fff;margin:0}.fx .muted{color:#94a3b8}
+.fx .top{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.fx .cmd{flex:1;min-width:220px;display:flex;gap:6px;background:#0f172a;border:1px solid #1e3a5f;border-radius:14px;padding:4px 6px}.fx .cmd input{flex:1;background:transparent;border:0;color:#fff;min-height:42px;font-size:17px}
+.fx .cmd .btn{background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;border:0}@media(max-width:560px){.fx .cmd{flex-basis:100%}}
+.fxg{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}@media(max-width:1000px){.fxg{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:560px){.fxg{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.fxt{position:relative;aspect-ratio:1/1;min-height:120px;border-radius:16px;padding:12px;cursor:pointer;background:linear-gradient(160deg,#13203a,#0e1729);border:1px solid #1e3a5f;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;transition:transform .15s,border-color .15s}
+.fxt:hover{transform:translateY(-3px);border-color:#38bdf8}.fxt.on{border-color:#38bdf8;animation:fxGlow 2.4s ease-in-out infinite}
+.fxt .ic{font-size:24px}.fxt .n{font-size:44px;font-weight:800;line-height:1;color:#fff;letter-spacing:-.02em}.fxt .t{font-weight:700;color:#cbd5e1;font-size:14px}
+.fxt .s{font-size:12px;color:#94a3b8}.fxt.bad .n{color:#fca5a5}.fxt.ok .n{color:#86efac}
+.fxt::after{content:"";position:absolute;inset:auto -30% -60% auto;width:120px;height:120px;border-radius:50%;background:radial-gradient(circle,rgba(56,189,248,.25),transparent 70%)}
+.fxl{margin-top:12px}.fxi{display:block;text-decoration:none;color:inherit;background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:10px 12px;margin-bottom:8px;animation:fxIn .2s ease-out;cursor:pointer}
+.fxi:hover{border-color:#38bdf8}.fxi b{color:#fff}
+.chip{display:inline-block;border-radius:999px;padding:3px 9px;margin:4px 4px 0 0;font-size:13px;font-weight:600;background:#1e293b;color:#e2e8f0;border:1px solid #334155}
+.chip.r{background:rgba(239,68,68,.15);border-color:rgba(239,68,68,.5);color:#fecaca}.chip.y{background:rgba(234,179,8,.15);border-color:rgba(234,179,8,.5);color:#fde68a}.chip.b{background:rgba(56,189,248,.12);border-color:rgba(56,189,248,.45);color:#bae6fd}
+.qneed{box-shadow:0 0 0 2px #f59e0b!important;background:#fffbeb!important}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media print{.fab,.cmdk{display:none!important}header::after{display:none}}
 </style>
 </head>
 <body>
@@ -399,7 +438,7 @@ async function boot(){
 }
 
 /* ---------- Каркас ---------- */
-const NAV=[["home","Главная","⌂"],["receive","Приёмка","▣"],["requests","Заявки","▤"],["resources","Ресурсы","⚙"],["history","История","☰"],["rules","Инструкции","⚑"],["skk","Склад / СКК","✔"],["topics","Задачи и согласования","☑"],["report","Отчёт дня","☰"],["mpz","Остатки МПЗ","▦"],["map","Карта склада","🗺"],["tools","Инструменты","🧰"],["users","Пользователи","👥"]];
+const NAV=[["home","Главная","⌂"],["pult","Пульт","⚡"],["receive","Приёмка","▣"],["requests","Заявки","▤"],["resources","Ресурсы","⚙"],["history","История","☰"],["rules","Инструкции","⚑"],["skk","Склад / СКК","✔"],["topics","Задачи и согласования","☑"],["report","Отчёт дня","☰"],["mpz","Остатки МПЗ","▦"],["map","Карта склада","🗺"],["tools","Инструменты","🧰"],["users","Пользователи","👥"]];
 /* ----- 1.9.27: приложение для телефона (Android) — только заявки и всё, что с ними связано ----- */
 const APPM=/VSApp\//.test(navigator.userAgent);
 const MOB=APPM||/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Macintosh/.test(navigator.userAgent));   // 1.9.30: телефон/планшет
@@ -413,12 +452,13 @@ function shell(){
   $("#app").innerHTML=`<header><div class="logo">ВЕЛЕС<b>СТРОЙ</b></div>
   <nav class="top">${nav.map(n=>`<a href="#/${n[0]}" data-n="${n[0]}">${n[1].toUpperCase()}</a>`).join("")}</nav>
   <div class="sp"></div><div class="who">${esc(S.user.name||S.user.username)}<br><span style="opacity:.75">${esc(T.roles[S.user.role]||"")}</span></div>
-  ${fndOk()?`<button class="btn sm" id="fndh" title="Поиск по всему (заявки, отгрузки, УПД, акты…)" style="background:transparent;color:#fff;border-color:#475569">🔎</button>`:""}${ntfOk()?`<button class="btn sm" id="ntfb" title="Уведомления об актах СКК" style="background:transparent;color:#fff;border-color:#475569;position:relative">🔔<span id="ntfn" class="ntfn" hidden></span></button>`:""}<span class="net wait" id="net"></span><button class="btn sm" id="lo" style="background:transparent;color:#fff;border-color:#475569">Выход</button></header>
-  <main id="main"></main>
+  ${cmdOk()?`<button class="btn sm cmdb" id="cmdb" title="Команда (Ctrl+K): пропуск 7015, открытые заявки…" aria-label="Команда">⚡</button>`:""}${fndOk()?`<button class="btn sm" id="fndh" title="Поиск по всему (заявки, отгрузки, УПД, акты…)" style="background:transparent;color:#fff;border-color:#475569">🔎</button>`:""}${ntfOk()?`<button class="btn sm" id="ntfb" title="Уведомления об актах СКК" style="background:transparent;color:#fff;border-color:#475569;position:relative">🔔<span id="ntfn" class="ntfn" hidden></span></button>`:""}<span class="net wait" id="net"></span><button class="btn sm" id="lo" style="background:transparent;color:#fff;border-color:#475569">Выход</button></header>
+  <main id="main"></main>${cmdOk()?`<button class="fab" id="cmdfab" type="button" aria-label="Команда">⚡</button>`:""}
   <nav class="bottom">${nav.slice(0,6).map(n=>`<a href="#/${n[0]}" data-n="${n[0]}"><i>${n[2]}</i>${n[1]}</a>`).join("")}</nav>`;
   $("#lo").onclick=()=>{if(confirm("Выйти из системы?"))logout()};
   {const nb=$("#ntfb");if(nb){nb.onclick=ntfOpen;setTimeout(ntfLoad,1500)}}
   if(!S.bkT){S.bkT=1;setTimeout(bkAuto,6000)}
+  {const cb=$("#cmdb");if(cb)cb.onclick=()=>cmdOpen();const cf=$("#cmdfab");if(cf)cf.onclick=()=>cmdOpen()}
   {const fb=$("#fndh");if(fb)fb.onclick=()=>{location.hash="#/find"+(FND.q?"/"+encodeURIComponent(FND.q):"")}}
 }
 window.addEventListener("hashchange",route);
@@ -435,9 +475,9 @@ function render(changedCols,force){
   if(!S.user||!$("#main"))return;
   const [p,id]=S.route.split("/");
   document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("on",a.dataset.n===(p==="receipt"?"receive":p==="request"||p==="leftovers"||p==="fstock"?"requests":/^(upd|updedit|skkact|skkactedit|oper)$/.test(p)?"skk":p==="topic"?"topics":p)));
-  const V={mznorms:vMzNorms,map:vMap,tools:vTools,mzlang:vMzLang,mzdocs:vMzDocs,mzdoc:vMzDoc,mzjournal:vMzJournal,mz:vMz,mzitem:vMzItem,mztasks:vMzTasks,mztopics:vMzTopics,mztopic:vMzTopic,mzhelp:vMzHelp,ureg:vUreg,walk:vWalk,bc:vBc,zreg:vZreg,backup:vBackup,find:vFind,leftovers:vLeftovers,fstock:vFstock,fields:vFields,home:vHome,receive:vReceive,receipt:vReceipt,requests:vRequests,request:vRequest,resources:vResources,history:vHistory,rules:vRules,users:vUsers,report:vReport,mpz:vMpz,skk:vSkk,upd:vUpd,updedit:vUpdEdit,skkact:vSkkAct,skkactedit:vSkkActEdit,oper:vOper,topics:vTopics,topic:vTopic}[p]||vHome;
+  const V={pult:vPult,mznorms:vMzNorms,map:vMap,tools:vTools,mzlang:vMzLang,mzdocs:vMzDocs,mzdoc:vMzDoc,mzjournal:vMzJournal,mz:vMz,mzitem:vMzItem,mztasks:vMzTasks,mztopics:vMzTopics,mztopic:vMzTopic,mzhelp:vMzHelp,ureg:vUreg,walk:vWalk,bc:vBc,zreg:vZreg,backup:vBackup,find:vFind,leftovers:vLeftovers,fstock:vFstock,fields:vFields,home:vHome,receive:vReceive,receipt:vReceipt,requests:vRequests,request:vRequest,resources:vResources,history:vHistory,rules:vRules,users:vUsers,report:vReport,mpz:vMpz,skk:vSkk,upd:vUpd,updedit:vUpdEdit,skkact:vSkkAct,skkactedit:vSkkActEdit,oper:vOper,topics:vTopics,topic:vTopic}[p]||vHome;
   if((p==="users"||p==="fields")&&!can.admin())return vHome();
-  const key=S.route;if(key!==lastKey){window.scrollTo(0,0);lastKey=key;dirty.clear()}
+  const key=S.route;if(key!==lastKey){window.scrollTo(0,0);lastKey=key;dirty.clear();const mm=$("#main");if(mm){mm.classList.remove("fxin");void mm.offsetWidth;mm.classList.add("fxin");setTimeout(()=>mm.classList.remove("fxin"),400)}}
   // Обновление пришло, пока человек вводит данные: сохраняем введённое, фокус и курсор
   const keep=[...dirty].map(i=>{const el=document.getElementById(i);return el?[i,el.value]:null}).filter(Boolean);
   const ae=document.activeElement,fid=ae&&ae.id&&$("#main").contains(ae)?ae.id:null;
@@ -1359,6 +1399,7 @@ async function vRequest(id,changedCols){
   <h2>Отгрузки (${ships.length})</h2>
   ${ships.map(sh=>shipCard(sh,id,files,ft,WS)).join("")||`<div class="card muted">Отгрузок нет</div>`}
   ${W?`<button class="btn big noprint" id="shNew" style="margin-bottom:12px">🚚 Подготовить отгрузку</button>`:""}
+  ${cmdOk()?`<h2 class="noprint">🛡 Пропуска</h2><div class="card noprint" id="rqps"><div class="muted">Загрузка…</div></div>${W&&can.write()?`<button class="btn noprint" id="rqpsNew" style="margin-bottom:12px">🛡 Пропуск по заявке</button>`:""}`:""}
   <h2>📝 Заметки (${notes.filter(n=>!n.done).length} не сделано)</h2><div class="card">
    ${notes.map(n=>`<div class="chk ${n.done?"done":""}"><input type="checkbox" data-note="${n.id}" ${n.done?"checked":""} ${can.write()?"":"disabled"} aria-label="сделано">
      <div style="flex:1"><div class="t" style="${n.done?"text-decoration:line-through;font-weight:600":""}">${esc(n.text)}</div>
@@ -1403,6 +1444,11 @@ async function vRequest(id,changedCols){
      $("#mok",mb).onclick=e=>act(e.target,async()=>{await api("POST","/api/vs/request/pick",{item:it.id,place:$("#pkp",mb).value.trim(),tool:$("#pkt",mb).value.trim()});closeModal();await refresh()},"Сохранено")}))});
   const rfp=$("#rfp");if(rfp)rfp.onchange=()=>act(null,async()=>{await uploadReqFiles(id,rfp.files,$("#rfk").value);await refresh()},"Фото загружено");
   const sn=$("#shNew");if(sn)sn.onclick=()=>shipmentForm(id,refresh);
+  {const pb=$("#rqps");if(pb)all("passes",`request="${id}"`,"-created").then(P=>{if(!pb.isConnected)return;   // 1.9.61: пропуска по заявке — черновики и подтверждённые
+    pb.innerHTML=P.length?P.map(x=>`<a class="item" data-psid="${x.id}" style="display:block;cursor:pointer"><b>🛡 ${esc(x.title)}</b> <span class="pill ${x.status==="draft"?"y":"g"}">${x.status==="draft"?"ЧЕРНОВИК":"ПОДТВЕРЖДЁН"}</span><div class="muted">строк: ${jarr(x.rows).filter(r=>r.n).length} · ${esc(x.by_name||"")} · ${dt(x.created)}</div></a>`).join("")
+      :`<div class="muted">Пропусков нет. Кнопка ниже или команда ⚡ «пропуск ${esc(r.number)}».</div>`;
+    pb.querySelectorAll("[data-psid]").forEach(a=>a.onclick=()=>passEdit(P.find(z=>z.id===a.dataset.psid)))}).catch(()=>{pb.innerHTML='<div class="muted">—</div>'});
+   const pn=$("#rqpsNew");if(pn)pn.onclick=e=>act(e.target,()=>cmdPass({request:id}))}
   $("#rqxl").onclick=e=>act(e.target,()=>exportRequest(r,items,ships));
   const cl=$("#rqclose");const oldClose=()=>{const short=items.filter(i=>itemState(i)!=="full");const hasPh=files.some(f=>f.kind==="close"&&f.request===id);
     const transit=ships.filter(x=>x.status==="preparing"||x.status==="sent");const over=items.filter(i=>overQ(i)>0);
@@ -2424,7 +2470,7 @@ function langBind(root){const R=()=>{const b=$("#langbox");if(b){b.innerHTML=lan
     window.open(`https://translate.yandex.ru/?source_lang=${to()?"ru":tl}&target_lang=${to()?tl:"ru"}&text=${encodeURIComponent(v)}`,"_blank","noopener")}}
 /* --- страницы: «Инструменты» (калькулятор + переводчик) в основном складе, «Переводчик» у Монтажа --- */
 async function vTools(id,changed){if(role()===""||S.user.scope)return vHome();if(changed&&($("#calcbox")||$("#langbox")))return;const tab=id==="lang"?"lang":"calc";
-  $("#main").innerHTML=`<h1>🧰 Инструменты</h1><div class="tabs" style="margin-bottom:10px"><button class="${tab==="calc"?"on":""}" data-tt="calc">🧮 Калькулятор металлопроката</button><button class="${tab==="lang"?"on":""}" data-tt="lang">🗣 Переводчик</button><button class="btn" id="tlSpd" style="margin-left:6px">⏱ Скорость</button><a class="btn" id="tlGame" href="/game.html" style="margin-left:6px">🎮 Игра «Кладовщики»</a><a class="btn" id="tlTale" href="/skazka.html" style="margin-left:6px">📜 Сказка о Чернославе</a><a class="btn" id="tlVedma" href="/vedma.html" style="margin-left:6px">🧹 Чернослав против ведьмы</a></div>
+  $("#main").innerHTML=`<h1>🧰 Инструменты</h1><div class="tabs" style="margin-bottom:10px"><button class="${tab==="calc"?"on":""}" data-tt="calc">🧮 Калькулятор металлопроката</button><button class="${tab==="lang"?"on":""}" data-tt="lang">🗣 Переводчик</button><button class="btn" id="tlSpd" style="margin-left:6px">⏱ Скорость</button></div>
    <div class="card" id="${tab==="calc"?"calcbox":"langbox"}">${tab==="calc"?calcHtml():langHtml()}</div>`;
   document.querySelectorAll("[data-tt]").forEach(b=>b.onclick=()=>{location.hash="#/tools/"+b.dataset.tt});
   {const sp=$("#tlSpd");if(sp)sp.onclick=spdShow}
@@ -5783,6 +5829,135 @@ function xfEditB(f,b,d,done){
    $("#mok",box).onclick=e=>act(e.target,async()=>{const h=$("#xh",box),r=$("#xr",box);await api("POST","/api/vs/fields/save",{form:f,builtin:true,key:b[0],core:!!b[3],label:$("#xl",box).value,hidden:h?h.checked:false,required:r?r.checked:false});closeModal();await done()},"Сохранено")})}
 
 /* ---------- Модальное окно ---------- */
+/* ===================== 1.9.61: ⚡ КОМАНДЫ · ПУЛЬТ · ПРОПУСК ПО КОМАНДЕ ===================== */
+const cmdOk=()=>!!S.user&&!S.user.scope&&!can.mz()&&!can.coord()&&!can.skkView()&&!can.linkOnly()&&!appOn();
+const CMD_EX=["пропуск 7015","пропуск 7015 первые две","propusk 7015 1,3","открытые заявки","на почте","приёмка","долг подписи","пропуска черновики","заявка 7015","упд 83464"];
+const NUMW={jedna:1,jednu:1,jedan:1,prvu:1,одна:1,одну:1,один:1,первую:1,dve:2,dva:2,две:2,два:2,obe:2,tri:3,три:3,"četiri":4,cetiri:4,четыре:4,pet:5,пять:5,"šest":6,sest:6,шесть:6,sedam:7,семь:7,osam:8,восемь:8,devet:9,девять:9,deset:10,десять:10};
+// позиции: «первые две», «prve dve», «1,2», «1-3», «все»
+function cmdPos(rest){const w=String(rest||"").toLowerCase().replace(/ё/g,"е").replace(/[,;.]/g," ").split(/\s+/).filter(Boolean);
+  if(w.some(x=>/^(sve|все|всё)$/.test(x)))return [];
+  const rng=n=>Array.from({length:Math.min(n,200)},(_,i)=>i+1);
+  const fi=w.findIndex(x=>/^(prv|перв)/.test(x));
+  if(fi>=0){for(const x of [w[fi+1],w[fi-1]]){if(!x)continue;const n=/^\d+$/.test(x)?+x:NUMW[x];if(n)return rng(n)}return [1]}
+  const L=[];String(rest).replace(/(\d+)\s*[-–—]\s*(\d+)/g,(m,a,b)=>{for(let i=+a;i<=+b&&L.length<200;i++)L.push(i);return " "}).replace(/\d+/g,m=>{L.push(+m);return m});
+  if(!L.length){const nw=w.map(x=>NUMW[x]).find(Boolean);if(nw)return rng(nw)}
+  return [...new Set(L)].filter(x=>x>0)}
+const CMD_TILE=[[/po[sš]t|почт/,"mail","📬 Заявки на почте"],[/otvoren|открыт/,"open","📋 Открытые заявки"],[/dug|долг|potpis|подпис/,"debt","✍ Долг — нет подписей"],[/prij[eo]m|при[её]мк|priem/,"rcp","▣ Приёмка — что не закончено"],[/^(propusk|пропуск|propusci|черновик)/,"pass","🛡 Пропуска — черновики"],[/^(pult|пульт)$/,"","⚡ Пульт"]];
+function cmdParse(t){const raw=String(t||"").trim();const lc=raw.toLowerCase().replace(/ё/g,"е");if(!lc)return null;
+  let m=raw.match(/^(?:propusk|пропуск|pass)\s*(?:za|по|на|за|для)?\s*(?:zajavk\S*|заявк\S*)?\s*№?\s*([^\s,]*\d[^\s,]*)\s*(.*)$/i);   // номер — как написан (буквы не в нижнем регистре)
+  if(m){const pos=cmdPos(m[2]);return {kind:"pass",no:m[1],pos,label:`🛡 Пропуск по заявке № ${m[1]} — ${pos.length?"позиции "+pos.join(", "):"все позиции"}`}}
+  m=raw.match(/^(?:zajavk\S*|заявк\S*)\s*№?\s*([^\s,]*\d[^\s,]*)$/i);if(m)return {kind:"req",no:m[1],label:"📋 Открыть заявку № "+m[1]};
+  m=raw.match(/^(?:upd|упд)\s*№?\s*(.+)$/i);if(m)return {kind:"find",q:m[1].trim(),label:"🔎 УПД № "+m[1].trim()+" — материалы, приёмка, СКК"};
+  for(const [re,tile,label] of CMD_TILE)if(re.test(lc))return {kind:"tile",tile,label};
+  return {kind:"find",q:raw,label:"🔎 Искать «"+raw+"» везде"}}
+async function cmdRun(c){
+  if(c.kind==="pass")return cmdPass({no:c.no,pos:c.pos});
+  if(c.kind==="tile"){location.hash="#/pult"+(c.tile?"/"+c.tile:"");return}
+  if(c.kind==="req"){const n=c.no.toUpperCase().replace(/[^0-9A-ZА-ЯЁ]/g,"");const j=await api("GET","/api/collections/requests/records?perPage=5&skipTotal=1&sort=-created&fields=id,number&filter="+encodeURIComponent(`number_norm="${n}"`));
+    if(j.items.length){location.hash="#/request/"+j.items[0].id;return}location.hash="#/find/"+encodeURIComponent(c.no);return}
+  location.hash="#/find/"+encodeURIComponent(c.q)}
+async function cmdPass(b){if(!can.write())throw new Error("Пропуск может делать кладовщик, руководитель или администратор.");
+  const j=await api("POST","/api/vs/pass/draft",b);
+  if(j.many){modal(`<h3>Какая заявка?</h3><div class="muted">По номеру «${esc(b.no)}» нашлось несколько.</div>${j.many.map(r=>`<button class="btn" style="display:block;width:100%;margin-top:6px;text-align:left" data-mr="${r.id}"><b>№ ${esc(r.number)}</b> ${esc(r.object||"")}</button>`).join("")}<button class="btn" data-close style="margin-top:10px">Отмена</button>`,
+    box=>box.querySelectorAll("[data-mr]").forEach(x=>x.onclick=()=>act(x,()=>cmdPass({request:x.dataset.mr,pos:b.pos}))));return}
+  toast(j.existed?(j.replaced?"Черновик пропуска обновлён по позициям":"Открыт ваш черновик пропуска"):"Черновик пропуска сохранён: "+j.pass.title,"ok");passEdit(j.pass)}
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+function cmdVoice(inp,upd,btn){try{const r=new SR();r.lang="ru-RU";r.interimResults=true;r.onresult=e=>{inp.value=[...e.results].map(x=>x[0].transcript).join("");upd()};
+  r.onend=()=>{btn.textContent="🎤"};r.onerror=()=>{btn.textContent="🎤";toast("Голос не распознан — напишите или нажмите микрофон на клавиатуре","err")};btn.textContent="⏺";r.start()}
+  catch(_){toast("Голосовой ввод здесь недоступен — используйте микрофон на клавиатуре","err")}}
+function cmdOpen(pre){if(!cmdOk())return;let o=$("#cmdk");if(o)o.remove();o=document.createElement("div");o.id="cmdk";o.className="cmdk";
+  o.innerHTML=`<div class="box" role="dialog" aria-label="Команда"><div class="in"><span style="font-size:22px">⚡</span><input id="cmdki" autocomplete="off" placeholder="Например: пропуск 7015 первые две" value="${esc(pre||"")}">${SR?'<button class="btn sm" id="cmdkmic" type="button" aria-label="Сказать голосом">🎤</button>':""}<button class="btn sm" id="cmdkgo" type="button" aria-label="Выполнить">↵</button></div>
+   <div class="hint" id="cmdkh"></div><div class="ex">${CMD_EX.map(x=>`<button type="button" data-cx="${esc(x)}">${esc(x)}</button>`).join("")}</div>
+   <div style="margin-top:10px;font-size:12px;color:#64748b">Enter — выполнить · Esc — закрыть · Ctrl+K — с любой страницы. Пропуск сохраняется черновиком, пока вы его не подтвердите.</div></div>`;
+  document.body.appendChild(o);const inp=$("#cmdki",o);const upd=()=>{const c=cmdParse(inp.value);$("#cmdkh",o).textContent=c?"Понял: "+c.label:"Напишите или скажите, что сделать"};inp.oninput=upd;upd();
+  const go=async()=>{const c=cmdParse(inp.value);if(!c)return;o.remove();try{await cmdRun(c)}catch(e){toast(e.message,"err")}};
+  inp.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();go()}else if(e.key==="Escape")o.remove()};$("#cmdkgo",o).onclick=go;
+  o.addEventListener("click",e=>{if(e.target===o)o.remove()});o.querySelectorAll("[data-cx]").forEach(b=>b.onclick=()=>{inp.value=b.dataset.cx;upd();inp.focus()});
+  const mic=$("#cmdkmic",o);if(mic)mic.onclick=()=>cmdVoice(inp,upd,mic);setTimeout(()=>inp.focus(),30)}
+document.addEventListener("keydown",e=>{if(!S.user||!cmdOk())return;const k=(e.key||"").toLowerCase();
+  if((e.ctrlKey||e.metaKey)&&k==="k"){e.preventDefault();cmdOpen();return}
+  if(k==="/"&&!$("#cmdk")&&!$("#modal")&&!/^(input|textarea|select)$/i.test((document.activeElement||{}).tagName||"")&&!(document.activeElement&&document.activeElement.isContentEditable)){e.preventDefault();cmdOpen()}});
+
+/* ---------- пропуск: черновик сохраняется сам, «Подтвердить» — и только тогда печать ---------- */
+function passEdit(p){const W=can.write();let st=p.status||"draft";const rows=jarr(p.rows);if(!rows.length)rows.push({n:"",q:"",t:"",w:"",d:""});
+  const rowH=r=>`<tr data-qr><td><input data-k="n" value="${esc(r.n||"")}" list="qpdl" autocomplete="off" placeholder="Наименование — начните писать"></td><td><input data-k="q" value="${esc(r.q||"")}" style="width:80px"></td><td><input data-k="t" value="${esc(r.t||"")}" style="width:62px" placeholder="чч:мм"></td><td><input data-k="w" value="${esc(r.w||"")}" data-sug="pass_resp"></td><td><input data-k="d" value="${esc(r.d||"")}" data-sug="pass_dest"></td><td><button class="btn sm" type="button" data-qrx aria-label="Удалить строку">✕</button><input type="hidden" data-k="item" value="${esc(r.item||"")}"></td></tr>`;
+  modal(`<div class="row" style="align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0;flex:1">🛡 ${esc(p.title||"Материальный пропуск")}</h3><span class="pill" id="qpsp"></span></div>
+   <div class="muted" id="qpinfo" style="margin-top:4px"></div><datalist id="qpdl"></datalist>
+   <div class="g2x" style="margin-top:8px"><div><label class="f" for="qpn">№ пропуска</label><input id="qpn" value="${esc(p.no||"")}"></div><div><label class="f" for="qpd">Дата</label><input id="qpd" type="date" value="${esc(p.date||"")}"></div></div>
+   <label class="f" for="qpv">Машина</label><input id="qpv" value="${esc(p.vehicle||"")}" data-sug="vehicle" placeholder="госномер, водитель">
+   <div class="tw" style="margin-top:8px"><table class="pr"><tr><th>Наименование имущества</th><th>Кол-во</th><th>Время</th><th>Ответственный</th><th>Куда</th><th></th></tr><tbody id="qprb">${rows.map(rowH).join("")}</tbody></table></div>
+   <button class="btn sm" type="button" id="qpra" style="margin-top:6px">＋ Строка</button>
+   <label class="f" for="qph">Руководитель подразделения (организации)</label><input id="qph" value="${esc(p.head||"")}" data-sug="pass_head">
+   <label class="f" for="qpm">Материально-ответственное лицо, подразделение</label><input id="qpm" value="${esc(p.mol||"")}" data-sug="pass_mol">
+   <div class="muted" id="qpst" style="margin-top:8px;min-height:20px"></div><div class="row" style="margin-top:10px;gap:6px;flex-wrap:wrap" id="qpbtn"></div>`,
+  box=>{const tb=$("#qprb",box);const css=document.createElement("style");css.textContent="#modal table.pr input{min-height:38px;padding:6px;width:100%;min-width:90px}#modal table.pr td{padding:3px}";box.appendChild(css);sugAttach(box);
+    const dl=$("#qpdl",box);const bindR=tr=>{const x=tr.querySelector("[data-qrx]");if(x)x.onclick=()=>{tr.remove();sv();need()};const inp=tr.querySelector('[data-k="n"]');mpzSug(inp,dl,m=>{const q=tr.querySelector('[data-k="q"]');if(q&&!q.value.trim())q.value=(m.unit||"")+" "})};
+    tb.querySelectorAll("tr").forEach(bindR);
+    const read=()=>({id:p.id,no:$("#qpn",box).value.trim(),date:$("#qpd",box).value,vehicle:$("#qpv",box).value.trim(),head:$("#qph",box).value.trim(),mol:$("#qpm",box).value.trim(),
+      rows:[...tb.querySelectorAll("tr")].map(tr=>{const g=k=>(tr.querySelector(`[data-k="${k}"]`)||{value:""}).value.trim();return {n:g("n"),q:g("q"),t:g("t"),w:g("w"),d:g("d"),item:g("item")}}).filter(r=>r.n||r.q)});
+    const need=()=>{const dr=st==="draft";["#qpn","#qpv","#qph","#qpm"].forEach(q=>$(q,box).classList.toggle("qneed",dr&&!$(q,box).value.trim()));
+      tb.querySelectorAll("tr").forEach(tr=>["n","q"].forEach(k=>{const el=tr.querySelector(`[data-k="${k}"]`);el.classList.toggle("qneed",dr&&!el.value.trim())}))};
+    let t=0;const save=async()=>{clearTimeout(t);try{await api("POST","/api/vs/pass/save",read());const el=$("#qpst",box);if(el)el.textContent="✓ Черновик сохранён "+new Date().toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})}catch(e){const el=$("#qpst",box);if(el)el.textContent="⚠ Не сохранено: "+e.message;throw e}};
+    const sv=()=>{if(st!=="draft"||!W)return;clearTimeout(t);t=setTimeout(()=>save().catch(()=>{}),600)};
+    box.addEventListener("input",()=>{need();sv()});box.addEventListener("change",()=>{need();sv()});
+    $("#qpra",box).onclick=()=>{tb.insertAdjacentHTML("beforeend",rowH({n:"",q:"",t:"",w:"",d:""}));const tr=tb.lastElementChild;sugAttach(tr);bindR(tr);tr.querySelector('[data-k="n"]').focus();need()};
+    const paint=()=>{const dr=st==="draft";const sp=$("#qpsp",box);sp.className="pill "+(dr?"y":"g");sp.textContent=dr?"ЧЕРНОВИК":"ПОДТВЕРЖДЁН";
+      $("#qpinfo",box).textContent=dr?"Сохраняется сам. Проверьте поля в жёлтой рамке и нажмите «Подтвердить» — после этого можно печатать.":"Подтвердил: "+(p.confirmed_by_name||"")+(p.confirmed_at?" · "+dt(p.confirmed_at):"");
+      box.querySelectorAll("input,textarea").forEach(el=>{if(el.type!=="hidden")el.disabled=!dr||!W});box.querySelectorAll("[data-qrx],#qpra").forEach(b=>b.hidden=!dr||!W);
+      $("#qpbtn",box).innerHTML=dr?(W?`<button class="btn p grow" id="qpok" type="button">✅ ПОДТВЕРДИТЬ</button><button class="btn" id="qpdel" type="button">🗑 Удалить черновик</button>`:"")+`<button class="btn" data-close>Закрыть</button>`
+        :`<button class="btn p grow" id="qpp" type="button">🖨 ПЕЧАТЬ / PDF</button><button class="btn acc grow" id="qppf" type="button">🖨 С ФОТО</button>${can.admin()?'<button class="btn" id="qpback" type="button">↩ В черновик</button>':""}<button class="btn" data-close>Закрыть</button>`;
+      const ok=$("#qpok",box);if(ok)ok.onclick=e=>act(e.target,async()=>{await save();const r=await api("POST","/api/vs/pass/confirm",{id:p.id});Object.assign(p,r);st="confirmed";paint();need()},"Пропуск подтверждён");
+      const del=$("#qpdel",box);if(del)del.onclick=()=>{if(!confirm("Удалить черновик пропуска?"))return;act(del,async()=>{clearTimeout(t);await api("POST","/api/vs/pass/delete",{id:p.id});closeModal();if(S.route.startsWith("request/"))render();if(S.route.startsWith("pult"))pultLoad()},"Черновик удалён")};
+      const pp=$("#qpp",box);if(pp)pp.onclick=e=>act(e.target,()=>passPrint(p,false));const pf=$("#qppf",box);if(pf)pf.onclick=e=>act(e.target,()=>passPrint(p,true));
+      const bk=$("#qpback",box);if(bk)bk.onclick=e=>act(e.target,async()=>{const r=await api("POST","/api/vs/pass/confirm",{id:p.id,back:true});Object.assign(p,r);st="draft";paint();need()},"Снова черновик — можно менять")};
+    paint();need()})}
+async function passPrint(p,withPh){let photos=[];
+  if(withPh){if(p.request){const F=await all("request_files",`request="${p.request}"`,"created");const im=F.filter(f=>/\.(jpe?g|png|webp)$/i.test(f.file));
+      if(im.length){const ft=await fileToken();photos=im.slice(0,12).map(f=>`/api/files/request_files/${f.id}/${encodeURIComponent(f.file)}?thumb=600x0&token=${ft}`)}}
+    if(!photos.length)throw new Error("Нет фото груза по этой заявке — печатайте без фото или добавьте фото в отгрузку.")}
+  const rows=jarr(p.rows).filter(r=>r.n||r.q);const dd=p.date?new Date(p.date+"T12:00"):new Date();closeModal();
+  const old=document.title;document.title=p.title||"Материальный пропуск";   // имя файла при «Сохранить как PDF»: «Велесстрой склад — заявка № 7015»
+  printPass({no:p.no||"",date:dd,vehicle:p.vehicle||"",rows,head:p.head||"",mol:p.mol||"",photos});
+  const x=$("#pfX");if(x)x.addEventListener("click",()=>{document.title=old})}
+
+/* ---------- ⚡ Пульт: квадраты — что открыто и чего не хватает ---------- */
+const PLT={tile:"open",bad:false,q:"",d:null,t:0,iv:0};
+const PLT_T=[["mail","📬","Заявки на почте"],["open","📋","Открытые заявки"],["debt","✍","Долг — нет подписей"],["rcp","▣","Приёмка"],["pass","🛡","Пропуска — черновики"]];
+const MISS_IC={photo:"📷",sign:"✍",phone:"📞",late:"⏱",mail:"📬",approve:"⏳",nc:"⚠",upd:"🔢",sup:"🏢",items:"📦",place:"📍",conf:"✅",veh:"🚚",head:"👤"};
+const missCls=k=>({photo:"r",sign:"r",late:"r",nc:"r",upd:"r",approve:"y",place:"y",phone:"y",veh:"y",head:"y",items:"y",sup:"y",mail:"b",conf:"b"}[k]||"");
+const missReal=i=>i.miss.some(m=>m.k!=="conf"&&m.k!=="mail");
+function countUp(el,n){const from=+(el.dataset.v||0);el.dataset.v=n;if(from===n&&el.textContent!=="…"){el.textContent=n;return}const t0=performance.now();
+  const step=t=>{const k=Math.min(1,(t-t0)/450);el.textContent=Math.round(from+(n-from)*(1-Math.pow(1-k,3)));if(k<1&&el.isConnected)requestAnimationFrame(step)};requestAnimationFrame(step)}
+async function vPult(sub,changed){
+  if(!cmdOk()){location.hash="#/home";return}
+  if(changed&&$("#pultg")){if(changed.some(c=>["requests","request_items","request_shipments","request_files","receipts","attachments"].includes(c))){clearTimeout(PLT.t);PLT.t=setTimeout(pultLoad,1200)}return}
+  if(sub&&PLT_T.some(t=>t[0]===sub))PLT.tile=sub;
+  $("#main").innerHTML=`<div class="fx"><div class="top"><h1>⚡ Пульт</h1><form class="cmd" id="pcf"><input id="pcmd" autocomplete="off" placeholder="Команда: пропуск 7015 первые две · открытые заявки…"><button class="btn" type="submit" aria-label="Выполнить">⚡</button></form><span class="muted" id="pultat"></span></div>
+   <div class="muted" id="pcmh" style="margin:-4px 0 10px;color:#7dd3fc;min-height:20px"></div>
+   <div class="fxg" id="pultg">${PLT_T.map(t=>`<div class="fxt" data-pt="${t[0]}" tabindex="0" role="button" aria-label="${t[2]}"><div class="ic">${t[1]}</div><div class="n">…</div><div><div class="t">${t[2]}</div><div class="s"></div></div></div>`).join("")}</div>
+   <div class="row" style="gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap"><input id="pultq" placeholder="🔎 номер, объект, поставщик" value="${esc(PLT.q)}" autocomplete="off" style="flex:1;min-width:160px;background:#0f172a;color:#fff;border-color:#1e3a5f">
+    <label class="muted" style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="pultbad" ${PLT.bad?"checked":""} style="width:20px;height:20px"> только где чего-то нет</label></div>
+   <div class="fxl" id="pultl"><div class="muted">Загрузка…</div></div></div>`;
+  $("#pcmd").oninput=()=>{const c=cmdParse($("#pcmd").value);$("#pcmh").textContent=c?"Понял: "+c.label:""};
+  $("#pcf").onsubmit=e=>{e.preventDefault();const c=cmdParse($("#pcmd").value);if(c)cmdRun(c).catch(er=>toast(er.message,"err"))};
+  document.querySelectorAll("[data-pt]").forEach(el=>{const pick=()=>{PLT.tile=el.dataset.pt;history.replaceState(null,"","#/pult/"+PLT.tile);S.route="pult/"+PLT.tile;pultPaint()};el.onclick=pick;el.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();pick()}}});
+  {let t=0;$("#pultq").oninput=()=>{clearTimeout(t);t=setTimeout(()=>{PLT.q=$("#pultq").value.trim();pultList()},250)}}
+  $("#pultbad").onchange=e=>{PLT.bad=e.target.checked;pultList()};
+  clearInterval(PLT.iv);PLT.iv=setInterval(()=>{if(!$("#pultg")){clearInterval(PLT.iv);return}if(!document.hidden)pultLoad()},60000);
+  await pultLoad()}
+async function pultLoad(){let d;try{d=await api("GET","/api/vs/pult")}catch(e){const l=$("#pultl");if(l)l.innerHTML=`<div class="banner red">${esc(e.message)}</div>`;return}if(!$("#pultg"))return;PLT.d=d;pultPaint()}
+function pultPaint(){const d=PLT.d;if(!d||!$("#pultg"))return;
+  document.querySelectorAll("[data-pt]").forEach(el=>{const k=el.dataset.pt,x=d[k]||{n:0,bad:0,items:[]};const cnt={};x.items.forEach(i=>i.miss.forEach(m=>{if(m.k!=="conf"&&m.k!=="mail")cnt[m.k]=(cnt[m.k]||0)+1}));
+    countUp(el.querySelector(".n"),x.n);el.classList.toggle("on",k===PLT.tile);el.classList.toggle("bad",x.bad>0);el.classList.toggle("ok",x.n>0&&!x.bad);
+    el.querySelector(".s").innerHTML=x.n?(x.bad?`${x.bad} — чего-то нет`:"всё на месте ✓")+(Object.keys(cnt).length?"<br>"+Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([k,v])=>`${MISS_IC[k]||"•"} ${v}`).join(" · "):""):"пусто"});
+  $("#pultat").textContent="обновлено "+new Date().toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"});pultList()}
+function pultList(){const box=$("#pultl");if(!box||!PLT.d)return;const x=PLT.d[PLT.tile]||{n:0,items:[]};const T=PLT_T.find(t=>t[0]===PLT.tile);
+  let L=x.items;if(PLT.bad)L=L.filter(missReal);if(PLT.q)L=L.filter(i=>wmatch(PLT.q,[i.no,i.t1,i.t2].join(" ")));
+  box.innerHTML=`<h3 style="color:#fff;margin:4px 0 8px">${T[1]} ${T[2]} — ${L.length}${L.length!==x.n?" из "+x.n:""}</h3>`+(L.length?L.map(i=>`<a class="fxi" ${i.pass?`data-pass="${i.pass}" href="#/pult/pass"`:`href="${i.href}"`}>
+    <div><b>${i.no?"№ "+esc(i.no):"без номера"}</b> <span style="color:#cbd5e1">${esc(i.t1||"")}</span>${i.t2?` <span class="muted">· ${esc(i.t2)}</span>`:""}<span class="muted" style="float:right;font-size:13px">${i.at?dt(i.at):""}</span></div>
+    <div>${i.miss.length?i.miss.map(m=>`<span class="chip ${missCls(m.k)}">${MISS_IC[m.k]||"•"} ${esc(m.t)}</span>`).join(""):'<span class="chip b">✓ всё на месте</span>'}</div></a>`).join("")
+    :`<div class="muted" style="padding:10px">${PLT.bad||PLT.q?"Ничего не найдено":"Пусто"}</div>`);
+  box.querySelectorAll("[data-pass]").forEach(a=>a.onclick=async e=>{e.preventDefault();try{passEdit(await api("GET","/api/collections/passes/records/"+a.dataset.pass))}catch(er){toast(er.message,"err")}})}
 function modal(html,bind){closeModal();const m=document.createElement("div");m.className="modal";m.id="modal";m.innerHTML=`<div class="box">${html}</div>`;
   m.addEventListener("click",e=>{if(e.target===m||e.target.hasAttribute("data-close"))closeModal()});document.body.appendChild(m);
   bind&&bind(m);const f=m.querySelector("input:not([type=checkbox]),textarea,select");if(f&&innerWidth>860)f.focus()}
