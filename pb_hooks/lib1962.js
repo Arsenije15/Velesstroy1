@@ -33,7 +33,7 @@ function call(app, body, path) {
 }
 // ---------- данные программы для помощника ----------
 const lc = (s) => String(s || "").toLowerCase().replace(/ё/g, "е");
-function W(q) { return lc(q).replace(/[^0-9a-zа-я.,\/\-\s×х]/g, " ").split(/\s+/).filter((w) => w.length >= 2).slice(0, 6); }
+function W(q) { return require(`${__hooks}/lib1964.js`).W(q); }   // 1.9.64: с основой слова («штукатурки» → «штукатурк»)
 function rows(app, sql, model, P) { const R = arrayOf(new DynamicModel(model)); const q = app.db().newQuery(sql); if (P) q.bind(P); q.all(R); return JSON.parse(JSON.stringify(R)); }
 function like(col, ws) { const P = {}; const s = ws.map((w, i) => { P["w" + i] = "%" + w + "%"; return col + " LIKE {:w" + i + "}"; }).join(" AND "); return { s: s || "1=1", P }; }
 const jarr = (v) => { if (Array.isArray(v)) return v; try { const x = JSON.parse(v || "[]"); return Array.isArray(x) ? x : []; } catch (_) { return []; } };
@@ -47,8 +47,8 @@ function searchMaterial(app, q) {
   out.operativka = rows(app, "SELECT COALESCE(pid,'') AS pid, COALESCE(NULLIF(name_1c,''), NULLIF(name_proj,''), name_supp) AS name, COALESCE(unit,'') AS unit, COALESCE(qty,0) AS qty, COALESCE(qty_delivered,0) AS delivered, COALESCE(supplier,'') AS supplier, COALESCE(upd_keys,'') AS upd, COALESCE(object,'') AS object, COALESCE(stage,'') AS stage FROM oper_rows WHERE " + L.s + " LIMIT 10",
     { pid: "", name: "", unit: "", qty: 0.5, delivered: 0.5, supplier: "", upd: "", object: "", stage: "" }, L.P);
   out.mpz = rows(app, "SELECT name, COALESCE(unit,'') AS unit, COALESCE(qty_end,0) AS qty, COALESCE(warehouse,'') AS warehouse, COALESCE(period,'') AS period FROM mpz_stock WHERE " + L.s + " ORDER BY qty_end DESC LIMIT 8", { name: "", unit: "", qty: 0.5, warehouse: "", period: "" }, L.P);
-  out.open_requests = rows(app, "SELECT q.number AS no, q.object AS object, q.recipient AS applicant, i.material AS material, COALESCE(i.unit,'') AS unit, COALESCE(i.qty_ordered,0) AS ordered, COALESCE(i.qty_issued,0) AS issued FROM request_items i JOIN requests q ON q.id = i.request WHERE q.status = 'open' AND " + like("i.search_lc", ws).s + " ORDER BY q.created DESC LIMIT 10",
-    { no: "", object: "", applicant: "", material: "", unit: "", ordered: 0.5, issued: 0.5 }, like("i.search_lc", ws).P);
+  out.open_requests = rows(app, "SELECT q.id AS rid, q.number AS no, q.object AS object, q.recipient AS applicant, i.material AS material, COALESCE(i.unit,'') AS unit, COALESCE(i.qty_ordered,0) AS ordered, COALESCE(i.qty_issued,0) AS issued FROM request_items i JOIN requests q ON q.id = i.request WHERE q.status = 'open' AND " + like("i.search_lc", ws).s + " ORDER BY q.created DESC LIMIT 10",
+    { rid: "", no: "", object: "", applicant: "", material: "", unit: "", ordered: 0.5, issued: 0.5 }, like("i.search_lc", ws).P);
   out.open_acts = rows(app, "SELECT COALESCE(act_no,'') AS act, COALESCE(act_date,'') AS date, COALESCE(supplier,'') AS supplier, COALESCE(material,'') AS material, COALESCE(reason,'') AS reason FROM acts WHERE open = TRUE AND " + L.s + " LIMIT 6", { act: "", date: "", supplier: "", material: "", reason: "" }, L.P);
   out.leftovers_to_issue = rows(app, "SELECT COALESCE(number,'') AS request, COALESCE(material,'') AS material, COALESCE(qty,0) AS qty, COALESCE(unit,'') AS unit, COALESCE(recipient,'') AS recipient FROM leftovers WHERE status != 'done' AND " + L.s + " LIMIT 6", { request: "", material: "", qty: 0.5, unit: "", recipient: "" }, L.P);
   out.arrivals_90d = arrivals(app, q, 90).totals;
@@ -86,10 +86,11 @@ function findUpd(app, no) {
 }
 const SCREENS = { home: "#/home", pult: "#/pult", requests: "#/requests", receive: "#/receive", skk: "#/skk", map: "#/map", mpz: "#/mpz", history: "#/history", tools: "#/tools", resources: "#/resources", report: "#/report", topics: "#/topics" };
 const TOOLS = [
-  { name: "search_material", d: "Умный поиск материала везде: фактический остаток, флажки на карте склада, оперативка (PID, заказано/поставлено, поставщик, УПД), МПЗ, открытые заявки, открытые акты, остатки к выдаче, приход за 90 дней. Пиши основу слова (арматур, швеллер 16, кабель ввг).", p: { query: ["string", "что искать"] }, req: ["query"] },
+  { name: "material_issues", d: "Выдача материала по заявкам: сколько выдано всего (по единицам), по каким заявкам, кому (заявитель), на какой объект, когда, подписаны ли. Для вопросов «сколько выдано», «по каким заявкам», «кому выдавали», «куда ушло». Учитывает все заявки — открытые и закрытые.", p: { query: ["string", "материал (основа слова: штукатурк основит, арматур 12)"], days: ["integer", "за сколько дней (пусто — за всё время)"] }, req: ["query"] },
+  { name: "search_material", d: "Умный поиск материала везде: фактический остаток, флажки на карте склада, оперативка (PID, заказано/поставлено, поставщик, УПД), МПЗ, открытые заявки, открытые акты, остатки к выдаче, приход за 90 дней. Где лежит и сколько есть. Для «сколько выдано / по каким заявкам» — material_issues.", p: { query: ["string", "что искать"] }, req: ["query"] },
   { name: "material_arrivals", d: "Сколько материала пришло за период (приёмка + УПД СКК), по датам и УПД, итог по единицам.", p: { query: ["string", "материал"], days: ["integer", "за сколько дней (3 месяца = 90)"] }, req: ["query"] },
   { name: "request_details", d: "Заявка по номеру: объект, заявитель, позиции (заказано/выдано, PID, поставщик, УПД), подписи.", p: { number: ["string", "номер заявки как написан"] }, req: ["number"] },
-  { name: "list_requests", d: "Списки с тем, чего не хватает: mail — заявки на почте, open — открытые, debt — закрытые без подписей, receipts — незаконченная приёмка, passes — пропуска.", p: { kind: ["string", "mail|open|debt|receipts|passes"], query: ["string", "фильтр: номер, объект, заявитель (необязательно)"] }, req: ["kind"] },
+  { name: "list_requests", d: "Только списки пульта (НЕ поиск по материалу): mail — заявки на почте, open — открытые, debt — закрытые без подписей, receipts — незаконченная приёмка, passes — пропуска.", p: { kind: ["string", "mail|open|debt|receipts|passes"], query: ["string", "фильтр: номер, объект, заявитель (необязательно)"] }, req: ["kind"] },
   { name: "find_upd", d: "УПД по номеру: у СКК и в моей приёмке, статус, материалы.", p: { number: ["string", "номер УПД"] }, req: ["number"] },
   { name: "make_pass", d: "Сделать черновик материального пропуска по одной или нескольким заявкам. Пользователь потом проверит и подтвердит.", p: { requests: ["array", "номера заявок"], positions: ["array", "номера позиций (только если одна заявка; пусто — все)"] }, req: ["requests"] },
   { name: "open_screen", d: "Открыть экран программы.", p: { screen: ["string", Object.keys(SCREENS).join("|")] }, req: ["screen"] },
@@ -98,13 +99,16 @@ function toolsSpec() {
   return TOOLS.map((t) => ({ type: "function", function: { name: t.name, description: t.d, parameters: { type: "object", required: t.req,
     properties: Object.keys(t.p).reduce((o, k) => { const [ty, ds] = t.p[k]; o[k] = ty === "array" ? { type: "array", items: { type: k === "positions" ? "integer" : "string" }, description: ds } : { type: ty, description: ds }; return o; }, {}) } } }));
 }
-function runTool(app, auth, L, name, a, acts) {
-  a = a || {};
-  if (name === "search_material") return searchMaterial(app, a.query);
-  if (name === "material_arrivals") { const r = arrivals(app, a.query, a.days); acts.push({ type: "arrivals", query: a.query, days: r.days }); return { days: r.days, count: r.count, totals: r.totals, lines: r.lines.slice(0, 20) }; }
-  if (name === "request_details") { const r = requestDetails(app, a.number); if (r.href) acts.push({ type: "nav", hash: r.href, label: "Открыть заявку № " + r.number }); return r; }
+function runTool(app, auth, L, name, a, acts, ev) {
+  a = a || {}; ev = ev || []; const E = require(`${__hooks}/lib1964.js`);
+  const evAdd = (f) => { try { f().forEach((c) => { if (ev.length < 12 && !ev.some((x) => x.h === c.h)) ev.push(c); }); } catch (err) { console.log("ai ev:", err); } };
+  if (name === "material_issues") { const r = E.issues(app, a.query, a.days); evAdd(() => E.evReq(app, r._groups || [], 10)); delete r._groups; return r; }
+  if (name === "search_material") { const r = searchMaterial(app, a.query); evAdd(() => E.evFlags(app, a.query, 4)); evAdd(() => E.evReqIds(app, (r.open_requests || []).map((x) => x.rid), 5));
+    (r.open_requests || []).forEach((x) => { delete x.rid; }); return r; }
+  if (name === "material_arrivals") { const r = arrivals(app, a.query, a.days); acts.push({ type: "arrivals", query: a.query, days: r.days }); evAdd(() => E.evUpd(app, r.lines, 8)); return { days: r.days, count: r.count, totals: r.totals, lines: r.lines.slice(0, 20) }; }
+  if (name === "request_details") { const r = requestDetails(app, a.number); if (r.href) { acts.push({ type: "nav", hash: r.href, label: "Открыть заявку № " + r.number }); evAdd(() => E.evReqIds(app, [r.id], 1)); } return r; }
   if (name === "list_requests") { const r = listRequests(app, a.kind, a.query); acts.push({ type: "nav", hash: "#/pult/" + ({ mail: "mail", open: "open", debt: "debt", receipts: "rcp", passes: "pass" }[a.kind] || "open"), label: "Открыть на пульте" }); return r; }
-  if (name === "find_upd") return findUpd(app, a.number);
+  if (name === "find_upd") { const r = findUpd(app, a.number); evAdd(() => E.evUpd(app, r.results, 6)); return r; }
   if (name === "open_screen") { const h = SCREENS[a.screen] || "#/home"; acts.push({ type: "nav", hash: h, label: "Открыть", auto: true }); return { ok: true, opened: h }; }
   if (name === "make_pass") {
     if (L.WRITE_ROLES.indexOf(auth.getString ? auth.getString("role") : "") < 0 && !L.isSuper(auth)) return { error: "нет прав делать пропуск" };
@@ -119,26 +123,35 @@ function runTool(app, auth, L, name, a, acts) {
 const SYS = "Ты — помощник склада ВЕЛЕССТРОЙ (стройка, Россия) внутри складской программы. Пользователь пишет свободными словами по-русски или по-сербски (латиницей). " +
   "Всегда пользуйся инструментами, чтобы узнать данные программы, — не выдумывай цифры, номера и названия. Если для ответа нужен инструмент — вызови его сразу, без вопросов. " +
   "Пропуск = make_pass: «первые две» — позиции [1,2], «без шестой» — все кроме 6 (сначала узнай число позиций через request_details). Несколько заявок — один пропуск. " +
+  "Вопросы «сколько выдано», «по каким заявкам», «кому выдали», «куда ушёл» материал — material_issues (все заявки, открытые и закрытые), не list_requests. " +
+  "Короткий уточняющий вопрос («по каким заявкам?», «а кому?», «а в октябре?») относится к материалу из предыдущего вопроса — повтори поиск по нему. " +
+  "Отвечай с доказательствами: номера заявок, даты, кто получил, сколько; программа сама покажет под ответом карточки — заявки с фото (подписанная, погрузка), пропуска, УПД с фото, флажки. Ссылок не пиши. " +
   "3 месяца = 90 дней, полгода = 180, неделя = 7. Отвечай коротко и по делу, на языке пользователя; числа с единицами; для списков — короткие строки. Если данных нет — так и скажи.";
 function ask(app, auth, L, history, text) {
   const st = status(app);
   const msgs = [{ role: "system", content: SYS + " Сегодня " + new Date().toISOString().slice(0, 10) + "." }];
   (Array.isArray(history) ? history : []).slice(-6).forEach((m) => { if (m && (m.role === "user" || m.role === "assistant") && m.content) msgs.push({ role: m.role, content: String(m.content).slice(0, 2000) }); });
-  msgs.push({ role: "user", content: String(text || "").slice(0, 1000) });
-  const acts = [], used = [];
+  // 1.9.64: вопрос о выдаче — подсказка модели (иначе путает с «открытыми заявками»); короткий уточняющий — материал из прошлого вопроса
+  let ut = String(text || "").slice(0, 1000);
+  if (/(выда|выдал|получил|по как\S* заявк|кому|куда уш|izda|po koj\S* zajavk|kome)/i.test(ut)) {
+    const pu = (Array.isArray(history) ? history : []).filter((m) => m && m.role === "user" && m.content).map((m) => String(m.content)).pop() || "";
+    ut += "\n\n[подсказка программы: это вопрос о выдаче материала — вызови material_issues" + (ut.split(/\s+/).length <= 4 && pu ? "; материал — из прошлого вопроса: «" + pu.slice(0, 200) + "»" : "") + "]";
+  }
+  msgs.push({ role: "user", content: ut });
+  const acts = [], used = [], ev = [];
   for (let step = 0; step < 4; step++) {
     const j = call(app, { model: "gpt://" + readCfg(app).YC_FOLDER + "/" + st.model, messages: msgs, tools: toolsSpec(), tool_choice: "auto", temperature: 0.1, max_tokens: 1200 });
     const m = (j.choices && j.choices[0] && j.choices[0].message) || {};
     const tc = Array.isArray(m.tool_calls) ? m.tool_calls.slice(0, 4) : [];
-    if (!tc.length) return { answer: String(m.content || "").trim() || "Не понял — скажите иначе.", actions: acts, used };
+    if (!tc.length) return { answer: String(m.content || "").trim() || "Не понял — скажите иначе.", actions: acts, used, ev };
     msgs.push({ role: "assistant", content: m.content || "", tool_calls: tc });
     tc.forEach((c) => {
       const fn = (c.function && c.function.name) || ""; let args = (c.function && c.function.arguments) || {};
       if (typeof args === "string") { try { args = JSON.parse(args || "{}"); } catch (_) { args = {}; } }
-      let res; try { res = runTool(app, auth, L, fn, args, acts); } catch (err) { res = { error: String((err && err.message) || err).slice(0, 300) }; }
+      let res; try { res = runTool(app, auth, L, fn, args, acts, ev); } catch (err) { res = { error: String((err && err.message) || err).slice(0, 300) }; }
       used.push(fn); msgs.push({ role: "tool", tool_call_id: c.id || fn, name: fn, content: JSON.stringify(res).slice(0, 7000) });
     });
   }
-  return { answer: "Готово.", actions: acts, used };
+  return { answer: "Готово.", actions: acts, used, ev };
 }
 module.exports = { readCfg, writeCfg, status, call, ask, arrivals, searchMaterial, requestDetails, TOOLS };
