@@ -67,7 +67,10 @@ function pult(app) {
     if (dr) { if (!p.v) miss.push({ k: "veh", t: "нет машины" }); if (!p.h) miss.push({ k: "head", t: "нет руководителя" }); if (!jarr(p.rw).some((x) => x && x.n)) miss.push({ k: "items", t: "нет строк" }); }
     return { id: p.id, pass: p.id, href: "", no: p.no, t1: p.title, t2: "", at: p.created, miss, draft: dr }; });
   const tile = (L) => ({ n: L.length, bad: L.filter((x) => x.miss.some((m) => m.k !== "conf" && m.k !== "mail" && m.k !== "ok")).length, items: L.slice(0, 300) });
-  return { mail: tile(mail), open: tile(op), debt: tile(dt), rcp: tile(rc), pass: Object.assign(tile(ps), { drafts: ps.filter((x) => x.draft).length }), at: new Date().toISOString() };
+  // 1.9.65: папки «Заявки» / «Поставки (УПД)» — что ждёт подтверждения, что читается, ошибки
+  let ib = []; try { ib = require(`${__hooks}/lib1965.js`).pultItems(app); } catch (_) {}
+  return { mail: tile(mail), open: tile(op), debt: tile(dt), rcp: tile(rc), pass: Object.assign(tile(ps), { drafts: ps.filter((x) => x.draft).length }),
+    inb: Object.assign(tile(ib), { ready: ib.filter((x) => x.miss[0].k === "conf").length, fresh: ib.filter((x) => x.miss[0].k === "mail").length }), at: new Date().toISOString() };
 }
 
 // ---------- «пропуск 7015 [1,2]»: черновик пропуска по заявке ----------

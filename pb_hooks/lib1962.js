@@ -84,7 +84,7 @@ function findUpd(app, no) {
   const X = require(`${__hooks}/lib1960.js`); const j = X.notInSkk(app, no);
   return { results: j.items.slice(0, 8).map((x) => ({ src: x.src === "skk" ? "СКК" : "моя приёмка", number: x.upd_number, supplier: x.supplier, status: x.status, in_skk: x.in_skk, materials: (x.mats || []).slice(0, 25), href: x.src === "skk" ? "#/upd/" + x.id : "#/receipt/" + x.id })) };
 }
-const SCREENS = { home: "#/home", pult: "#/pult", requests: "#/requests", receive: "#/receive", skk: "#/skk", map: "#/map", mpz: "#/mpz", history: "#/history", tools: "#/tools", resources: "#/resources", report: "#/report", topics: "#/topics" };
+const SCREENS = { home: "#/home", pult: "#/pult", requests: "#/requests", receive: "#/receive", skk: "#/skk", map: "#/map", mpz: "#/mpz", history: "#/history", tools: "#/tools", resources: "#/resources", report: "#/report", topics: "#/topics", inbox: "#/inbox/zay", inbox_upd: "#/inbox/upd" };
 const TOOLS = [
   { name: "material_issues", d: "Выдача материала по заявкам: сколько выдано всего (по единицам), по каким заявкам, кому (заявитель), на какой объект, когда, подписаны ли. Для вопросов «сколько выдано», «по каким заявкам», «кому выдавали», «куда ушло». Учитывает все заявки — открытые и закрытые.", p: { query: ["string", "материал (основа слова: штукатурк основит, арматур 12)"], days: ["integer", "за сколько дней (пусто — за всё время)"] }, req: ["query"] },
   { name: "search_material", d: "Умный поиск материала везде: фактический остаток, флажки на карте склада, оперативка (PID, заказано/поставлено, поставщик, УПД), МПЗ, открытые заявки, открытые акты, остатки к выдаче, приход за 90 дней. Где лежит и сколько есть. Для «сколько выдано / по каким заявкам» — material_issues.", p: { query: ["string", "что искать"] }, req: ["query"] },
@@ -93,6 +93,8 @@ const TOOLS = [
   { name: "list_requests", d: "Только списки пульта (НЕ поиск по материалу): mail — заявки на почте, open — открытые, debt — закрытые без подписей, receipts — незаконченная приёмка, passes — пропуска.", p: { kind: ["string", "mail|open|debt|receipts|passes"], query: ["string", "фильтр: номер, объект, заявитель (необязательно)"] }, req: ["kind"] },
   { name: "find_upd", d: "УПД по номеру: у СКК и в моей приёмке, статус, материалы.", p: { number: ["string", "номер УПД"] }, req: ["number"] },
   { name: "make_pass", d: "Сделать черновик материального пропуска по одной или нескольким заявкам. Пользователь потом проверит и подтвердит.", p: { requests: ["array", "номера заявок"], positions: ["array", "номера позиций (только если одна заявка; пусто — все)"] }, req: ["requests"] },
+  { name: "inbox_queue", d: "Папки «Заявки» (файлы З-7137.pdf) и «Поставки» (УПД, файлы П-83464.pdf): прочитать файлы по номерам и положить в «Ждут подтверждения». Пользователь сам проверит и подтвердит: заявка — «на почту», УПД — в приёмку. Несколько номеров — по очереди. Для «ubaci/внеси/занеси заявку 7137 в почту» и «ubaci UPD 83464 / поставку в приёмку».", p: { kind: ["string", "zay — заявки (в почту) | upd — УПД, поставка (в приёмку)"], numbers: ["array", "номера из имени файла (7137, 83464)"], all: ["boolean", "все новые файлы папки"] }, req: ["kind"] },
+  { name: "inbox_list", d: "Что лежит в папке «Заявки» или «Поставки (УПД)»: новые файлы, в очереди, ждут подтверждения, ошибки.", p: { kind: ["string", "zay | upd"] }, req: ["kind"] },
   { name: "open_screen", d: "Открыть экран программы.", p: { screen: ["string", Object.keys(SCREENS).join("|")] }, req: ["screen"] },
 ];
 function toolsSpec() {
@@ -109,6 +111,15 @@ function runTool(app, auth, L, name, a, acts, ev) {
   if (name === "request_details") { const r = requestDetails(app, a.number); if (r.href) { acts.push({ type: "nav", hash: r.href, label: "Открыть заявку № " + r.number }); evAdd(() => E.evReqIds(app, [r.id], 1)); } return r; }
   if (name === "list_requests") { const r = listRequests(app, a.kind, a.query); acts.push({ type: "nav", hash: "#/pult/" + ({ mail: "mail", open: "open", debt: "debt", receipts: "rcp", passes: "pass" }[a.kind] || "open"), label: "Открыть на пульте" }); return r; }
   if (name === "find_upd") { const r = findUpd(app, a.number); evAdd(() => E.evUpd(app, r.results, 6)); return r; }
+  if (name === "inbox_queue" || name === "inbox_list") {
+    const X = require(`${__hooks}/lib1965.js`); const kind = String(a.kind || "").toLowerCase().indexOf("upd") >= 0 || /упд|постав|при[её]мк/i.test(String(a.kind || "")) ? "upd" : "zay";
+    if (name === "inbox_list") { acts.push({ type: "nav", hash: "#/inbox/" + kind, label: "Открыть папку" });
+      return { kind, items: X.list(app, kind).slice(0, 40).map((x) => ({ no: x.number, file: x.name, status: { new: "в папке", queued: "в очереди", reading: "читается", ready: "ждёт подтверждения", done: "сделано", error: "ошибка" }[x.status] || x.status, error: x.error || undefined })) }; }
+    if (L.WRITE_ROLES.indexOf(auth.getString ? auth.getString("role") : "") < 0 && !L.isSuper(auth)) return { error: "нет прав" };
+    const r = X.queue(app, auth, L, { kind, numbers: a.numbers, all: !!a.all });
+    acts.push({ type: "nav", hash: "#/inbox/" + kind, label: "Открыть папку — ждут подтверждения", auto: r.queued.length > 0 });
+    return Object.assign(r, { note: "Файлы читаются по одному; каждый прочитанный — в «Ждут подтверждения». Без подтверждения пользователя ничего не создаётся." });
+  }
   if (name === "open_screen") { const h = SCREENS[a.screen] || "#/home"; acts.push({ type: "nav", hash: h, label: "Открыть", auto: true }); return { ok: true, opened: h }; }
   if (name === "make_pass") {
     if (L.WRITE_ROLES.indexOf(auth.getString ? auth.getString("role") : "") < 0 && !L.isSuper(auth)) return { error: "нет прав делать пропуск" };
@@ -126,6 +137,7 @@ const SYS = "Ты — помощник склада ВЕЛЕССТРОЙ (стр
   "Вопросы «сколько выдано», «по каким заявкам», «кому выдали», «куда ушёл» материал — material_issues (все заявки, открытые и закрытые), не list_requests. " +
   "Короткий уточняющий вопрос («по каким заявкам?», «а кому?», «а в октябре?») относится к материалу из предыдущего вопроса — повтори поиск по нему. " +
   "Отвечай с доказательствами: номера заявок, даты, кто получил, сколько; программа сама покажет под ответом карточки — заявки с фото (подписанная, погрузка), пропуска, УПД с фото, флажки. Ссылок не пиши. " +
+  "Папки: «ubaci/внеси заявку 7137 (и 7140…) в почту» — inbox_queue kind=zay; «ubaci UPD 83464 / поставку в приёмку» — inbox_queue kind=upd. Сам ничего не создаёшь — файлы идут в «Ждут подтверждения». " +
   "3 месяца = 90 дней, полгода = 180, неделя = 7. Отвечай коротко и по делу, на языке пользователя; числа с единицами; для списков — короткие строки. Если данных нет — так и скажи.";
 function ask(app, auth, L, history, text) {
   const st = status(app);
