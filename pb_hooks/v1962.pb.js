@@ -16,6 +16,7 @@ routerAdd("POST", "/api/vs/ai/config", (e) => {
   if (key) { if (!/^[A-Za-z0-9_\-.]{20,200}$/.test(key)) throw new BadRequestError("Ключ не похож на секретный ключ Yandex — скопируйте его целиком."); c.YC_KEY = key; delete c.YC_BASE; delete c.YC_AUTH; }
   if (model) { if (!/^[a-z0-9.\-_]+\/[a-z0-9.\-_]+$/i.test(model)) throw new BadRequestError("Модель — вида yandexgpt/latest."); c.YC_MODEL = model; }
   const base = L.str(b.base).trim(); if (base && /^http:\/\/127\.0\.0\.1:\d+\/v1$/.test(base)) c.YC_BASE = base;   // для проверки программы
+  const ob = L.str(b.ocr_base).trim(); if (ob && /^http:\/\/127\.0\.0\.1:\d+$/.test(ob)) c.YC_OCR_BASE = ob;   // 1.9.66: распознавание снимков — для проверки программы
   if (!c.YC_FOLDER || !c.YC_KEY) throw new BadRequestError("Нужны ID папки и секретный ключ.");
   X.writeCfg($app, c);
   L.log($app, a, "ai_config", "", "", "🤖 Помощник Yandex: настройки сохранены (папка " + c.YC_FOLDER + ", модель " + (c.YC_MODEL || "yandexgpt/latest") + ")", {});
@@ -28,7 +29,13 @@ routerAdd("POST", "/api/vs/ai/test", (e) => {
   try { const m = X.call($app, null, "/models"); models = ((m && m.data) || []).map((x) => String(x.id || "")).filter(Boolean).slice(0, 60); } catch (_) {}
   const j = X.call($app, { model: "gpt://" + X.readCfg($app).YC_FOLDER + "/" + st.model, messages: [{ role: "user", content: "Ответь одним словом: работает?" }], max_tokens: 20, temperature: 0 });
   const t = j.choices && j.choices[0] && j.choices[0].message ? String(j.choices[0].message.content || "") : "";
-  return e.json(200, { ok: true, reply: t.slice(0, 200), models, model: st.model, usage: j.usage || null });
+  // 1.9.66: распознавание снимков (Yandex Vision OCR) — тем же ключом, если у него есть роль ai.vision.user
+  let ocr = ""; try { const c = X.readCfg($app);
+    const r = $http.send({ url: (c.YC_OCR_BASE || "https://ocr.api.cloud.yandex.net") + "/ocr/v1/recognizeText", method: "POST", timeout: 20,
+      headers: { "Content-Type": "application/json", "Authorization": "Api-Key " + c.YC_KEY, "x-folder-id": c.YC_FOLDER },
+      body: JSON.stringify({ mimeType: "PNG", languageCodes: ["ru"], model: "page", content: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==" }) });
+    ocr = r.statusCode === 200 ? "ok" : r.statusCode === 401 || r.statusCode === 403 ? "нет прав (нужна роль ai.vision.user)" : "ошибка " + r.statusCode; } catch (err) { ocr = "нет связи"; }
+  return e.json(200, { ok: true, reply: t.slice(0, 200), models, model: st.model, usage: j.usage || null, ocr });
 }, $apis.requireAuth("users"));
 // вопрос помощнику: {text, history:[{role,content}]}
 routerAdd("POST", "/api/vs/ai/ask", (e) => {
