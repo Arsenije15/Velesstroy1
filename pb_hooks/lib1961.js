@@ -59,13 +59,15 @@ function pult(app) {
     return { id: r.id, href: "#/receipt/" + r.id, no: r.no, t1: r.sup, t2: "", at: r.created, miss };
   });
   // черновики пропусков
-  const PS = rows(app, "SELECT id, COALESCE(no,'') AS no, COALESCE(title,'') AS title, COALESCE(vehicle,'') AS v, COALESCE(head,'') AS h, COALESCE(mol,'') AS m, COALESCE(rows,'') AS rw, COALESCE(created,'') AS created, COALESCE(request,'') AS rq " +
-    "FROM passes WHERE status = 'draft' ORDER BY created DESC LIMIT 300", { id: "", no: "", title: "", v: "", h: "", m: "", rw: "", created: "", rq: "" });
-  const ps = PS.map((p) => { const miss = [{ k: "conf", t: "не подтверждён" }];
-    if (!p.v) miss.push({ k: "veh", t: "нет машины" }); if (!p.h) miss.push({ k: "head", t: "нет руководителя" }); if (!jarr(p.rw).some((x) => x && x.n)) miss.push({ k: "items", t: "нет строк" });
-    return { id: p.id, pass: p.id, href: "", no: p.no, t1: p.title, t2: "", at: p.created, miss }; });
-  const tile = (L) => ({ n: L.length, bad: L.filter((x) => x.miss.some((m) => m.k !== "conf" && m.k !== "mail")).length, items: L.slice(0, 300) });
-  return { mail: tile(mail), open: tile(op), debt: tile(dt), rcp: tile(rc), pass: tile(ps), at: new Date().toISOString() };
+  // 1.9.62: журнал пропусков — все за 90 дней: черновики сверху, подтверждённые — с тем, кто подтвердил
+  const since90 = new Date(Date.now() - 90 * 864e5).toISOString().replace("T", " ");
+  const PS = rows(app, "SELECT id, COALESCE(no,'') AS no, COALESCE(title,'') AS title, COALESCE(vehicle,'') AS v, COALESCE(head,'') AS h, COALESCE(mol,'') AS m, COALESCE(rows,'') AS rw, COALESCE(created,'') AS created, COALESCE(request,'') AS rq, COALESCE(status,'') AS st, COALESCE(confirmed_by_name,'') AS cb " +
+    "FROM passes WHERE status = 'draft' OR created >= {:d} ORDER BY (status = 'draft') DESC, created DESC LIMIT 500", { id: "", no: "", title: "", v: "", h: "", m: "", rw: "", created: "", rq: "", st: "", cb: "" }, { d: since90 });
+  const ps = PS.map((p) => { const dr = p.st === "draft"; const miss = dr ? [{ k: "conf", t: "не подтверждён" }] : [{ k: "ok", t: "подтверждён" + (p.cb ? " · " + p.cb : "") }];
+    if (dr) { if (!p.v) miss.push({ k: "veh", t: "нет машины" }); if (!p.h) miss.push({ k: "head", t: "нет руководителя" }); if (!jarr(p.rw).some((x) => x && x.n)) miss.push({ k: "items", t: "нет строк" }); }
+    return { id: p.id, pass: p.id, href: "", no: p.no, t1: p.title, t2: "", at: p.created, miss, draft: dr }; });
+  const tile = (L) => ({ n: L.length, bad: L.filter((x) => x.miss.some((m) => m.k !== "conf" && m.k !== "mail" && m.k !== "ok")).length, items: L.slice(0, 300) });
+  return { mail: tile(mail), open: tile(op), debt: tile(dt), rcp: tile(rc), pass: Object.assign(tile(ps), { drafts: ps.filter((x) => x.draft).length }), at: new Date().toISOString() };
 }
 
 // ---------- «пропуск 7015 [1,2]»: черновик пропуска по заявке ----------
@@ -78,31 +80,56 @@ function findRequest(app, no) {
   if (L.length > 1 && L[0].getString("number_norm") !== norm) return { many: L.map((r) => ({ id: r.id, number: r.getString("number"), object: r.getString("object") })) };
   return { r: L[0] };
 }
-function passDraft(app, auth, L, b) {
-  const f = b.request ? { r: app.findRecordById("requests", String(b.request)) } : findRequest(app, b.no);
-  if (f.many) return { many: f.many };
-  const r = f.r; const pos = (Array.isArray(b.pos) ? b.pos : []).map((x) => parseInt(x, 10)).filter((x) => x > 0 && x < 1000);
+// строки пропуска по заявке: остаток к выдаче; «Ответственный» — кто делает пропуск; заявитель — в скобках под материалом
+function passRows(app, r, pos, resp) {
   const items = app.findRecordsByFilter("request_items", "request = {:r}", "sort,created", 0, 0, { r: r.id });
-  const pick = pos.length ? pos.map((i) => items[i - 1]).filter(Boolean) : items;
-  if (pos.length && !pick.length) throw new BadRequestError("В заявке № " + r.getString("number") + " нет позиций " + pos.join(", ") + " (всего позиций: " + items.length + ").");
-  const fq = (v) => { const n = Math.round(v * 1000) / 1000; return String(n).replace(".", ","); };
-  const R = pick.map((i) => { const o = i.getFloat("qty_ordered"), s = i.getFloat("qty_issued"); const q = o - s > 0 ? o - s : o; const u = i.getString("unit");
-    return { n: i.getString("material"), q: (u ? u + " " : "") + fq(q), t: "", w: r.getString("recipient"), d: r.getString("object"), item: i.id }; });
-  // машина — из последней отгрузки по заявке; руководитель и МОЛ — из прошлого пропуска этого человека
-  let veh = ""; try { const s = app.findRecordsByFilter("request_shipments", "request = {:r} || requests ~ {:r}", "-created", 1, 0, { r: r.id }); if (s.length) veh = s[0].getString("vehicle"); } catch (_) {}
-  let head = "", mol = ""; try { const p = app.findRecordsByFilter("passes", "created_by = {:u}", "-created", 1, 0, { u: auth.id }); if (p.length) { head = p[0].getString("head"); mol = p[0].getString("mol"); } } catch (_) {}
-  const title = ORG + " — заявка № " + r.getString("number");
-  let p = null, replaced = false;
-  const ex = app.findRecordsByFilter("passes", "request = {:r} && status = 'draft'", "-created", 1, 0, { r: r.id });
-  if (ex.length) { p = ex[0]; if (pos.length) { p.set("rows", R); replaced = true; app.save(p); } }
+  const pick = pos && pos.length ? pos.map((i) => items[i - 1]).filter(Boolean) : items;
+  if (pos && pos.length && !pick.length) throw new BadRequestError("В заявке № " + r.getString("number") + " нет позиций " + pos.join(", ") + " (всего позиций: " + items.length + ").");
+  const fq = (v) => String(Math.round(v * 1000) / 1000).replace(".", ",");
+  return { items: items.length, rows: pick.map((i) => { const o = i.getFloat("qty_ordered"), s = i.getFloat("qty_issued"); const q = o - s > 0 ? o - s : o; const u = i.getString("unit");
+    return { n: i.getString("material"), a: r.getString("recipient"), q: (u ? u + " " : "") + fq(q), t: "", w: resp, d: r.getString("object"), item: i.id, req: r.getString("number") }; }) };
+}
+function passTitle(nos) { return ORG + (nos.length > 1 ? " — заявки № " + nos.join(", ") : " — заявка № " + nos[0]); }
+// черновик пропуска: {no:"7015", pos:[1,2]} · {nos:["7114","7115"]} · {request:id}
+function passDraft(app, auth, L, b) {
+  const nos = Array.isArray(b.nos) ? b.nos.map(String).filter(Boolean).slice(0, 10) : [];
+  const R = [];
+  if (b.request) R.push(app.findRecordById("requests", String(b.request)));
+  else for (const no of (nos.length ? nos : [b.no])) { const f = findRequest(app, no); if (f.many) return { many: f.many, no }; R.push(f.r); }
+  const uniq = []; R.forEach((r) => { if (!uniq.some((x) => x.id === r.id)) uniq.push(r); });
+  const pos = uniq.length === 1 ? (Array.isArray(b.pos) ? b.pos : []).map((x) => parseInt(x, 10)).filter((x) => x > 0 && x < 1000) : [];
+  // кто делает пропуск — «Ответственный»; руководитель и МОЛ — из прошлого пропуска этого человека
+  let head = "", mol = "", resp = ""; try { const p = app.findRecordsByFilter("passes", "created_by = {:u}", "-created", 1, 0, { u: auth.id }); if (p.length) { head = p[0].getString("head"); mol = p[0].getString("mol"); resp = p[0].getString("resp"); } } catch (_) {}
+  if (!resp) resp = L.userName(auth);
+  let rowsAll = [], cnt = 0; uniq.forEach((r) => { const x = passRows(app, r, pos, resp); rowsAll = rowsAll.concat(x.rows); cnt += x.items; });
+  let veh = ""; try { const s = app.findRecordsByFilter("request_shipments", "request = {:r} || requests ~ {:r}", "-created", 1, 0, { r: uniq[0].id }); if (s.length) veh = s[0].getString("vehicle"); } catch (_) {}
+  const numbers = uniq.map((r) => r.getString("number"));
+  let p = null, replaced = false, ex = [];
+  if (uniq.length === 1) ex = app.findRecordsByFilter("passes", "request = {:r} && status = 'draft' && (request_nos = '' || request_nos = {:n})", "-created", 1, 0, { r: uniq[0].id, n: numbers[0] });
+  if (ex.length) { p = ex[0]; if (pos.length) { p.set("rows", rowsAll); replaced = true; app.save(p); } }
   else {
     p = new Record(app.findCollectionByNameOrId("passes"));
-    p.set("title", title); p.set("org", ORG); p.set("no", r.getString("number")); p.set("request", r.id); p.set("request_no", r.getString("number"));
-    p.set("date", L.todayLocal()); p.set("vehicle", veh); p.set("rows", R); p.set("head", head); p.set("mol", mol || ORG); p.set("status", "draft");
+    p.set("title", passTitle(numbers)); p.set("org", ORG); p.set("no", numbers.join(", ")); p.set("request", uniq[0].id); p.set("requests", uniq.map((r) => r.id)); p.set("request_nos", numbers.join(", "));
+    p.set("date", L.todayLocal()); p.set("vehicle", veh); p.set("rows", rowsAll); p.set("head", head); p.set("mol", mol || ORG); p.set("resp", resp); p.set("status", "draft");
     p.set("by_name", L.userName(auth)); p.set("created_by", auth.isSuperuser && auth.isSuperuser() ? "" : auth.id);
     app.save(p);
-    L.log(app, auth, "pass_draft", "passes", p.id, "Пропуск (черновик): " + title + (pos.length ? ", позиции " + pos.join(", ") : ", все позиции"), {});
+    L.log(app, auth, "pass_draft", "passes", p.id, "Пропуск (черновик): " + p.getString("title") + (pos.length ? ", позиции " + pos.join(", ") : ", все позиции"), {});
   }
-  return { pass: JSON.parse(JSON.stringify(p)), existed: ex.length > 0, replaced, items: items.length };
+  return { pass: JSON.parse(JSON.stringify(p)), existed: ex.length > 0, replaced, items: cnt };
 }
-module.exports = { pult, passDraft, findRequest, ORG };
+// добавить в черновик ещё одну заявку
+function passAddRequest(app, auth, L, b) {
+  const p = app.findRecordById("passes", String(b.id || ""));
+  if (p.getString("status") !== "draft") throw new BadRequestError("Пропуск уже подтверждён.");
+  const f = b.request ? { r: app.findRecordById("requests", String(b.request)) } : findRequest(app, b.no); if (f.many) return { many: f.many };
+  let ids = []; try { ids = JSON.parse(p.getString("requests") || "[]") || []; } catch (_) {} if (!ids.length && p.getString("request")) ids = [p.getString("request")];
+  if (ids.indexOf(f.r.id) >= 0) throw new BadRequestError("Заявка № " + f.r.getString("number") + " уже в этом пропуске.");
+  let rw = []; try { rw = JSON.parse(p.getString("rows") || "[]") || []; } catch (_) {}
+  const x = passRows(app, f.r, [], p.getString("resp") || L.userName(auth));
+  ids.push(f.r.id); const nos = (p.getString("request_nos") || p.getString("request_no") || "").split(/\s*,\s*/).filter(Boolean).concat([f.r.getString("number")]);
+  p.set("requests", ids); p.set("request_nos", nos.join(", ")); p.set("rows", rw.concat(x.rows)); p.set("title", passTitle(nos)); if (!p.getString("no") || p.getString("no") === nos.slice(0, -1).join(", ")) p.set("no", nos.join(", "));
+  app.save(p);
+  L.log(app, auth, "pass_add", "passes", p.id, "В пропуск добавлена заявка № " + f.r.getString("number") + ": " + p.getString("title"), {});
+  return { pass: JSON.parse(JSON.stringify(p)) };
+}
+module.exports = { pult, passDraft, passAddRequest, findRequest, ORG };

@@ -15,8 +15,8 @@ routerAdd("POST", "/api/vs/pass/save", (e) => {
   const b = e.requestInfo().body || {};
   let p; try { p = $app.findRecordById("passes", L.str(b.id)); } catch (_) { throw new NotFoundError("Пропуск не найден."); }
   if (p.getString("status") !== "draft") throw new BadRequestError("Пропуск уже подтверждён — изменить можно после «Вернуть в черновик».");
-  ["no", "date", "vehicle", "head", "mol"].forEach((k) => { if (b[k] !== undefined) p.set(k, L.str(b[k]).slice(0, k === "date" ? 10 : 300)); });
-  if (Array.isArray(b.rows)) p.set("rows", b.rows.slice(0, 200).map((r) => ({ n: L.str(r && r.n).slice(0, 500), q: L.str(r && r.q).slice(0, 60), t: L.str(r && r.t).slice(0, 10), w: L.str(r && r.w).slice(0, 200), d: L.str(r && r.d).slice(0, 300), item: L.str(r && r.item).slice(0, 20) })));
+  ["no", "date", "vehicle", "head", "mol", "resp"].forEach((k) => { if (b[k] !== undefined) p.set(k, L.str(b[k]).slice(0, k === "date" ? 10 : 300)); });
+  if (Array.isArray(b.rows)) p.set("rows", b.rows.slice(0, 200).map((r) => ({ n: L.str(r && r.n).slice(0, 500), a: L.str(r && r.a).slice(0, 200), q: L.str(r && r.q).slice(0, 60), t: L.str(r && r.t).slice(0, 10), w: L.str(r && r.w).slice(0, 200), d: L.str(r && r.d).slice(0, 300), item: L.str(r && r.item).slice(0, 20), req: L.str(r && r.req).slice(0, 60) })));
   $app.save(p);
   return e.json(200, { ok: true, updated: p.getString("updated") });
 }, $apis.requireAuth("users"));

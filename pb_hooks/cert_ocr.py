@@ -2,6 +2,7 @@
 # VELESSTROY 1.9.24 — сертификат соответствия / паспорт качества / декларация: вид, №, дата, срок действия, партия + весь текст (для сверки с УПД)
 import sys, os, re, json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.dont_write_bytecode = True   # 1.9.63: без __pycache__ в pb_hooks — иначе PocketBase видит «новый файл» и перезапускается посреди работы
 from aosr_ocr import get_text, find_date  # тот же способ чтения: текст из PDF или распознавание скана / фото
 
 KINDS = [(r"паспорт\w*\s+качеств", "Паспорт качества"), (r"сертификат\w*\s+соответстви", "Сертификат соответствия"),

@@ -15,6 +15,43 @@ if not shutil.which("tesseract"):
     out({"error": "На сервере не установлен tesseract. Запустите install.sh ещё раз."}); sys.exit(0)
 
 LANG = "rus+eng"
+# 1.9.63: PDF из Excel — текст берём из самого PDF (мгновенно и без ошибок); распознавание — только для сканов и фото
+WORDS = None   # [(x0, y0, x1, y1, text)] в пикселях страницы 300 dpi
+
+def pdf_text_chars(path):
+    try: return len(re.sub(r"\s", "", subprocess.run(["pdftotext", "-l", "2", path, "-"], capture_output=True, timeout=60).stdout.decode("utf-8", "ignore")))
+    except Exception: return 0
+
+def pdf_words(path, page, img_w, img_h):
+    x = subprocess.run(["pdftotext", "-bbox", "-f", str(page), "-l", str(page), path, "-"], capture_output=True, timeout=60).stdout.decode("utf-8", "ignore")
+    m = re.search(r'<page width="([\d.]+)" height="([\d.]+)"', x)
+    if not m: return []
+    kx, ky = img_w / float(m.group(1)), img_h / float(m.group(2))
+    import html
+    W = []
+    for w in re.finditer(r'<word xMin="([\d.]+)" yMin="([\d.]+)" xMax="([\d.]+)" yMax="([\d.]+)">(.*?)</word>', x):
+        W.append((float(w.group(1)) * kx, float(w.group(2)) * ky, float(w.group(3)) * kx, float(w.group(4)) * ky, html.unescape(w.group(5))))
+    return W
+
+def words_in(y0, y1, x0, x1, left=False):
+    # слова, центр которых внутри прямоугольника, — по строкам сверху вниз, в строке слева направо
+    # left=True: по левому краю слова (текст ячейки Excel, вылезший в соседнюю колонку, остаётся в своей)
+    ws = [w for w in WORDS if (x0 <= w[0] < x1 if left else x0 <= (w[0] + w[2]) / 2 <= x1) and y0 <= (w[1] + w[3]) / 2 <= y1]
+    ws.sort(key=lambda w: ((w[1] + w[3]) / 2, w[0]))
+    lines = []
+    for w in ws:
+        yc, h = (w[1] + w[3]) / 2, max(1.0, w[3] - w[1])
+        if lines and abs(lines[-1][0] - yc) < h * 0.55: lines[-1][1].append(w)
+        else: lines.append([yc, [w]])
+    return " ".join(" ".join(x[4] for x in sorted(l[1], key=lambda w: w[0])) for l in lines)
+
+def TXT(img, y0, y1, x0, x1, psm=6, extra=None, zoom=1):
+    if WORDS is not None: return words_in(y0, y1, x0, x1)
+    c = img[max(0, y0):y1, max(0, x0):x1]
+    if not c.size: return ""
+    if zoom > 1:  # короткий текст (ед. изм.) — увеличить и добавить поля
+        c = cv2.copyMakeBorder(cv2.resize(c, None, fx=zoom, fy=zoom, interpolation=cv2.INTER_CUBIC), 30, 30, 30, 30, cv2.BORDER_CONSTANT, value=255)
+    return tess(c, psm, extra)
 
 def tess(img, psm=6, extra=None):
     ok, buf = cv2.imencode(".png", img)
@@ -108,8 +145,7 @@ TEMPLATE = ["n", "rd", "project", "name1c", "objcode", "unit", "qty", "supplier"
 def map_columns(clean, xs, y_from, y_to):
     heads = []
     for j in range(len(xs) - 1):
-        c = clean[max(0, y_from):y_to, xs[j] + 4:xs[j + 1] - 4]
-        heads.append(lc(tess(c, 6)) if c.size and c.shape[1] > 15 else "")
+        heads.append(lc(TXT(clean, max(0, y_from), y_to, xs[j] + 4, xs[j + 1] - 4)) if xs[j + 1] - xs[j] > 23 and y_to > y_from else "")
     col = {}
     for j, h in enumerate(heads):
         for key, words in KEYS:
@@ -149,6 +185,17 @@ def split_supply(t):
         sup.append(w)
     return " ".join(sup).strip(" ,.|"), ""
 
+def supply_text(t):
+    # 1.9.63: PDF с текстом — «Поставщик  №документа  [от]  дата»; номер — перед датой, поставщик — всё до номера
+    t = re.sub(r"\s+", " ", (t or "")).strip(" |;")
+    t = re.sub(r"\b[oо][тt]\b", "от", t)
+    t = re.sub(r"(?<![\w/])(\d)\s+(\d{5,}\S*)", r"\1\2", t)   # «1 0070379/12» → «10070379/12» (Excel разрывает число)
+    m = re.search(r"^(?P<sup>.*?)\s*(?P<no>№?\s*[A-Za-zА-Яа-яЁё]{0,6}[\-–]?\d[\w\-/.]*)\s*(?:от\s*)?(?P<date>\d{1,2}\.\d{1,2}\.\d{2,4})", t)
+    if not m: return None, None
+    sup = m.group("sup").strip(" ,;|")
+    if re.fullmatch(r"(спец(ификация)?|упд|торг-?12|сч(ет|ёт)?|счет-фактура|№)\.?", sup.lower()): return "", t
+    return sup, (m.group("no").strip() + " от " + m.group("date") + t[m.end():]).strip(" ;")
+
 def clean_doc(d):
     d = re.sub(r"\s*[|\]\[)(]\s*", "", d or "")
     d = re.sub(r"^\d{1,2}\s+(?=[A-Za-zА-Яа-я])", "", d.strip())
@@ -159,14 +206,32 @@ def clean_doc(d):
         d = d[:m.start()].strip() + " от " + d[m.start():]
     return re.sub(r"\s+", " ", d).strip()
 
+def label_number(pw, ph):
+    labs = [w for w in WORDS if w[4].lower().startswith("(номер")]
+    if not labs: return None
+    L = labs[0]; lx = (L[0] + L[2]) / 2
+    c = [w for w in WORDS if re.fullmatch(r"\d{3,7}", w[4]) and w[3] <= L[1] + 2 and L[1] - w[1] < ph * 0.09 and abs((w[0] + w[2]) / 2 - lx) < pw * 0.06]
+    if not c: return None
+    return min(c, key=lambda w: abs((w[0] + w[2]) / 2 - lx) + (L[1] - w[3]))[4]
+
 def header_fields(text):
     t = re.sub(r"[ \t]+", " ", text)
     h = {}
     m = re.search(r"заявк[аи]\s+на\s+выдачу\s+тмц\D{0,20}?(\d{3,7})", t, re.I)
     if m: h["number"] = m.group(1)
+    else:   # PDF из Excel: номер стоит над заголовком справа — «7137 Заявка на выдачу ТМЦ (номер заявки)»
+        m = re.search(r"(?<![\d.,/-])(\d{3,7})(?![\d.,/-])\s+заявк[аи]\s+на\s+выдачу\s+тмц", t, re.I) or re.search(r"(?<![\d.,/-])(\d{3,7})(?![\d.,/-])[^\d]{0,60}\(\s*номер\s+заявки\s*\)", t, re.I)
+        if m: h["number"] = m.group(1)
     for m in re.finditer(r"\b(\d{2})[.,](\d{2})[.,](20\d{2})", t):
         if "приказ" in t[max(0, m.start() - 40):m.start()].lower(): continue
+        if int(m.group(3)) < 2020: continue   # дата приказа из шапки бланка (21.12.2016), когда слово «приказ» не распозналось
         h["date"] = "%s-%s-%s" % (m.group(3), m.group(2), m.group(1)); break
+    if "date" not in h:   # «"26"ноября 2026г.», «"_26_"___11___ 2026г.» над «дата оформления заявки»
+        MON = {"янв": 1, "фев": 2, "мар": 3, "апр": 4, "мая": 5, "май": 5, "июн": 6, "июл": 7, "авг": 8, "сен": 9, "окт": 10, "ноя": 11, "дек": 12}
+        m = re.search(r"[\"«“]?[\s_]*(\d{1,2})[\s_]*[\"»”]?[\s_]*([А-Яа-яЁё]{3,9}|\d{1,2})[\s_]*(20\d{2})\s*г?\.?.{0,40}?дата\s+оформления", t, re.I | re.S)
+        if m:
+            mo = int(m.group(2)) if m.group(2).isdigit() else MON.get(m.group(2)[:3].lower())
+            if mo and 1 <= mo <= 12 and 1 <= int(m.group(1)) <= 31: h["date"] = "%s-%02d-%02d" % (m.group(3), mo, int(m.group(1)))
     m = re.search(r"\b(ОП\s*[\"«“][^\"»”\n]{3,60}[\"»”])", t)
     if m: h["object"] = m.group(1).replace("«", "\"").replace("»", "\"").replace("“", "\"").replace("”", "\"")
     m = re.search(r"\bМОЛ\b\s*(.{5,200})", t)
@@ -235,35 +300,45 @@ def page_rows(img, first, prev=None):
         while start < len(bands) and bands[start][1] - bands[start][0] < 65: start += 1  # строка номеров колонок, если повторена
     header = {}
     if first and not cont:
-        top_area = clean[:max(50, tb["top"] - 5), :]
-        header = header_fields(tess(top_area, 6, ["-c", "preserve_interword_spaces=1"]))
+        header = header_fields(TXT(clean, 0, max(50, tb["top"] - 5), 0, clean.shape[1], 6, ["-c", "preserve_interword_spaces=1"]))
+        if WORDS is not None:   # 1.9.63: № заявки — число прямо над подписью «(номер заявки)» (штамп склада: 7137, 7087 …)
+            n = label_number(clean.shape[1], clean.shape[0])
+            if n: header["number"] = n
     items = []
     for a, b in bands[start:]:
         if b - a < 50: continue
         def cell(key, psm=6, extra=None, zoom=1):
             j = col.get(key)
             if j is None or j >= len(xs) - 1: return ""
-            c = clean[a + 5:b - 5, xs[j] + 5:xs[j + 1] - 5]
-            if not c.size: return ""
-            if zoom > 1:  # короткий текст (ед. изм.) — увеличить и добавить поля
-                c = cv2.copyMakeBorder(cv2.resize(c, None, fx=zoom, fy=zoom, interpolation=cv2.INTER_CUBIC), 30, 30, 30, 30, cv2.BORDER_CONSTANT, value=255)
-            return tess(c, psm, extra)
+            return TXT(clean, a + 5, b - 5, xs[j] + 5, xs[j + 1] - 5, psm, extra, zoom)
         it = {"project": cell("project"), "name1c": cell("name1c"), "rd": cell("rd"), "unit": cell("unit"),
               "objcode": cell("objcode")}
-        if not re.search(r"[A-Za-zА-Яа-я]", it["unit"]): it["unit"] = cell("unit", 7, None, 2) or cell("unit", 10, None, 2) or cell("unit", 8)
+        if WORDS is None and not re.search(r"[A-Za-zА-Яа-я]", it["unit"]): it["unit"] = cell("unit", 7, None, 2) or cell("unit", 10, None, 2) or cell("unit", 8)
         qraw = cell("qty")
-        if num(qraw) is None: qraw = cell("qty", 7) or cell("qty", 8, ["-c", "tessedit_char_whitelist=0123456789,. "])
+        if WORDS is None and num(qraw) is None: qraw = cell("qty", 7) or cell("qty", 8, ["-c", "tessedit_char_whitelist=0123456789,. "])
         it["qty_raw"] = qraw; it["qty"] = num(qraw)
         # поставщик + № + дата — одной полосой (печатный текст часто заходит на линию)
         js = [col[k] for k in ("supplier", "docno", "docdate") if k in col]
         sup_txt = ""
         if js:
             x_a, x_b = xs[min(js)] + 5, xs[min(max(js) + 1, len(xs) - 1)] - 5
-            sup_txt = tess(clean[a + 5:b - 5, x_a:x_b], 6)
+            # 1.9.63: PDF с текстом — колонки по очереди (многострочные ячейки не перемешиваются)
+            sup_txt = " ".join(words_in(a + 5, b - 5, xs[j] - 3, xs[j + 1] - 3, True) for j in range(min(js), min(max(js) + 1, len(xs) - 1))) if WORDS is not None else TXT(clean, a + 5, b - 5, x_a, x_b, 6)
         it["supplier"], doc = split_supply(sup_txt)
+        if WORDS is not None:
+            sp2, d2 = supply_text(sup_txt)
+            # текст ячейки, вылезший в соседние колонки («ЕВРАЗМаркет 1 / 0070379/12 от 07.10.2026»): вся полоса построчно
+            band = words_in(a + 5, b - 5, xs[min(js)] - 3, xs[min(max(js) + 1, len(xs) - 1)] - 3, True) if js else ""
+            sp3, d3 = supply_text(band)
+            def sc(sp, d): return -1 if sp is None else (0 if re.search(r"\d{4,}", sp) else 2) + (1 if len((d or "").split(" от ")[0]) >= 2 else 0)
+            if sc(sp3, d3) > sc(sp2, d2): sp2, d2 = sp3, d3
+            if sp2 is not None: it["supplier"], doc = sp2, d2
         it["supplier"] = re.sub(r"[^A-Za-zА-Яа-яЁё0-9\"«» ]+$", "", it["supplier"]).strip()
-        it["supply_doc"] = clean_doc(doc)
-        m = re.search(r"\d{2}\s*-\s*\d{3,}[0-9A-Za-zА-Яа-я]?", it["rd"])
+        if WORDS is not None:   # перенос слов в ячейке Excel: «Энергонефтегаз- комплекс», «Нефтехимавтоматик а ООО»
+            it["supplier"] = re.sub(r"(\w)-\s+(\w)", r"\1-\2", it["supplier"])
+            it["supplier"] = re.sub(r"([а-яё]{5,})\s([а-яё])(?=\s|$)", r"\1\2", it["supplier"])
+        it["supply_doc"] = clean_doc(doc) if WORDS is None else re.sub(r"\s+", " ", re.sub(r"\b[oо][тt]\b", "от", doc or "")).strip(" |")
+        m = re.search(r"\d{2}\s*-\s*\d{3,}[0-9A-Za-zА-Яа-я]?", it["rd"]) or re.search(r"(?<![\d,.])\d{4,9}(?![\d,.])", it["rd"])
         it["rd"] = re.sub(r"\s", "", m.group(0)) if m else ""
         it["unit"] = re.sub(r"[^A-Za-zА-Яа-я0-9²³.]", "", it["unit"]).lower()[:8]
         q1, qp = quality(it["name1c"]), quality(it["project"])
@@ -280,6 +355,7 @@ def page_rows(img, first, prev=None):
         if it.get("alt"): it["alt"] = fix_codes(it["alt"])
         # пустая строка / подписи под таблицей
         if len(it["material"]) < 3 and it["qty"] is None: continue
+        if WORDS is not None and it["qty"] is None and not it["rd"] and len(words(it["material"])) < 2: continue   # обрывок текста под таблицей
         if re.search(r"пто|оот|подпис|должност", lc(it["material"])) and it["qty"] is None: continue
         warn = []
         if it["qty"] is None: warn.append("qty")
@@ -318,16 +394,29 @@ def main(path):
         pages = []
         low = path.lower()
         with open(path, "rb") as f: magic = f.read(5)
+        textpdf = False
         if magic.startswith(b"%PDF"):
+            textpdf = pdf_text_chars(path) > 200
             subprocess.run(["pdftoppm", "-r", "300", "-png", "-l", "6", path, os.path.join(tmp, "p")], check=True, timeout=120)
             pages = sorted(os.path.join(tmp, x) for x in os.listdir(tmp) if x.endswith(".png"))
         else:
             pages = [path]
         header, items, dbg = {}, [], []
         prev, prev_rot = None, None
+        global WORDS
         for i, p in enumerate(pages):
             img = cv2.imread(p)
             if img is None: continue
+            if textpdf:
+                WORDS = pdf_words(path, i + 1, img.shape[1], img.shape[0])
+                if len(WORDS) > 20:
+                    h, its, d = page_rows(img, not header, prev)
+                    if d.get("cols"):
+                        if not d.get("cont"): prev = {"n": d["n"], "ratios": d["ratios"]}
+                        for it in its: it["page"] = i + 1; it["src"] = "text"
+                        if h: header = h
+                        items.extend(its); d["rot"] = 0; d["text"] = True; d.pop("ratios", None); dbg.append(d); continue
+                WORDS = None   # таблица не нашлась по тексту — распознаём как скан
             if max(img.shape[:2]) < 2400:  # маленькое фото — увеличим
                 k = 3000 / max(img.shape[:2]); img = cv2.resize(img, None, fx=k, fy=k, interpolation=cv2.INTER_CUBIC)
             img, skew = deskew(img)

@@ -3,7 +3,7 @@
 routerAdd("POST", "/api/vs/skk/links/create", (e) => {
   const L = require(`${__hooks}/lib.js`);
   const b = e.requestInfo().body || {};
-  const scope = b.scope === "sklad" ? "sklad" : b.scope === "zay" ? "zay" : b.scope === "mz" ? "mz" : "skk";   // mz (1.9.32) — «Склад Велесстрой Монтаж»   // zay (1.9.15) — «Склад: заявки»: ресурсы склада, поиск, свои заявки   // 1.9.12: «Склад» — новый приход, оперативка, МПЗ, журнал актов
+  const scope = b.scope === "sklad" ? "sklad" : b.scope === "zay" ? "zay" : b.scope === "mz" ? "mz" : b.scope === "omts" ? "omts" : "skk";   // omts (1.9.62) — «ОМТС: согласование заявок»   // mz (1.9.32) — «Склад Велесстрой Монтаж»   // zay (1.9.15) — «Склад: заявки»: ресурсы склада, поиск, свои заявки   // 1.9.12: «Склад» — новый приход, оперативка, МПЗ, журнал актов
   const a = L.requireRole(e, scope === "skk" ? ["admin", "manager", "skk"] : scope === "mz" ? ["admin", "manager"] : ["admin", "manager", "storekeeper"]);
   if (a.getString && a.getString("scope")) throw new ForbiddenError("По ссылке нельзя выдавать ссылки.");
   const name = L.str(b.name).replace(/\s+/g, " ").trim().slice(0, 120);
@@ -15,14 +15,14 @@ routerAdd("POST", "/api/vs/skk/links/create", (e) => {
     const u = new Record(tx.findCollectionByNameOrId("users"));
     const un = "skk_" + $security.randomStringWithAlphabet(8, "23456789abcdefghjkmnpqrstuvwxyz");
     u.set("username", un); u.set("email", un + "@velesstroy.local"); u.set("name", name);
-    u.set("role", scope !== "skk" ? (mode === "work" ? "storekeeper" : "viewer") : (mode === "work" ? "skk" : "skk_view")); u.set("scope", scope); u.set("tgroup", scope === "skk" ? "skk" : scope === "mz" ? "" : "sklad"); u.set("active", true);
+    u.set("role", scope === "omts" ? "viewer" : scope !== "skk" ? (mode === "work" ? "storekeeper" : "viewer") : (mode === "work" ? "skk" : "skk_view")); u.set("scope", scope); u.set("tgroup", scope === "skk" ? "skk" : scope === "mz" ? "" : "sklad"); u.set("active", true);
     u.set("warehouse", L.str(b.company).slice(0, 100)); u.setPassword($security.randomStringWithAlphabet(24, AL)); u.set("verified", true);
     tx.save(u);
     const k = new Record(tx.findCollectionByNameOrId("skk_links"));
     k.set("token", $security.randomStringWithAlphabet(28, AL)); k.set("user", u.id); k.set("label", name); k.set("mode", mode); k.set("scope", scope); k.set("active", true); k.set("views", 0);
     if (L.authId(a)) k.set("created_by", a.id);
     tx.save(k);
-    L.log(tx, a, "skk_link", "skk_links", k.id, "Ссылка на «" + ({ sklad: "Склад", zay: "Склад: заявки", mz: "Склад Велесстрой Монтаж" }[scope] || "Склад / СКК") + "» для «" + name + "» (" + (mode === "work" ? "работа" : "просмотр") + ")", {});
+    L.log(tx, a, "skk_link", "skk_links", k.id, "Ссылка на «" + ({ sklad: "Склад", zay: "Склад: заявки", mz: "Склад Велесстрой Монтаж", omts: "ОМТС: согласование заявок" }[scope] || "Склад / СКК") + "» для «" + name + "» (" + (mode === "work" ? "работа" : "просмотр") + ")", {});
     out = { id: k.id, token: k.getString("token"), mode: mode, scope: scope, name: name };
   });
   return e.json(200, out);

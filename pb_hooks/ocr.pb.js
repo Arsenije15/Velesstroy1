@@ -28,9 +28,11 @@ routerAdd("POST", "/api/vs/request/ocr", (e) => {
     $app.findRecordsByFilter("suggestions", "field = 'supplier'", "-last", 300, 0).forEach((r) => known.push(r.getString("value")));
   } catch (_) {}
   res.known_suppliers = known;
+  // 1.9.63: по PID — оперативка: поставщик, № УПД (если на скане пусто), лимит по PID и сколько уже заявлено
+  try { res.pid_hits = require(`${__hooks}/lib1963.js`).pidEnrich($app, res.items, res.header && res.header.number); } catch (err) { res.pid_error = String(err).slice(0, 200); }
   rec.set("result", res); $app.save(rec);
-  L.log($app, a, "request_ocr", "requests", "", "Заявка прочитана со скана: № " + ((res.header && res.header.number) || "?") + ", позиций " + res.items.length +
-    " (" + Math.round((res.ms || 0) / 1000) + " с)", { upload: rec.id });
+  L.log($app, a, "request_ocr", "requests", "", "Заявка прочитана " + (res.items.some((x) => x.src === "text") ? "из PDF (текст)" : "со скана") + ": № " + ((res.header && res.header.number) || "?") + ", позиций " + res.items.length +
+    (res.pid_hits ? ", по PID из оперативки: " + res.pid_hits : "") + " (" + Math.round((res.ms || 0) / 1000) + " с)", { upload: rec.id });
   return e.json(200, res);
 }, $apis.requireAuth("users"));
 

@@ -79,6 +79,7 @@ Wants=network-online.target
 User=velesstroy
 WorkingDirectory=$APP
 Environment=VS_TZ_OFFSET_MIN=180
+Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=$APP/pocketbase $SERVE --dir $APP/pb_data --hooksDir $APP/pb_hooks --migrationsDir $APP/pb_migrations --publicDir $APP/pb_public
 Restart=always
 RestartSec=3
@@ -98,6 +99,7 @@ fi
 
 systemctl daemon-reload
 systemctl enable velesstroy >/dev/null 2>&1
+rm -rf "$APP/pb_hooks/__pycache__"   # 1.9.63: кэш Python в папке хуков перезапускал сервер посреди работы
 systemctl restart velesstroy
 
 # 1.9.46/1.9.48: ПЛАН Б — копия базы и файлов в облако. Копию базы делает сам сервер (каждые 5 минут при изменениях),
